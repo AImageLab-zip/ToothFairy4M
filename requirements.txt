@@ -1,0 +1,9 @@
+asgiref==3.9.1
+Django==5.2.4
+django-cors-headers==4.7.0
+mysqlclient==2.2.7
+numpy==2.3.2
+pillow==11.3.0
+python-decouple==3.8
+sqlparse==0.5.3
+trimesh==4.7.1

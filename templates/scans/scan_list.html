@@ -1,0 +1,292 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Scans - ToothFairy4M{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/scan_list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-list me-2"></i>Scan Management</h2>
+        {% if user_profile.is_annotator %}
+            <a href="{% url 'upload_scan' %}" class="btn btn-primary">
+                <i class="fas fa-upload me-2"></i>Upload New Scan
+            </a>
+        {% endif %}
+    </div>
+
+    <!-- Advanced Filter Section -->
+    <div class="filter-section">
+        <div class="filter-toggle d-flex justify-content-between align-items-center" onclick="toggleFilters()">
+            <div>
+                <i class="fas fa-filter me-2"></i>
+                <strong>Filters</strong>
+                <small class="text-muted ms-2">Click to expand filtering options</small>
+            </div>
+            <i class="fas fa-chevron-down" id="filterChevron"></i>
+        </div>
+        
+        <!-- Active Filters Display -->
+        <div class="active-filters" id="activeFilters">
+            {% if search_query %}
+                <span class="filter-badge">
+                    Search: "{{ search_query }}"
+                    <span class="remove" onclick="removeFilter('search')">&times;</span>
+                </span>
+            {% endif %}
+            {% if status_filter %}
+                <span class="filter-badge">
+                    Status: {{ status_filter|title }}
+                    <span class="remove" onclick="removeFilter('status')">&times;</span>
+                </span>
+            {% endif %}
+            {% if visibility_filter %}
+                <span class="filter-badge">
+                    Visibility: {{ visibility_filter|title }}
+                    <span class="remove" onclick="removeFilter('visibility')">&times;</span>
+                </span>
+            {% endif %}
+            {% if uploader_filter %}
+                <span class="filter-badge">
+                    Uploader: {% for u in uploaders %}{% if u.id|stringformat:"s" == uploader_filter %}{{ u.username }}{% endif %}{% endfor %}
+                    <span class="remove" onclick="removeFilter('uploader')">&times;</span>
+                </span>
+            {% endif %}
+            {% if annotator_filter %}
+                <span class="filter-badge">
+                    Annotator: {% for a in annotators %}{% if a.id|stringformat:"s" == annotator_filter %}{{ a.username }}{% endif %}{% endfor %}
+                    <span class="remove" onclick="removeFilter('annotator')">&times;</span>
+                </span>
+            {% endif %}
+            {% if date_from or date_to %}
+                <span class="filter-badge">
+                    Date: {% if date_from %}{{ date_from }}{% else %}*{% endif %} - {% if date_to %}{{ date_to }}{% else %}*{% endif %}
+                    <span class="remove" onclick="removeFilter('date')">&times;</span>
+                </span>
+            {% endif %}
+        </div>
+        
+        <!-- Filter Controls -->
+        <div class="filter-content" id="filterContent">
+            <form method="get" id="filterForm">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Search</label>
+                        <input type="text" class="form-control" name="search" 
+                               placeholder="Name, Patient ID, Scan ID..." 
+                               value="{{ search_query }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" name="status">
+                            <option value="">All Statuses</option>
+                            <option value="verified" {% if status_filter == 'verified' %}selected{% endif %}>Verified</option>
+                            <option value="needs_review" {% if status_filter == 'needs_review' %}selected{% endif %}>Needs Review</option>
+                            <option value="processing" {% if status_filter == 'processing' %}selected{% endif %}>Processing</option>
+                        </select>
+                    </div>
+                    {% if user_profile.is_annotator %}
+                    <div class="col-md-2">
+                        <label class="form-label">Visibility</label>
+                        <select class="form-select" name="visibility">
+                            <option value="">All</option>
+                            <option value="public" {% if visibility_filter == 'public' %}selected{% endif %}>Public</option>
+                            <option value="private" {% if visibility_filter == 'private' %}selected{% endif %}>Private</option>
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-2">
+                        <label class="form-label">Uploader</label>
+                        <select class="form-select" name="uploader">
+                            <option value="">All Uploaders</option>
+                            {% for uploader in uploaders %}
+                                <option value="{{ uploader.id }}" {% if uploader.id|stringformat:"s" == uploader_filter %}selected{% endif %}>
+                                    {{ uploader.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Annotator</label>
+                        <select class="form-select" name="annotator">
+                            <option value="">All Annotators</option>
+                            {% for annotator in annotators %}
+                                <option value="{{ annotator.id }}" {% if annotator.id|stringformat:"s" == annotator_filter %}selected{% endif %}>
+                                    {{ annotator.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-2">
+                        <label class="form-label">Date From</label>
+                        <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Date To</label>
+                        <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-1"></i>Apply Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="clearAllFilters()">
+                            <i class="fas fa-times me-1"></i>Clear All
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scan List -->
+    {% if page_obj %}
+        <div class="scan-list">
+            <div class="scan-list-header scan-row">
+                <div>Scan Name</div>
+                <div>Status</div>
+                <div>Annotator</div>
+                <div>Upload Info</div>
+                <div>Privacy</div>
+                <div>Action</div>
+            </div>
+            
+            {% for scan_data in page_obj %}
+                {% with scan_data.scan as scan %}
+                <div class="scan-row">
+                    <!-- Scan Name -->
+                    <div class="scan-name">
+                        <i class="fas fa-tag text-primary me-2"></i>
+                        <span class="scan-name-text scan-name-display" data-scan-id="{{ scan.scanpair_id }}">
+                            {{ scan.name }}
+                        </span>
+                        {% if user_profile.is_annotator %}
+                            <button class="btn btn-sm btn-outline-secondary btn-edit-name-list" 
+                                    data-scan-id="{{ scan.scanpair_id }}" 
+                                    title="Edit name">
+                                <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
+                            </button>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Status -->
+                    <div>
+                        {% if scan_data.has_manual %}
+                            <span class="status-badge status-verified">
+                                <i class="fas fa-check-circle me-1"></i>Verified
+                            </span>
+                        {% elif scan_data.has_ai_only %}
+                            <span class="status-badge status-needs-review">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Review
+                            </span>
+                        {% else %}
+                            <span class="status-badge status-processing">
+                                <i class="fas fa-cog fa-spin me-1"></i>Processing
+                            </span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Annotator -->
+                    <div class="annotator-info">
+                        {% if scan_data.manual_classification %}
+                            <div>by <span class="annotator-name">{{ scan_data.manual_classification.annotator.username }}</span></div>
+                            <div class="text-muted" style="font-size: 0.7rem;">
+                                {{ scan_data.manual_classification.timestamp|date:"M d, H:i" }}
+                            </div>
+                        {% elif scan_data.has_ai_only %}
+                            <div class="text-warning">
+                                <i class="fas fa-clock me-1"></i>Needs Review
+                            </div>
+                        {% else %}
+                            <div class="text-muted">
+                                <i class="fas fa-hourglass-half me-1"></i>Processing
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Upload Info -->
+                    <div class="meta-info">
+                        <div><strong>{{ scan.uploaded_at|date:"M d, Y" }}</strong></div>
+                        <div>by {{ scan.uploaded_by.username }}</div>
+                        <div class="text-muted">Patient {{ scan.patient.patient_id }}</div>
+                    </div>
+                    
+                    <!-- Privacy -->
+                    <div>
+                        <span class="privacy-badge {% if scan.visibility == 'public' %}privacy-public{% else %}privacy-private{% endif %}">
+                            <i class="fas fa-{% if scan.visibility == 'public' %}globe{% else %}lock{% endif %} me-1"></i>
+                            {{ scan.get_visibility_display }}
+                        </span>
+                    </div>
+                    
+                    <!-- Action -->
+                    <div>
+                        <a href="{% url 'scan_detail' scan.scanpair_id %}" 
+                           class="btn btn-primary btn-open" 
+                           title="Open scan">
+                            <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+                {% endwith %}
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if page_obj.paginator.num_pages > 1 %}
+            <nav aria-label="Scan pagination" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a>
+                        </li>
+                    {% endif %}
+                    
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ num }}">{{ num }}</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-search"></i>
+            <h4>No scans found</h4>
+            <p>
+                {% if search_query or status_filter or visibility_filter or uploader_filter or annotator_filter or date_from or date_to %}
+                    No scans match your current filters. Try adjusting your search criteria.
+                {% else %}
+                    No scans available yet.
+                {% endif %}
+            </p>
+            {% if user_profile.is_annotator %}
+                <a href="{% url 'upload_scan' %}" class="btn btn-primary mt-2">
+                    <i class="fas fa-upload me-2"></i>Upload First Scan
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/scan_list.js' %}"></script>
+{% endblock %} 

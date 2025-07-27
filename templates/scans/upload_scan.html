@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Scan - ToothFairy4M{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-upload me-2"></i>Upload New Scan Pair</h3>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <!-- Scan Information -->
+                        <h5 class="mb-3"><i class="fas fa-info-circle me-2"></i>Scan Information</h5>
+                        <div class="mb-4">
+                            <label for="{{ scan_form.name.id_for_label }}" class="form-label">{{ scan_form.name.label }}</label>
+                            {{ scan_form.name }}
+                            {% if scan_form.name.errors %}
+                                <div class="text-danger">{{ scan_form.name.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">Enter a descriptive name for this scan (e.g., "Patient 123 - Initial Consultation")</div>
+                        </div>
+
+                        <!-- Scan Files -->
+                        <h5 class="mb-3"><i class="fas fa-file-medical me-2"></i>Scan Files</h5>
+                        <div class="mb-3">
+                            <label for="{{ scan_form.upper_scan_raw.id_for_label }}" class="form-label">{{ scan_form.upper_scan_raw.label }}</label>
+                            {{ scan_form.upper_scan_raw }}
+                            {% if scan_form.upper_scan_raw.errors %}
+                                <div class="text-danger">{{ scan_form.upper_scan_raw.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">Upload STL file for upper jaw scan</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="{{ scan_form.lower_scan_raw.id_for_label }}" class="form-label">{{ scan_form.lower_scan_raw.label }}</label>
+                            {{ scan_form.lower_scan_raw }}
+                            {% if scan_form.lower_scan_raw.errors %}
+                                <div class="text-danger">{{ scan_form.lower_scan_raw.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">Upload STL file for lower jaw scan</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="{{ scan_form.visibility.id_for_label }}" class="form-label">{{ scan_form.visibility.label }}</label>
+                            {{ scan_form.visibility }}
+                            {% if scan_form.visibility.errors %}
+                                <div class="text-danger">{{ scan_form.visibility.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">
+                                <strong>Public:</strong> Visible to all users<br>
+                                <strong>Private:</strong> Visible only to annotators and administrators
+                            </div>
+                        </div>
+
+                        <!-- File Requirements -->
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle me-2"></i>File Requirements</h6>
+                            <ul class="mb-0">
+                                <li>Only STL files are accepted</li>
+                                <li>Maximum file size: 50MB per file</li>
+                                <li>Both upper and lower jaw scans are required</li>
+                                <li>Files will be automatically processed for bite classification</li>
+                                <li>A new patient record will be created automatically</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'scan_list' %}" class="btn btn-secondary me-md-2">
+                                <i class="fas fa-times me-2"></i>Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload me-2"></i>Upload & Process
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

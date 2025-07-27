@@ -1,0 +1,346 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Scan {{ scan_pair.scanpair_id }} - ToothFairy4M{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/scan_detail.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="row">
+        <!-- 3D Viewer Column -->
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4><i class="fas fa-cube me-2"></i>3D Scan Viewer</h4>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="resetView">
+                        <i class="fas fa-home me-1"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="toggleWireframe">
+                        <i class="fas fa-project-diagram me-1"></i>Wireframe
+                    </button>
+                </div>
+            </div>
+            
+            <div class="position-relative">
+                <div id="scan-viewer"></div>
+                <div class="viewer-controls">
+                    <div class="btn-group-vertical">
+                        <button class="btn btn-light btn-sm active" id="showUpper" title="Upper Jaw">
+                            <i class="fas fa-eye me-1"></i>U
+                        </button>
+                        <button class="btn btn-light btn-sm active" id="showLower" title="Lower Jaw">
+                            <i class="fas fa-eye me-1"></i>L
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Classification Column -->
+        <div class="col-lg-4">
+            {% if ai_classification or manual_classification %}
+                
+                <!-- Revolutionary Classification Grid -->
+                <div class="classification-grid">
+                    <h6 class="mb-2"><i class="fas fa-brain me-2"></i>Bite Classification</h6>
+                    
+                    <div class="row g-2">
+                        <!-- First Row: 3 columns -->
+                        <div class="col-4">
+                            <div class="classification-item">
+                                <div class="classification-label">Sagittal Left</div>
+                                <div class="classification-value" data-field="sagittal_left">
+                                    {% if manual_classification %}
+                                        <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                            {{ manual_classification.get_sagittal_left_display }}
+                                        </button>
+                                    {% elif ai_classification %}
+                                        <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                            {{ ai_classification.get_sagittal_left_display }}
+                                        </button>
+                                    {% endif %}
+                                    {% if user_profile.is_annotator %}
+                                        <div class="value-dropdown">
+                                            <div class="dropdown-option" data-value="I">Class I</div>
+                                            <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
+                                            <div class="dropdown-option" data-value="II_full">Class II Full</div>
+                                            <div class="dropdown-option" data-value="III">Class III</div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-4">
+                            <div class="classification-item">
+                                <div class="classification-label">Sagittal Right</div>
+                                <div class="classification-value" data-field="sagittal_right">
+                                    {% if manual_classification %}
+                                        <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                            {{ manual_classification.get_sagittal_right_display }}
+                                        </button>
+                                    {% elif ai_classification %}
+                                        <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                            {{ ai_classification.get_sagittal_right_display }}
+                                        </button>
+                                    {% endif %}
+                                    {% if user_profile.is_annotator %}
+                                        <div class="value-dropdown">
+                                            <div class="dropdown-option" data-value="I">Class I</div>
+                                            <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
+                                            <div class="dropdown-option" data-value="II_full">Class II Full</div>
+                                            <div class="dropdown-option" data-value="III">Class III</div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-4">
+                            <div class="classification-item">
+                                <div class="classification-label">Vertical</div>
+                                <div class="classification-value" data-field="vertical">
+                                    {% if manual_classification %}
+                                        <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                            {{ manual_classification.get_vertical_display }}
+                                        </button>
+                                    {% elif ai_classification %}
+                                        <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                            {{ ai_classification.get_vertical_display }}
+                                        </button>
+                                    {% endif %}
+                                    {% if user_profile.is_annotator %}
+                                        <div class="value-dropdown">
+                                            <div class="dropdown-option" data-value="normal">Normal</div>
+                                            <div class="dropdown-option" data-value="deep">Deep Bite</div>
+                                            <div class="dropdown-option" data-value="reverse">Reverse Bite</div>
+                                            <div class="dropdown-option" data-value="open">Open Bite</div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Second Row: 2 columns centered -->
+                        <div class="col-4">
+                            <div class="classification-item">
+                                <div class="classification-label">Transverse</div>
+                                <div class="classification-value" data-field="transverse">
+                                    {% if manual_classification %}
+                                        <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                            {{ manual_classification.get_transverse_display }}
+                                        </button>
+                                    {% elif ai_classification %}
+                                        <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                            {{ ai_classification.get_transverse_display }}
+                                        </button>
+                                    {% endif %}
+                                    {% if user_profile.is_annotator %}
+                                        <div class="value-dropdown">
+                                            <div class="dropdown-option" data-value="normal">Normal</div>
+                                            <div class="dropdown-option" data-value="cross">Cross Bite</div>
+                                            <div class="dropdown-option" data-value="scissor">Scissor Bite</div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-4">
+                            <div class="classification-item">
+                                <div class="classification-label">Midline</div>
+                                <div class="classification-value" data-field="midline">
+                                    {% if manual_classification %}
+                                        <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                            {{ manual_classification.get_midline_display }}
+                                        </button>
+                                    {% elif ai_classification %}
+                                        <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                            {{ ai_classification.get_midline_display }}
+                                        </button>
+                                    {% endif %}
+                                    {% if user_profile.is_annotator %}
+                                        <div class="value-dropdown">
+                                            <div class="dropdown-option" data-value="centered">Centered</div>
+                                            <div class="dropdown-option" data-value="deviated">Deviated</div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status and Quick Actions - Moved Below Classification -->
+                {% if manual_classification %}
+                    <div class="text-center mt-3 mb-3">
+                        <span class="status-badge manual-verified">
+                            <i class="fas fa-check-circle me-1"></i>VERIFIED
+                        </span>
+                        <small class="text-muted d-block mt-1">
+                            By {{ manual_classification.annotator.username }} | {{ manual_classification.timestamp|date:"M d, H:i" }}
+                        </small>
+                    </div>
+                {% elif ai_classification and user_profile.is_annotator %}
+                    <div class="text-center mt-3 mb-3">
+                        <span class="status-badge ai-pending">
+                            <i class="fas fa-robot me-1"></i>AI PREDICTION - NEEDS REVIEW
+                        </span>
+                    </div>
+                    <div class="quick-actions">
+                        <form method="post" style="display: inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="accept_ai">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check me-1"></i>Accept All AI Predictions
+                            </button>
+                        </form>
+                    </div>
+                {% elif ai_classification %}
+                    <div class="text-center mt-3 mb-3">
+                        <span class="status-badge ai-pending">
+                            <i class="fas fa-robot me-1"></i>AI CLASSIFICATION
+                        </span>
+                    </div>
+                {% endif %}
+                
+            {% else %}
+                <!-- Processing State -->
+                <div class="text-center py-4">
+                    <span class="status-badge processing">
+                        <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
+                    </span>
+                    <p class="mt-3 text-muted">
+                        AI is analyzing the scan...<br>
+                        <small>Usually takes 1-2 minutes</small>
+                    </p>
+                </div>
+            {% endif %}
+            
+            <!-- Scan Management Section -->
+            <div class="scan-management-box">
+                <h6 class="mb-2"><i class="fas fa-cog me-2"></i>Scan Management</h6>
+                
+                <!-- Scan Information -->
+                <div class="scan-info-compact">
+                    <div class="row g-2 mb-3">
+                        <div class="col-12">
+                            <div class="info-item-compact d-flex align-items-center justify-content-between">
+                                <div>
+                                    <i class="fas fa-tag text-primary me-1"></i>
+                                    <small><strong class="scan-name-display">{{ scan_pair.name }}</strong></small>
+                                </div>
+                                {% if user_profile.is_annotator %}
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit-name" title="Edit name">
+                                        <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="info-item-compact">
+                                <i class="fas fa-user text-secondary me-1"></i>
+                                <small>Patient {{ scan_pair.patient.patient_id }}</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="info-item-compact">
+                                <i class="fas fa-cube text-info me-1"></i>
+                                <small>Scan {{ scan_pair.scanpair_id }}</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="info-item-compact">
+                                <i class="fas fa-calendar text-success me-1"></i>
+                                <small>{{ scan_pair.uploaded_at|date:"M d, Y" }}</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="info-item-compact">
+                                <i class="fas fa-upload text-secondary me-1"></i>
+                                <small>{{ scan_pair.uploaded_by.username }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Management Controls (Only for Annotators) -->
+                {% if user_profile.is_annotator %}
+                    <form method="post" class="scan-management-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_management">
+                        
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label-sm">{{ management_form.name.label }}</label>
+                                {{ management_form.name }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label-sm">{{ management_form.visibility.label }}</label>
+                                {{ management_form.visibility }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label-sm">{{ management_form.dataset.label }}</label>
+                                {{ management_form.dataset }}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="fas fa-save me-1"></i>Update Settings
+                            </button>
+                        </div>
+                    </form>
+                {% else %}
+                    <!-- Read-only view for non-annotators -->
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <small class="text-muted d-block">Name:</small>
+                            <small><strong>{{ scan_pair.name }}</strong></small>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Visibility:</small>
+                            <span class="badge bg-{% if scan_pair.visibility == 'public' %}success{% else %}warning{% endif %}">
+                                {{ scan_pair.get_visibility_display }}
+                            </span>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted d-block">Dataset:</small>
+                            <small>{{ scan_pair.dataset.name|default:"None" }}</small>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Back Button -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <a href="{% url 'scan_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Scan List
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Saving Indicator -->
+<div class="saving-indicator" id="savingIndicator">
+    <i class="fas fa-check me-1"></i>Saved!
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script id="django-data" type="application/json">
+{
+    "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
+    "scanId": {{ scan_pair.scanpair_id }}
+}
+</script>
+<script src="{% static 'js/scan_detail.js' %}"></script>
+{% endblock %} 

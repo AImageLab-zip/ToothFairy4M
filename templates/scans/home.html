@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome - ToothFairy4M{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="text-center mb-5">
+                <h1 class="display-4 mb-4">
+                    <i class="fas fa-tooth text-primary"></i>
+                    Welcome to ToothFairy4M
+                </h1>
+                <p class="lead">Advanced Intra-oral Scan Management and Classification System</p>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <i class="fas fa-upload fa-3x text-primary mb-3"></i>
+                            <h5 class="card-title">Upload Scans</h5>
+                            <p class="card-text">Upload upper and lower STL scan pairs for automated processing and classification.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <i class="fas fa-eye fa-3x text-success mb-3"></i>
+                            <h5 class="card-title">3D Visualization</h5>
+                            <p class="card-text">View and interact with 3D scan models in your browser with real-time classification overlays.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-center">
+                        <div class="card-body">
+                            <i class="fas fa-brain fa-3x text-info mb-3"></i>
+                            <h5 class="card-title">AI Classification</h5>
+                            <p class="card-text">Automated bite classification analysis for sagittal, vertical, transverse, and midline assessment.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if not user.is_authenticated %}
+                <div class="text-center mt-5">
+                    <h3 class="mb-4">Get Started</h3>
+                    <div class="d-grid gap-2 d-md-block">
+                        <a href="{% url 'login' %}" class="btn btn-primary btn-lg me-3">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                        <a href="{% url 'register' %}" class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-user-plus me-2"></i>Register
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %} 
