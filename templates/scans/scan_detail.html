@@ -14,8 +14,47 @@
         <!-- 3D Viewer Column -->
         <div class="col-lg-8">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4><i class="fas fa-cube me-2"></i>3D Scan Viewer</h4>
-                <div class="btn-group" role="group">
+                <div class="d-flex align-items-center">
+                    <h4 class="me-3"><i class="fas fa-cube me-2"></i>3D Viewer</h4>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="viewerType" id="iosViewer" autocomplete="off" 
+                               {% if scan_pair.has_ios_scans %}checked{% endif %}
+                               {% if not scan_pair.has_ios_scans %}disabled{% endif %}>
+                        <label class="btn {% if scan_pair.has_ios_scans %}{% if scan_pair.is_ios_processed %}btn-outline-primary{% elif scan_pair.ios_processing_status == 'processing' %}btn-outline-warning{% elif scan_pair.ios_processing_status == 'failed' %}btn-outline-danger{% else %}btn-outline-secondary{% endif %}{% else %}btn-outline-secondary{% endif %} btn-sm" for="iosViewer">
+                            {% if scan_pair.has_ios_scans %}
+                                {% if scan_pair.ios_processing_status == 'processing' %}
+                                    <i class="fas fa-spinner fa-spin me-1"></i>
+                                {% elif scan_pair.ios_processing_status == 'failed' %}
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                {% elif scan_pair.is_ios_processed %}
+                                    <i class="fas fa-check me-1"></i>
+                                {% endif %}
+                            {% else %}
+                                <i class="fas fa-times me-1"></i>
+                            {% endif %}
+                            IOS
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="viewerType" id="cbctViewer" autocomplete="off"
+                               {% if not scan_pair.has_ios_scans and scan_pair.has_cbct_scan %}checked{% endif %}
+                               {% if not scan_pair.has_cbct_scan %}disabled{% endif %}>
+                        <label class="btn {% if scan_pair.has_cbct_scan %}{% if scan_pair.is_cbct_processed %}btn-outline-primary{% elif scan_pair.cbct_processing_status == 'processing' %}btn-outline-warning{% elif scan_pair.cbct_processing_status == 'failed' %}btn-outline-danger{% else %}btn-outline-secondary{% endif %}{% else %}btn-outline-secondary{% endif %} btn-sm" for="cbctViewer">
+                            {% if scan_pair.has_cbct_scan %}
+                                {% if scan_pair.cbct_processing_status == 'processing' %}
+                                    <i class="fas fa-spinner fa-spin me-1"></i>
+                                {% elif scan_pair.cbct_processing_status == 'failed' %}
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                {% elif scan_pair.is_cbct_processed %}
+                                    <i class="fas fa-check me-1"></i>
+                                {% endif %}
+                            {% else %}
+                                <i class="fas fa-times me-1"></i>
+                            {% endif %}
+                            CBCT
+                        </label>
+                    </div>
+                </div>
+                <div class="btn-group" role="group" id="iosControls">
                     <button type="button" class="btn btn-outline-primary btn-sm" id="resetView">
                         <i class="fas fa-home me-1"></i>Reset
                     </button>
@@ -23,18 +62,76 @@
                         <i class="fas fa-project-diagram me-1"></i>Wireframe
                     </button>
                 </div>
+                <div class="btn-group" role="group" id="cbctControls" style="display: none;">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="resetCBCTView">
+                        <i class="fas fa-home me-1"></i>Reset
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                            Rendering
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" data-render-mode="mip">Maximum Intensity</a></li>
+                            <li><a class="dropdown-item" href="#" data-render-mode="translucent">Translucent</a></li>
+                            <li><a class="dropdown-item" href="#" data-render-mode="attenuated">Attenuated MIP</a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
             
             <div class="position-relative">
-                <div id="scan-viewer"></div>
-                <div class="viewer-controls">
-                    <div class="btn-group-vertical">
-                        <button class="btn btn-light btn-sm active" id="showUpper" title="Upper Jaw">
-                            <i class="fas fa-eye me-1"></i>U
-                        </button>
-                        <button class="btn btn-light btn-sm active" id="showLower" title="Lower Jaw">
-                            <i class="fas fa-eye me-1"></i>L
-                        </button>
+                <!-- IOS Viewer -->
+                <div id="ios-viewer" class="viewer-container">
+                    <div id="scan-viewer"></div>
+                    <div class="viewer-controls">
+                        <div class="btn-group-vertical">
+                            <button class="btn btn-light btn-sm active" id="showUpper" title="Upper Jaw">
+                                <i class="fas fa-eye me-1"></i>U
+                            </button>
+                            <button class="btn btn-light btn-sm active" id="showLower" title="Lower Jaw">
+                                <i class="fas fa-eye me-1"></i>L
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CBCT Viewer -->
+                <div id="cbct-viewer" class="viewer-container" style="display: none;">
+                    <div class="cbct-loading" id="cbctLoading">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading CBCT data...</p>
+                        </div>
+                    </div>
+                    <div class="cbct-views" id="cbctViews" style="display: none;">
+                        <div class="row g-2 h-100">
+                            <div class="col-6">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Axial</div>
+                                    <div id="axialView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Sagittal</div>
+                                    <div id="sagittalView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Coronal</div>
+                                    <div id="coronalView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">3D Volume</div>
+                                    <div id="volumeView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -46,7 +143,17 @@
                 
                 <!-- Revolutionary Classification Grid -->
                 <div class="classification-grid">
-                    <h6 class="mb-2"><i class="fas fa-brain me-2"></i>Bite Classification</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="fas fa-brain me-2"></i>Bite Classification</h6>
+                        <div class="classification-legends">
+                            <small class="legend-item">
+                                <span class="legend-color ai-prediction"></span>AI Pred
+                            </small>
+                            <small class="legend-item">
+                                <span class="legend-color manual-verified"></span>Verified
+                            </small>
+                        </div>
+                    </div>
                     
                     <div class="row g-2">
                         <!-- First Row: 3 columns -->
@@ -173,6 +280,15 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Confirm Review Button -->
+                    {% if ai_classification and user_profile.is_annotator %}
+                        <div class="text-center mt-2">
+                            <button type="button" class="btn btn-success btn-sm" id="confirmReview">
+                                <i class="fas fa-check me-1"></i>Confirm Review
+                            </button>
+                        </div>
+                    {% endif %}
                 </div>
                 
                 <!-- Status and Quick Actions - Moved Below Classification -->
@@ -185,21 +301,6 @@
                             By {{ manual_classification.annotator.username }} | {{ manual_classification.timestamp|date:"M d, H:i" }}
                         </small>
                     </div>
-                {% elif ai_classification and user_profile.is_annotator %}
-                    <div class="text-center mt-3 mb-3">
-                        <span class="status-badge ai-pending">
-                            <i class="fas fa-robot me-1"></i>AI PREDICTION - NEEDS REVIEW
-                        </span>
-                    </div>
-                    <div class="quick-actions">
-                        <form method="post" style="display: inline;">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="accept_ai">
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-check me-1"></i>Accept All AI Predictions
-                            </button>
-                        </form>
-                    </div>
                 {% elif ai_classification %}
                     <div class="text-center mt-3 mb-3">
                         <span class="status-badge ai-pending">
@@ -211,19 +312,81 @@
             {% else %}
                 <!-- Processing State -->
                 <div class="text-center py-4">
-                    <span class="status-badge processing">
-                        <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
-                    </span>
-                    <p class="mt-3 text-muted">
-                        AI is analyzing the scan...<br>
-                        <small>Usually takes 1-2 minutes</small>
-                    </p>
+                    <!-- IOS Processing Status -->
+                    {% if scan_pair.has_ios_scans %}
+                        <div class="mb-3">
+                            <h6 class="mb-2"><i class="fas fa-tooth me-2"></i>Intra-Oral Scans</h6>
+                            {% if scan_pair.ios_processing_status == 'processing' %}
+                                <span class="status-badge processing">
+                                    <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
+                                </span>
+                                <p class="mt-2 text-muted small">
+                                    Analyzing upper and lower jaw scans...<br>
+                                    <small>Usually takes 1-2 minutes</small>
+                                </p>
+                            {% elif scan_pair.ios_processing_status == 'processed' %}
+                                <span class="status-badge processed">
+                                    <i class="fas fa-check-circle me-1"></i>PROCESSED
+                                </span>
+                                <p class="mt-2 text-muted small">IOS processing complete</p>
+                            {% elif scan_pair.ios_processing_status == 'failed' %}
+                                <span class="status-badge failed">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>FAILED
+                                </span>
+                                <p class="mt-2 text-muted small">IOS processing failed</p>
+                            {% else %}
+                                <span class="status-badge pending">
+                                    <i class="fas fa-clock me-1"></i>PENDING
+                                </span>
+                                <p class="mt-2 text-muted small">Waiting to start processing</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    
+                    <!-- CBCT Processing Status -->
+                    {% if scan_pair.has_cbct_scan %}
+                        <div class="mb-3">
+                            <h6 class="mb-2"><i class="fas fa-cube me-2"></i>CBCT Scan</h6>
+                            {% if scan_pair.cbct_processing_status == 'processing' %}
+                                <span class="status-badge processing">
+                                    <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
+                                </span>
+                                <p class="mt-2 text-muted small">
+                                    Analyzing CBCT volume data...<br>
+                                    <small>Usually takes 3-5 minutes</small>
+                                </p>
+                            {% elif scan_pair.cbct_processing_status == 'processed' %}
+                                <span class="status-badge processed">
+                                    <i class="fas fa-check-circle me-1"></i>PROCESSED
+                                </span>
+                                <p class="mt-2 text-muted small">CBCT processing complete</p>
+                            {% elif scan_pair.cbct_processing_status == 'failed' %}
+                                <span class="status-badge failed">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>FAILED
+                                </span>
+                                <p class="mt-2 text-muted small">CBCT processing failed</p>
+                            {% else %}
+                                <span class="status-badge pending">
+                                    <i class="fas fa-clock me-1"></i>PENDING
+                                </span>
+                                <p class="mt-2 text-muted small">Waiting to start processing</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Overall status message -->
+                    {% if not scan_pair.has_ios_scans and not scan_pair.has_cbct_scan %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            No scans uploaded. Please upload IOS scans or CBCT scan.
+                        </div>
+                    {% endif %}
                 </div>
             {% endif %}
             
-            <!-- Scan Management Section -->
+            <!-- Scan Settings Section -->
             <div class="scan-management-box">
-                <h6 class="mb-2"><i class="fas fa-cog me-2"></i>Scan Management</h6>
+                <h6 class="mb-2"><i class="fas fa-cog me-2"></i>Scan Settings</h6>
                 
                 <!-- Scan Information -->
                 <div class="scan-info-compact">
@@ -232,7 +395,7 @@
                             <div class="info-item-compact d-flex align-items-center justify-content-between">
                                 <div>
                                     <i class="fas fa-tag text-primary me-1"></i>
-                                    <small><strong class="scan-name-display">{{ scan_pair.name }}</strong></small>
+                                    <small><strong>{{ scan_pair.name }}</strong></small>
                                 </div>
                                 {% if user_profile.is_annotator %}
                                     <button class="btn btn-sm btn-outline-secondary btn-edit-name" title="Edit name">
@@ -316,6 +479,40 @@
                 {% endif %}
             </div>
 
+            <!-- File Management Section -->
+            {% if user_profile.is_annotator %}
+                <div class="scan-management-box">
+                    <h6 class="mb-2"><i class="fas fa-file-upload me-2"></i>File Management</h6>
+                    
+                    <form method="post" enctype="multipart/form-data" class="file-upload-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_files">
+                        
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label-sm">Upper Scan</label>
+                                <input type="file" name="upper_scan" class="form-control form-control-sm" accept=".stl,.obj">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label-sm">Lower Scan</label>
+                                <input type="file" name="lower_scan" class="form-control form-control-sm" accept=".stl,.obj">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label-sm">CBCT (.nii.gz)</label>
+                                <input type="file" name="cbct" class="form-control form-control-sm" accept=".nii.gz">
+                                <small class="text-muted">Volumetric data for patient {{ scan_pair.patient.patient_id }}</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="fas fa-upload me-1"></i>Upload Files
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            {% endif %}
+
         </div>
     </div>
 
@@ -339,8 +536,11 @@
 <script id="django-data" type="application/json">
 {
     "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
-    "scanId": {{ scan_pair.scanpair_id }}
+    "scanId": {{ scan_pair.scanpair_id }},
+    "hasCBCT": {% if scan_pair.cbct %}true{% else %}false{% endif %}
 }
 </script>
 <script src="{% static 'js/scan_detail.js' %}"></script>
+<script src="{% static 'js/volume_renderer.js' %}"></script>
+<script src="{% static 'js/cbct_viewer.js' %}"></script>
 {% endblock %} 

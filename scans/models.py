@@ -56,10 +56,22 @@ def normalized_scan_path(instance, filename):
     return f"scans/patient_{instance.patient.patient_id}/normalized/{filename}"
 
 
+def cbct_upload_path(instance, filename):
+    return f"scans/patient_{instance.patient.patient_id}/cbct/{filename}"
+
+
 class ScanPair(models.Model):
     VISIBILITY_CHOICES = [
         ('public', 'Public'),
         ('private', 'Private'),
+    ]
+    
+    # Processing status choices
+    PROCESSING_STATUS_CHOICES = [
+        ('not_uploaded', 'Not Uploaded'),
+        ('processing', 'Processing'),
+        ('processed', 'Processed'),
+        ('failed', 'Processing Failed'),
     ]
     
     scanpair_id = models.AutoField(primary_key=True)
@@ -69,11 +81,15 @@ class ScanPair(models.Model):
     
     upper_scan_raw = models.FileField(
         upload_to=scan_upload_path,
-        validators=[FileExtensionValidator(allowed_extensions=['stl'])]
+        validators=[FileExtensionValidator(allowed_extensions=['stl'])],
+        blank=True,
+        null=True
     )
     lower_scan_raw = models.FileField(
         upload_to=scan_upload_path,
-        validators=[FileExtensionValidator(allowed_extensions=['stl'])]
+        validators=[FileExtensionValidator(allowed_extensions=['stl'])],
+        blank=True,
+        null=True
     )
     
     upper_scan_norm = models.FileField(
@@ -89,6 +105,27 @@ class ScanPair(models.Model):
         null=True
     )
     
+    cbct = models.FileField(
+        upload_to=cbct_upload_path,
+        validators=[FileExtensionValidator(allowed_extensions=['nii', 'gz'])],
+        blank=True,
+        null=True
+    )
+    
+    # Processing status fields
+    ios_processing_status = models.CharField(
+        max_length=20, 
+        choices=PROCESSING_STATUS_CHOICES, 
+        default='not_uploaded',
+        help_text='Processing status for intra-oral scans (upper and lower)'
+    )
+    cbct_processing_status = models.CharField(
+        max_length=20, 
+        choices=PROCESSING_STATUS_CHOICES, 
+        default='not_uploaded',
+        help_text='Processing status for CBCT scan'
+    )
+    
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='private')
     uploaded_at = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
@@ -96,10 +133,40 @@ class ScanPair(models.Model):
     def save(self, *args, **kwargs):
         if not self.name:
             self.name = f"Patient {self.patient.patient_id}"
+        
+        # Update processing status based on file availability
+        if self.upper_scan_raw and self.lower_scan_raw:
+            if self.ios_processing_status == 'not_uploaded':
+                self.ios_processing_status = 'processing'
+        else:
+            self.ios_processing_status = 'not_uploaded'
+            
+        if self.cbct:
+            if self.cbct_processing_status == 'not_uploaded':
+                self.cbct_processing_status = 'processing'
+        else:
+            self.cbct_processing_status = 'not_uploaded'
+            
         super().save(*args, **kwargs)
     
     def __str__(self):
         return f"ScanPair {self.scanpair_id} - {self.name}"
+    
+    def has_ios_scans(self):
+        """Check if both upper and lower scans are uploaded"""
+        return bool(self.upper_scan_raw and self.lower_scan_raw)
+        
+    def has_cbct_scan(self):
+        """Check if CBCT scan is uploaded"""
+        return bool(self.cbct)
+        
+    def is_ios_processed(self):
+        """Check if IOS processing is complete"""
+        return self.ios_processing_status == 'processed'
+        
+    def is_cbct_processed(self):
+        """Check if CBCT processing is complete"""
+        return self.cbct_processing_status == 'processed'
 
 
 class Classification(models.Model):

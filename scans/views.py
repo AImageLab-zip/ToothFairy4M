@@ -226,6 +226,69 @@ def scan_detail(request, scanpair_id):
                 management_form.save()
                 messages.success(request, 'Scan settings updated successfully!')
                 return redirect('scan_detail', scanpair_id=scanpair_id)
+        
+        elif action == 'update_files':
+            # Handle file uploads
+            from .processing import execute_ios_processing_command, execute_cbct_processing_command
+            updated_files = []
+            reprocess_ios = False
+            reprocess_cbct = False
+            
+            # Handle upper scan upload
+            if 'upper_scan' in request.FILES:
+                scan_pair.upper_scan_raw = request.FILES['upper_scan']
+                updated_files.append('upper scan')
+                reprocess_ios = True
+            
+            # Handle lower scan upload
+            if 'lower_scan' in request.FILES:
+                scan_pair.lower_scan_raw = request.FILES['lower_scan']
+                updated_files.append('lower scan')
+                reprocess_ios = True
+            
+            # Handle CBCT upload
+            if 'cbct' in request.FILES:
+                scan_pair.cbct = request.FILES['cbct']
+                updated_files.append('CBCT')
+                reprocess_cbct = True
+            
+            if updated_files:
+                # Save the scan pair to update file fields
+                scan_pair.save()
+                
+                # Reset processing status for updated scan types
+                if reprocess_ios and scan_pair.has_ios_scans():
+                    # Clear existing classifications to trigger reprocessing
+                    scan_pair.classifications.filter(classifier='pipeline').delete()
+                    # Reset normalized scans
+                    scan_pair.upper_scan_norm = None
+                    scan_pair.lower_scan_norm = None
+                    scan_pair.ios_processing_status = 'processing'
+                    scan_pair.save()
+                
+                if reprocess_cbct and scan_pair.has_cbct_scan():
+                    scan_pair.cbct_processing_status = 'processing'
+                    scan_pair.save()
+                
+                # Trigger processing
+                try:
+                    # Process IOS scans if they need reprocessing
+                    if reprocess_ios and scan_pair.has_ios_scans():
+                        execute_ios_processing_command(scan_pair)
+                    
+                    # Process CBCT if it needs reprocessing
+                    if reprocess_cbct and scan_pair.has_cbct_scan():
+                        execute_cbct_processing_command(scan_pair)
+                        
+                except Exception as e:
+                    print(f"Error processing scans: {e}")
+                
+                files_str = ', '.join(updated_files)
+                messages.success(request, f'Successfully updated {files_str}! Processing will begin shortly.')
+                return redirect('scan_detail', scanpair_id=scanpair_id)
+            else:
+                messages.warning(request, 'No files were selected for upload.')
+                return redirect('scan_detail', scanpair_id=scanpair_id)
     
     context = {
         'scan_pair': scan_pair,
@@ -344,3 +407,51 @@ def scan_viewer_data(request, scanpair_id):
     }
     
     return JsonResponse(data)
+
+
+@login_required
+def scan_cbct_data(request, scanpair_id):
+    """API endpoint to serve CBCT data"""
+    import gzip
+    import os
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    user_profile = request.user.profile
+    
+    # Check permissions
+    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    # Check if CBCT exists
+    if not scan_pair.cbct:
+        return JsonResponse({'error': 'No CBCT data available'}, status=404)
+    
+    try:
+        file_path = scan_pair.cbct.path
+        
+        # Check if file is gzipped and decompress if needed
+        with open(file_path, 'rb') as f:
+            # Read first 2 bytes to check for gzip magic number
+            magic = f.read(2)
+            f.seek(0)
+            
+            if magic == b'\x1f\x8b':  # gzip magic number
+                print(f"Decompressing gzipped CBCT file: {file_path}")
+                # Decompress the file
+                with gzip.open(file_path, 'rb') as gz_file:
+                    decompressed_data = gz_file.read()
+                
+                response = HttpResponse(decompressed_data, content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename="cbct_{scanpair_id}.nii"'
+                response['X-Decompressed'] = 'true'  # Header to indicate decompression
+                return response
+            else:
+                # File is not gzipped, serve as-is
+                data = f.read()
+                response = HttpResponse(data, content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename="cbct_{scanpair_id}.nii"'
+                return response
+                
+    except Exception as e:
+        print(f"Error serving CBCT data: {e}")
+        return JsonResponse({'error': f'Failed to load CBCT data: {str(e)}'}, status=500)

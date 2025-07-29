@@ -1,98 +1,172 @@
 import os
-import trimesh
-import numpy as np
-from .models import Classification
+import subprocess
+import shutil
+from .models import ScanPair
 
 
-def normalize_stl(stl_path, output_path):
+def copy_files_to_processing_dir(scanpair, scan_type='ios'):
     """
-    Basic STL normalization: center mesh and scale to unit size
+    Copy scan files to shared processing directory for Docker containers
     """
-    try:
-        mesh = trimesh.load_mesh(stl_path)
+    processing_dir = f"/tmp/processing/scanpair_{scanpair.scanpair_id}"
+    os.makedirs(processing_dir, exist_ok=True)
+    
+    if scan_type == 'ios' and scanpair.has_ios_scans():
+        # Copy IOS files
+        upper_dest = os.path.join(processing_dir, f"upper_{scanpair.scanpair_id}.stl")
+        lower_dest = os.path.join(processing_dir, f"lower_{scanpair.scanpair_id}.stl")
         
-        # TODO
+        shutil.copy2(scanpair.upper_scan_raw.path, upper_dest)
+        shutil.copy2(scanpair.lower_scan_raw.path, lower_dest)
         
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        return processing_dir, upper_dest, lower_dest
         
-        # Export normalized mesh
-        mesh.export(output_path)
-        return True
-    except Exception as e:
-        print(f"Error normalizing STL {stl_path}: {e}")
-        return False
+    elif scan_type == 'cbct' and scanpair.has_cbct_scan():
+        # Copy CBCT file
+        cbct_dest = os.path.join(processing_dir, f"cbct_{scanpair.scanpair_id}.nii")
+        shutil.copy2(scanpair.cbct.path, cbct_dest)
+        
+        return processing_dir, cbct_dest
+    
+    return None
 
 
-def classify_bite(upper_mesh_path, lower_mesh_path):
+def execute_ios_processing_command(scanpair):
     """
-    Basic bite classification logic (placeholder implementation)
-    In a real application, this would contain complex ML algorithms
-    """
-    try:
-        # Load meshes for analysis
-        upper_mesh = trimesh.load_mesh(upper_mesh_path)
-        lower_mesh = trimesh.load_mesh(lower_mesh_path)
-        
-        # TODO
-        
-        # Simple random classification for demonstration
-        import random
-        
-        classifications = {
-            'sagittal_left': random.choice(['I', 'II_edge', 'II_full', 'III']),
-            'sagittal_right': random.choice(['I', 'II_edge', 'II_full', 'III']),
-            'vertical': random.choice(['normal', 'deep', 'reverse', 'open']),
-            'transverse': random.choice(['normal', 'cross', 'scissor']),
-            'midline': random.choice(['centered', 'deviated']),
-        }
-        
-        return classifications
-    except Exception as e:
-        print(f"Error classifying bite: {e}")
-        return None
-
-
-def process_scan_pair(scanpair):
-    """
-    Main processing function triggered after scan upload
+    Execute Docker command for IOS processing
     """
     try:
-        # Normalize upper and lower scans
-        upper_raw_path = scanpair.upper_scan_raw.path
-        lower_raw_path = scanpair.lower_scan_raw.path
+        # Update status to processing
+        scanpair.ios_processing_status = 'processing'
+        scanpair.save()
         
-        # Generate normalized file paths
-        upper_norm_path = upper_raw_path.replace('/raw/', '/normalized/').replace('.stl', '_normalized.stl')
-        lower_norm_path = lower_raw_path.replace('/raw/', '/normalized/').replace('.stl', '_normalized.stl')
+        # Copy files to shared processing directory
+        file_info = copy_files_to_processing_dir(scanpair, 'ios')
+        if not file_info:
+            raise Exception("Failed to copy IOS files to processing directory")
+            
+        processing_dir, upper_file, lower_file = file_info
         
-        # Normalize meshes
-        upper_success = normalize_stl(upper_raw_path, upper_norm_path)
-        lower_success = normalize_stl(lower_raw_path, lower_norm_path)
+        # Prepare Docker command
+        # TODO: Replace 'your-ios-processor:latest' with your actual Docker image
+        command = [
+            'docker', 'run', '--rm',
+            '-v', f'{processing_dir}:/data',
+            'your-ios-processor:latest',  # Replace with your Docker image
+            '--scanpair-id', str(scanpair.scanpair_id),
+            '--patient-id', str(scanpair.patient.patient_id),
+            '--upper-scan', f'/data/{os.path.basename(upper_file)}',
+            '--lower-scan', f'/data/{os.path.basename(lower_file)}',
+            '--output-dir', '/data'
+        ]
         
-        if upper_success and lower_success:
-            # Update scan pair with normalized file paths
-            scanpair.upper_scan_norm = upper_norm_path.replace(scanpair.upper_scan_raw.storage.location + '/', '')
-            scanpair.lower_scan_norm = lower_norm_path.replace(scanpair.lower_scan_raw.storage.location + '/', '')
+        print(f"Executing IOS Docker command: {' '.join(command)}")
+        
+        # Execute the Docker command
+        result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            print(f"IOS processing completed successfully for ScanPair {scanpair.scanpair_id}")
+            # The actual processing script should update the status to 'processed'
+            # For now, we'll do it here as a placeholder
+            scanpair.ios_processing_status = 'processed'
             scanpair.save()
             
-            # Perform bite classification
-            classifications = classify_bite(upper_norm_path, lower_norm_path)
+            # Optional: Copy results back to Django storage
+            # You can implement this based on your needs
             
-            if classifications:
-                # Create classification record
-                Classification.objects.create(
-                    scanpair=scanpair,
-                    classifier='pipeline',
-                    **classifications
-                )
-                
-                print(f"Successfully processed ScanPair {scanpair.scanpair_id}")
-                return True
-        
-        print(f"Failed to process ScanPair {scanpair.scanpair_id}")
+            return True
+        else:
+            print(f"IOS processing failed for ScanPair {scanpair.scanpair_id}: {result.stderr}")
+            scanpair.ios_processing_status = 'failed'
+            scanpair.save()
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"IOS processing timed out for ScanPair {scanpair.scanpair_id}")
+        scanpair.ios_processing_status = 'failed'
+        scanpair.save()
         return False
-        
     except Exception as e:
-        print(f"Error processing ScanPair {scanpair.scanpair_id}: {e}")
-        return False 
+        print(f"Error executing IOS processing command for ScanPair {scanpair.scanpair_id}: {e}")
+        scanpair.ios_processing_status = 'failed'
+        scanpair.save()
+        return False
+    finally:
+        # Cleanup: Remove processing directory
+        if 'processing_dir' in locals():
+            try:
+                shutil.rmtree(processing_dir)
+            except:
+                pass
+
+
+def execute_cbct_processing_command(scanpair):
+    """
+    Execute Docker command for CBCT processing
+    """
+    try:
+        # Update status to processing
+        scanpair.cbct_processing_status = 'processing'
+        scanpair.save()
+        
+        # Copy files to shared processing directory
+        file_info = copy_files_to_processing_dir(scanpair, 'cbct')
+        if not file_info:
+            raise Exception("Failed to copy CBCT file to processing directory")
+            
+        processing_dir, cbct_file = file_info
+        
+        # Prepare Docker command
+        # TODO: Replace 'your-cbct-processor:latest' with your actual Docker image
+        command = [
+            'docker', 'run', '--rm',
+            '-v', f'{processing_dir}:/data',
+            # Add GPU support if needed for CBCT processing
+            # '--gpus', 'all',
+            'your-cbct-processor:latest',  # Replace with your Docker image
+            '--scanpair-id', str(scanpair.scanpair_id),
+            '--patient-id', str(scanpair.patient.patient_id),
+            '--cbct-file', f'/data/{os.path.basename(cbct_file)}',
+            '--output-dir', '/data'
+        ]
+        
+        print(f"Executing CBCT Docker command: {' '.join(command)}")
+        
+        # Execute the Docker command
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+        
+        if result.returncode == 0:
+            print(f"CBCT processing completed successfully for ScanPair {scanpair.scanpair_id}")
+            # The actual processing script should update the status to 'processed'
+            # For now, we'll do it here as a placeholder
+            scanpair.cbct_processing_status = 'processed'
+            scanpair.save()
+            
+            # Optional: Copy results back to Django storage
+            # You can implement this based on your needs
+            
+            return True
+        else:
+            print(f"CBCT processing failed for ScanPair {scanpair.scanpair_id}: {result.stderr}")
+            scanpair.cbct_processing_status = 'failed'
+            scanpair.save()
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"CBCT processing timed out for ScanPair {scanpair.scanpair_id}")
+        scanpair.cbct_processing_status = 'failed'
+        scanpair.save()
+        return False
+    except Exception as e:
+        print(f"Error executing CBCT processing command for ScanPair {scanpair.scanpair_id}: {e}")
+        scanpair.cbct_processing_status = 'failed'
+        scanpair.save()
+        return False
+    finally:
+        # Cleanup: Remove processing directory
+        if 'processing_dir' in locals():
+            try:
+                shutil.rmtree(processing_dir)
+            except:
+                pass 

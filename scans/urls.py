@@ -10,4 +10,5 @@ urlpatterns = [
     path('scan/<int:scanpair_id>/update/', views.update_classification, name='update_classification'),
     path('scan/<int:scanpair_id>/update-name/', views.update_scan_name, name='update_scan_name'),
     path('api/scan/<int:scanpair_id>/data/', views.scan_viewer_data, name='scan_viewer_data'),
+    path('api/scan/<int:scanpair_id>/cbct/', views.scan_cbct_data, name='scan_cbct_data'),
 ] 

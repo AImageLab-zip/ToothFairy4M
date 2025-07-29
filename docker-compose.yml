@@ -19,6 +19,10 @@ services:
     volumes:
       - .:/app
       - stl_storage:/app/storage
+      # Mount Docker socket for Docker-in-Docker functionality
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount shared storage for containers to access files
+      - /tmp/toothfairy-processing:/tmp/processing
     ports:
       - "8000:8000"
     depends_on:
@@ -29,6 +33,10 @@ services:
       - DB_NAME=toothfairy
       - DB_USER=django
       - DB_PASSWORD=django123
+    # Add docker group for permissions (if needed)
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - docker
 
 volumes:
   mysql_data:

@@ -27,22 +27,40 @@
 
                         <!-- Scan Files -->
                         <h5 class="mb-3"><i class="fas fa-file-medical me-2"></i>Scan Files</h5>
-                        <div class="mb-3">
-                            <label for="{{ scan_form.upper_scan_raw.id_for_label }}" class="form-label">{{ scan_form.upper_scan_raw.label }}</label>
-                            {{ scan_form.upper_scan_raw }}
-                            {% if scan_form.upper_scan_raw.errors %}
-                                <div class="text-danger">{{ scan_form.upper_scan_raw.errors }}</div>
-                            {% endif %}
-                            <div class="form-text">Upload STL file for upper jaw scan</div>
-                        </div>
+                        
+                        <!-- IOS Section -->
+                        <div class="mb-4">
+                            <h6 class="mb-2"><i class="fas fa-tooth me-2"></i>Intra-Oral Scans (IOS)</h6>
+                            <div class="mb-3">
+                                <label for="{{ scan_form.upper_scan_raw.id_for_label }}" class="form-label">{{ scan_form.upper_scan_raw.label }}</label>
+                                {{ scan_form.upper_scan_raw }}
+                                {% if scan_form.upper_scan_raw.errors %}
+                                    <div class="text-danger">{{ scan_form.upper_scan_raw.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">Upload STL file for upper jaw scan (optional if CBCT is provided)</div>
+                            </div>
 
-                        <div class="mb-3">
-                            <label for="{{ scan_form.lower_scan_raw.id_for_label }}" class="form-label">{{ scan_form.lower_scan_raw.label }}</label>
-                            {{ scan_form.lower_scan_raw }}
-                            {% if scan_form.lower_scan_raw.errors %}
-                                <div class="text-danger">{{ scan_form.lower_scan_raw.errors }}</div>
-                            {% endif %}
-                            <div class="form-text">Upload STL file for lower jaw scan</div>
+                            <div class="mb-3">
+                                <label for="{{ scan_form.lower_scan_raw.id_for_label }}" class="form-label">{{ scan_form.lower_scan_raw.label }}</label>
+                                {{ scan_form.lower_scan_raw }}
+                                {% if scan_form.lower_scan_raw.errors %}
+                                    <div class="text-danger">{{ scan_form.lower_scan_raw.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">Upload STL file for lower jaw scan (optional if CBCT is provided)</div>
+                            </div>
+                        </div>
+                        
+                        <!-- CBCT Section -->
+                        <div class="mb-4">
+                            <h6 class="mb-2"><i class="fas fa-cube me-2"></i>CBCT Scan</h6>
+                            <div class="mb-3">
+                                <label for="{{ scan_form.cbct.id_for_label }}" class="form-label">{{ scan_form.cbct.label }}</label>
+                                {{ scan_form.cbct }}
+                                {% if scan_form.cbct.errors %}
+                                    <div class="text-danger">{{ scan_form.cbct.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">Upload NII or GZ file for CBCT scan (optional if both IOS are provided)</div>
+                            </div>
                         </div>
 
                         <div class="mb-3">
@@ -57,16 +75,32 @@
                             </div>
                         </div>
 
+                        <!-- Show form-level errors -->
+                        {% if scan_form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in scan_form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
                         <!-- File Requirements -->
                         <div class="alert alert-info">
-                            <h6><i class="fas fa-info-circle me-2"></i>File Requirements</h6>
-                            <ul class="mb-0">
-                                <li>Only STL files are accepted</li>
-                                <li>Maximum file size: 50MB per file</li>
-                                <li>Both upper and lower jaw scans are required</li>
-                                <li>Files will be automatically processed for bite classification</li>
-                                <li>A new patient record will be created automatically</li>
+                            <h6><i class="fas fa-info-circle me-2"></i>File Requirements & Upload Options</h6>
+                            <ul class="mb-2">
+                                <li><strong>IOS files:</strong> Only STL files are accepted</li>
+                                <li><strong>CBCT files:</strong> Only NII and GZ files are accepted</li>
+                                <li><strong>Maximum file size:</strong> 50MB per file</li>
+                                <li><strong>A new patient record will be created automatically</strong></li>
                             </ul>
+                            <div class="mt-2">
+                                <strong>Upload Options (choose one):</strong>
+                                <ul class="mb-0">
+                                    <li>Both intra-oral scans (upper + lower STL files)</li>
+                                    <li>CBCT scan only (NII or GZ file)</li>
+                                    <li>All three files (both IOS + CBCT)</li>
+                                </ul>
+                            </div>
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">

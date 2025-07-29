@@ -669,9 +669,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const djangoData = JSON.parse(document.getElementById('django-data').textContent);
     window.canEdit = djangoData.canEdit;
     window.scanId = djangoData.scanId;
+    window.hasCBCT = djangoData.hasCBCT;
     
     console.log('Can edit:', window.canEdit);
     console.log('Scan ID:', window.scanId);
+    console.log('Has CBCT:', window.hasCBCT);
     
     // Load scan data and initialize viewer
     loadScanDataAndInitViewer();
@@ -679,6 +681,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize other UI components
     initNameEditing();
     init3DControls();
+    initConfirmReview();
+    initViewerToggle();
 });
 
 // Load scan data from API and initialize viewer
@@ -709,4 +713,80 @@ function loadScanDataAndInitViewer() {
         .catch(error => {
             console.error('Error fetching scan data:', error);
         });
+}
+
+// Initialize confirm review functionality
+function initConfirmReview() {
+    const confirmBtn = document.getElementById('confirmReview');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            // Create form and submit to accept AI predictions
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.style.display = 'none';
+            
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrfmiddlewaretoken';
+            csrfInput.value = csrfToken;
+            
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = 'accept_ai';
+            
+            form.appendChild(csrfInput);
+            form.appendChild(actionInput);
+            document.body.appendChild(form);
+            form.submit();
+        });
+    }
+}
+
+// Initialize viewer toggle functionality
+function initViewerToggle() {
+    const iosRadio = document.getElementById('iosViewer');
+    const cbctRadio = document.getElementById('cbctViewer');
+    const iosContainer = document.getElementById('ios-viewer');
+    const cbctContainer = document.getElementById('cbct-viewer');
+    const iosControls = document.getElementById('iosControls');
+    const cbctControls = document.getElementById('cbctControls');
+    
+    // Disable CBCT option if no CBCT data
+    if (!window.hasCBCT) {
+        cbctRadio.disabled = true;
+        cbctRadio.parentElement.classList.add('disabled');
+        cbctRadio.parentElement.title = 'No CBCT data available';
+    }
+    
+    iosRadio.addEventListener('change', function() {
+        if (this.checked) {
+            iosContainer.style.display = 'block';
+            cbctContainer.style.display = 'none';
+            iosControls.style.display = 'block';
+            cbctControls.style.display = 'none';
+        }
+    });
+    
+    cbctRadio.addEventListener('change', function() {
+        if (this.checked && window.hasCBCT) {
+            iosContainer.style.display = 'none';
+            cbctContainer.style.display = 'block';
+            iosControls.style.display = 'none';
+            cbctControls.style.display = 'block';
+            
+            // Handle CBCT viewer state
+            if (typeof window.CBCTViewer !== 'undefined') {
+                if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
+                    // Not initialized and not loading - start initialization
+                    window.CBCTViewer.init();
+                } else if (window.CBCTViewer.initialized) {
+                    // Already initialized - refresh views
+                    window.CBCTViewer.refreshAllViews();
+                }
+                // If loading is in progress, do nothing - let it complete naturally
+            }
+        }
+    });
 } 
