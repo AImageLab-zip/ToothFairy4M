@@ -1,11 +1,16 @@
 import os
 import shutil
 import hashlib
+import logging
+import traceback
 from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 from .models import FileRegistry, ProcessingJob, VoiceCaption
 import json
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 
 # Base directories
@@ -285,13 +290,21 @@ def mark_job_completed(job_id, output_files, logs=None):
         output_files: dict of output file paths
         logs: optional processing logs
     """
+    logger.info(f"mark_job_completed called with job_id={job_id}, output_files={output_files}, logs present={logs is not None}")
+    
     try:
         job = ProcessingJob.objects.get(id=job_id)
+        logger.info(f"Found job: {job.id}, type: {job.job_type}, status: {job.status}")
+        
         job.mark_completed(output_files)
+        logger.info(f"Job marked as completed successfully")
         
         # Register output files
+        logger.info(f"Registering {len(output_files)} output files")
         for file_type, file_path in output_files.items():
+            logger.info(f"Processing output file: type={file_type}, path={file_path}")
             if os.path.exists(file_path):
+                logger.info(f"File exists, calculating hash and size")
                 file_hash = calculate_file_hash(file_path)
                 file_size = os.path.getsize(file_path)
                 
@@ -303,6 +316,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                 }
                 
                 registry_type = registry_type_map.get(job.job_type)
+                logger.info(f"Creating FileRegistry entry with type={registry_type}")
                 
                 FileRegistry.objects.create(
                     file_type=registry_type,
@@ -317,15 +331,20 @@ def mark_job_completed(job_id, output_files, logs=None):
                         'logs': logs if logs else ''
                     }
                 )
+                logger.info(f"FileRegistry entry created successfully")
         
         # Update related model status
+        logger.info(f"Updating related model status for job type: {job.job_type}")
         if job.scanpair and job.job_type == 'cbct':
+            logger.info(f"Updating scanpair CBCT processing status")
             job.scanpair.cbct_processing_status = 'processed'
             job.scanpair.save()
         elif job.scanpair and job.job_type == 'ios':
+            logger.info(f"Updating scanpair IOS processing status")
             job.scanpair.ios_processing_status = 'processed'
             job.scanpair.save()
         elif job.voice_caption and job.job_type == 'audio':
+            logger.info(f"Updating voice caption processing status")
             job.voice_caption.processing_status = 'completed'
             # Extract text from output files if available
             for file_path in output_files.values():
@@ -337,10 +356,16 @@ def mark_job_completed(job_id, output_files, logs=None):
                         pass
             job.voice_caption.save()
             
+        logger.info(f"mark_job_completed completed successfully")
         return True
         
     except ProcessingJob.DoesNotExist:
+        logger.error(f"ProcessingJob with ID {job_id} does not exist")
         return False
+    except Exception as e:
+        logger.error(f"Error in mark_job_completed for job_id={job_id}: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
 
 
 def mark_job_failed(job_id, error_msg, can_retry=True):

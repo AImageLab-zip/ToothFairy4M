@@ -5,8 +5,13 @@ from django.utils.decorators import method_decorator
 from django.views import View
 import json
 import os
+import logging
+import traceback
 from .models import ProcessingJob, FileRegistry
 from .file_utils import get_pending_jobs_for_type, mark_job_completed, mark_job_failed
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -56,6 +61,8 @@ def get_pending_jobs(request, job_type):
         })
         
     except Exception as e:
+        logger.error(f"Error getting pending jobs for type {job_type}: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -84,8 +91,11 @@ def mark_job_processing(request, job_id):
         })
         
     except ProcessingJob.DoesNotExist:
+        logger.error(f"Job with ID {job_id} not found for processing.")
         return JsonResponse({'error': 'Job not found'}, status=404)
     except Exception as e:
+        logger.error(f"Error marking job {job_id} as processing: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -96,11 +106,16 @@ def mark_job_completed_api(request, job_id):
     API endpoint to mark a job as completed
     URL: /api/processing/jobs/<job_id>/completed/
     """
+    logger.info(f"Received job completion request for job_id={job_id}")
+    logger.debug(f"Request body: {request.body.decode('utf-8')}")
+    
     try:
         # Parse request data
         data = json.loads(request.body.decode('utf-8'))
         output_files = data.get('output_files', {})
         logs = data.get('logs', None)
+        
+        logger.info(f"Parsed data - output_files keys: {list(output_files.keys()) if output_files else 'None'}, logs present: {logs is not None}")
         
         success = mark_job_completed(job_id, output_files, logs)
         
@@ -114,9 +129,12 @@ def mark_job_completed_api(request, job_id):
                 'output_files': job.output_files
             })
         else:
+            logger.error(f"Job with ID {job_id} not found for completion.")
             return JsonResponse({'error': 'Job not found'}, status=404)
         
     except Exception as e:
+        logger.error(f"Error marking job {job_id} as completed: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -146,9 +164,12 @@ def mark_job_failed_api(request, job_id):
                 'can_retry': job.can_retry()
             })
         else:
+            logger.error(f"Job with ID {job_id} not found for failure.")
             return JsonResponse({'error': 'Job not found'}, status=404)
         
     except Exception as e:
+        logger.error(f"Error marking job {job_id} as failed: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -192,8 +213,11 @@ def get_job_status(request, job_id):
         })
         
     except ProcessingJob.DoesNotExist:
+        logger.error(f"Job with ID {job_id} not found for status check.")
         return JsonResponse({'error': 'Job not found'}, status=404)
     except Exception as e:
+        logger.error(f"Error getting job status for {job_id}: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -220,6 +244,8 @@ def health_check(request):
         })
         
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({
             'success': False,
             'status': 'unhealthy',
@@ -289,6 +315,8 @@ class ProcessingJobListView(View):
             })
             
         except Exception as e:
+            logger.error(f"Error listing processing jobs: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -334,8 +362,11 @@ def serve_file(request, file_id):
         return response
         
     except FileRegistry.DoesNotExist:
+        logger.error(f"File with ID {file_id} not found in registry.")
         raise Http404("File not found in registry")
     except Exception as e:
+        logger.error(f"Error serving file {file_id}: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -399,4 +430,6 @@ def get_file_registry(request):
         })
         
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500) 
+        logger.error(f"Error getting file registry: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return JsonResponse({'error': str(e)}, status=500)
