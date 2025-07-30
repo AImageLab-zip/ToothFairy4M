@@ -352,14 +352,19 @@ def serve_file(request, file_id):
         # Generate filename
         filename = os.path.basename(file_obj.file_path)
         
-        # Return file response
-        response = FileResponse(
-            open(file_obj.file_path, 'rb'),
-            content_type=content_type,
-            filename=filename
-        )
-        
-        return response
+        # Return file response - let Django handle file opening/closing
+        try:
+            file_handle = open(file_obj.file_path, 'rb')
+            response = FileResponse(
+                file_handle,
+                content_type=content_type,
+                filename=filename
+            )
+            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            return response
+        except IOError as e:
+            logger.error(f"IOError serving file {file_id}: {e}")
+            raise Http404("File cannot be read")
         
     except FileRegistry.DoesNotExist:
         logger.error(f"File with ID {file_id} not found in registry.")

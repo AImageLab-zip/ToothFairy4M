@@ -9,236 +9,183 @@
     </div>
     
     <div class="collapse show" id="biteClassificationCollapse">
-        {% if ai_classification or manual_classification %}
-            <div class="classification-grid">
-                <div class="classification-legends mb-2">
-                    <small class="legend-item">
-                        <span class="legend-color ai-prediction"></span>AI Pred
-                    </small>
-                    <small class="legend-item">
-                        <span class="legend-color manual-verified"></span>Verified
-                    </small>
-                </div>
-                
-                <div class="row g-2">
-                    <div class="col-4">
-                        <div class="classification-item">
-                            <div class="classification-label">Sagittal Left</div>
-                            <div class="classification-value" data-field="sagittal_left">
-                                {% if manual_classification %}
-                                    <button class="value-button manual-verified" onclick="toggleDropdown(this)">
-                                        {{ manual_classification.get_sagittal_left_display }}
-                                    </button>
-                                {% elif ai_classification %}
-                                    <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
-                                        {{ ai_classification.get_sagittal_left_display }}
-                                    </button>
-                                {% endif %}
-                                {% if user_profile.is_annotator %}
-                                    <div class="value-dropdown">
-                                        <div class="dropdown-option" data-value="I">Class I</div>
-                                        <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
-                                        <div class="dropdown-option" data-value="II_full">Class II Full</div>
-                                        <div class="dropdown-option" data-value="III">Class III</div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-4">
-                        <div class="classification-item">
-                            <div class="classification-label">Sagittal Right</div>
-                            <div class="classification-value" data-field="sagittal_right">
-                                {% if manual_classification %}
-                                    <button class="value-button manual-verified" onclick="toggleDropdown(this)">
-                                        {{ manual_classification.get_sagittal_right_display }}
-                                    </button>
-                                {% elif ai_classification %}
-                                    <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
-                                        {{ ai_classification.get_sagittal_right_display }}
-                                    </button>
-                                {% endif %}
-                                {% if user_profile.is_annotator %}
-                                    <div class="value-dropdown">
-                                        <div class="dropdown-option" data-value="I">Class I</div>
-                                        <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
-                                        <div class="dropdown-option" data-value="II_full">Class II Full</div>
-                                        <div class="dropdown-option" data-value="III">Class III</div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-4">
-                        <div class="classification-item">
-                            <div class="classification-label">Vertical</div>
-                            <div class="classification-value" data-field="vertical">
-                                {% if manual_classification %}
-                                    <button class="value-button manual-verified" onclick="toggleDropdown(this)">
-                                        {{ manual_classification.get_vertical_display }}
-                                    </button>
-                                {% elif ai_classification %}
-                                    <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
-                                        {{ ai_classification.get_vertical_display }}
-                                    </button>
-                                {% endif %}
-                                {% if user_profile.is_annotator %}
-                                    <div class="value-dropdown">
-                                        <div class="dropdown-option" data-value="normal">Normal</div>
-                                        <div class="dropdown-option" data-value="deep">Deep Bite</div>
-                                        <div class="dropdown-option" data-value="reverse">Reverse Bite</div>
-                                        <div class="dropdown-option" data-value="open">Open Bite</div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-4">
-                        <div class="classification-item">
-                            <div class="classification-label">Transverse</div>
-                            <div class="classification-value" data-field="transverse">
-                                {% if manual_classification %}
-                                    <button class="value-button manual-verified" onclick="toggleDropdown(this)">
-                                        {{ manual_classification.get_transverse_display }}
-                                    </button>
-                                {% elif ai_classification %}
-                                    <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
-                                        {{ ai_classification.get_transverse_display }}
-                                    </button>
-                                {% endif %}
-                                {% if user_profile.is_annotator %}
-                                    <div class="value-dropdown">
-                                        <div class="dropdown-option" data-value="normal">Normal</div>
-                                        <div class="dropdown-option" data-value="cross">Cross Bite</div>
-                                        <div class="dropdown-option" data-value="scissor">Scissor Bite</div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-4">
-                        <div class="classification-item">
-                            <div class="classification-label">Midline</div>
-                            <div class="classification-value" data-field="midline">
-                                {% if manual_classification %}
-                                    <button class="value-button manual-verified" onclick="toggleDropdown(this)">
-                                        {{ manual_classification.get_midline_display }}
-                                    </button>
-                                {% elif ai_classification %}
-                                    <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
-                                        {{ ai_classification.get_midline_display }}
-                                    </button>
-                                {% endif %}
-                                {% if user_profile.is_annotator %}
-                                    <div class="value-dropdown">
-                                        <div class="dropdown-option" data-value="centered">Centered</div>
-                                        <div class="dropdown-option" data-value="deviated">Deviated</div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                {% if ai_classification and user_profile.is_annotator %}
-                    <div class="text-center mt-2">
-                        <button type="button" class="btn btn-success btn-sm" id="confirmReview">
-                            <i class="fas fa-check me-1"></i>Confirm Review
-                        </button>
-                    </div>
-                {% endif %}
+        <div class="classification-grid">
+            <div class="classification-legends mb-2">
+                <small class="legend-item">
+                    <span class="legend-color ai-prediction"></span>AI Pred
+                </small>
+                <small class="legend-item">
+                    <span class="legend-color manual-verified"></span>Verified
+                </small>
             </div>
             
-            {% if manual_classification %}
-                <div class="text-center mt-3 mb-3">
-                    <span class="status-badge manual-verified">
-                        <i class="fas fa-check-circle me-1"></i>VERIFIED
-                    </span>
-                    <small class="text-muted d-block mt-1">
-                        By {{ manual_classification.annotator.username }} | {{ manual_classification.timestamp|date:"M d, H:i" }}
-                    </small>
+            <div class="row g-2">
+                <div class="col-4">
+                    <div class="classification-item">
+                        <div class="classification-label">Sagittal Left</div>
+                        <div class="classification-value" data-field="sagittal_left">
+                            {% if manual_classification %}
+                                <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                    {{ manual_classification.get_sagittal_left_display }}
+                                </button>
+                            {% elif ai_classification %}
+                                <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                    {{ ai_classification.get_sagittal_left_display }}
+                                </button>
+                            {% else %}
+                                <button class="value-button" onclick="toggleDropdown(this)">
+                                    -
+                                </button>
+                            {% endif %}
+                            {% if user_profile.is_annotator %}
+                                <div class="value-dropdown">
+                                    <div class="dropdown-option" data-value="I">Class I</div>
+                                    <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
+                                    <div class="dropdown-option" data-value="II_full">Class II Full</div>
+                                    <div class="dropdown-option" data-value="III">Class III</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
-            {% elif ai_classification %}
-                <div class="text-center mt-3 mb-3">
-                    <span class="status-badge ai-pending">
-                        <i class="fas fa-robot me-1"></i>AI CLASSIFICATION
-                    </span>
+                
+                <div class="col-4">
+                    <div class="classification-item">
+                        <div class="classification-label">Sagittal Right</div>
+                        <div class="classification-value" data-field="sagittal_right">
+                            {% if manual_classification %}
+                                <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                    {{ manual_classification.get_sagittal_right_display }}
+                                </button>
+                            {% elif ai_classification %}
+                                <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                    {{ ai_classification.get_sagittal_right_display }}
+                                </button>
+                            {% else %}
+                                <button class="value-button" onclick="toggleDropdown(this)">
+                                    -
+                                </button>
+                            {% endif %}
+                            {% if user_profile.is_annotator %}
+                                <div class="value-dropdown">
+                                    <div class="dropdown-option" data-value="I">Class I</div>
+                                    <div class="dropdown-option" data-value="II_edge">Class II Edge</div>
+                                    <div class="dropdown-option" data-value="II_full">Class II Full</div>
+                                    <div class="dropdown-option" data-value="III">Class III</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="classification-item">
+                        <div class="classification-label">Vertical</div>
+                        <div class="classification-value" data-field="vertical">
+                            {% if manual_classification %}
+                                <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                    {{ manual_classification.get_vertical_display }}
+                                </button>
+                            {% elif ai_classification %}
+                                <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                    {{ ai_classification.get_vertical_display }}
+                                </button>
+                            {% else %}
+                                <button class="value-button" onclick="toggleDropdown(this)">
+                                    -
+                                </button>
+                            {% endif %}
+                            {% if user_profile.is_annotator %}
+                                <div class="value-dropdown">
+                                    <div class="dropdown-option" data-value="normal">Normal</div>
+                                    <div class="dropdown-option" data-value="deep">Deep Bite</div>
+                                    <div class="dropdown-option" data-value="reverse">Reverse Bite</div>
+                                    <div class="dropdown-option" data-value="open">Open Bite</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="classification-item">
+                        <div class="classification-label">Transverse</div>
+                        <div class="classification-value" data-field="transverse">
+                            {% if manual_classification %}
+                                <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                    {{ manual_classification.get_transverse_display }}
+                                </button>
+                            {% elif ai_classification %}
+                                <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                    {{ ai_classification.get_transverse_display }}
+                                </button>
+                            {% else %}
+                                <button class="value-button" onclick="toggleDropdown(this)">
+                                    -
+                                </button>
+                            {% endif %}
+                            {% if user_profile.is_annotator %}
+                                <div class="value-dropdown">
+                                    <div class="dropdown-option" data-value="normal">Normal</div>
+                                    <div class="dropdown-option" data-value="cross">Cross Bite</div>
+                                    <div class="dropdown-option" data-value="scissor">Scissor Bite</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-4">
+                    <div class="classification-item">
+                        <div class="classification-label">Midline</div>
+                        <div class="classification-value" data-field="midline">
+                            {% if manual_classification %}
+                                <button class="value-button manual-verified" onclick="toggleDropdown(this)">
+                                    {{ manual_classification.get_midline_display }}
+                                </button>
+                            {% elif ai_classification %}
+                                <button class="value-button ai-prediction" onclick="toggleDropdown(this)">
+                                    {{ ai_classification.get_midline_display }}
+                                </button>
+                            {% else %}
+                                <button class="value-button" onclick="toggleDropdown(this)">
+                                    -
+                                </button>
+                            {% endif %}
+                            {% if user_profile.is_annotator %}
+                                <div class="value-dropdown">
+                                    <div class="dropdown-option" data-value="centered">Centered</div>
+                                    <div class="dropdown-option" data-value="deviated">Deviated</div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if ai_classification and user_profile.is_annotator %}
+                <div class="text-center mt-2">
+                    <button type="button" class="btn btn-success btn-sm" id="confirmReview">
+                        <i class="fas fa-check me-1"></i>Confirm Review
+                    </button>
                 </div>
             {% endif %}
-            
-        {% else %}
-
-            <div class="text-center py-4">
-                {% if scan_pair.has_ios_scans %}
-                    <div class="mb-3">
-                        <h6 class="mb-2"><i class="fas fa-tooth me-2"></i>Intra-Oral Scans</h6>
-                        {% if scan_pair.ios_processing_status == 'processing' %}
-                            <span class="status-badge processing">
-                                <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
-                            </span>
-                            <p class="mt-2 text-muted small">
-                                Analyzing upper and lower jaw scans...<br>
-                                <small>Usually takes 1-2 minutes</small>
-                            </p>
-                        {% elif scan_pair.ios_processing_status == 'processed' %}
-                            <span class="status-badge processed">
-                                <i class="fas fa-check-circle me-1"></i>PROCESSED
-                            </span>
-                            <p class="mt-2 text-muted small">IOS processing complete</p>
-                        {% elif scan_pair.ios_processing_status == 'failed' %}
-                            <span class="status-badge failed">
-                                <i class="fas fa-exclamation-triangle me-1"></i>FAILED
-                            </span>
-                            <p class="mt-2 text-muted small">IOS processing failed</p>
-                        {% else %}
-                            <span class="status-badge pending">
-                                <i class="fas fa-clock me-1"></i>PENDING
-                            </span>
-                            <p class="mt-2 text-muted small">Waiting to start processing</p>
-                        {% endif %}
-                    </div>
-                {% endif %}
-                
-                {% if scan_pair.has_cbct_scan %}
-                    <div class="mb-3">
-                        <h6 class="mb-2"><i class="fas fa-cube me-2"></i>CBCT Scan</h6>
-                        {% if scan_pair.cbct_processing_status == 'processing' %}
-                            <span class="status-badge processing">
-                                <i class="fas fa-cog fa-spin me-1"></i>PROCESSING
-                            </span>
-                            <p class="mt-2 text-muted small">
-                                Analyzing CBCT volume data...<br>
-                                <small>Usually takes 3-5 minutes</small>
-                            </p>
-                        {% elif scan_pair.cbct_processing_status == 'processed' %}
-                            <span class="status-badge processed">
-                                <i class="fas fa-check-circle me-1"></i>PROCESSED
-                            </span>
-                            <p class="mt-2 text-muted small">CBCT processing complete</p>
-                        {% elif scan_pair.cbct_processing_status == 'failed' %}
-                            <span class="status-badge failed">
-                                <i class="fas fa-exclamation-triangle me-1"></i>FAILED
-                            </span>
-                            <p class="mt-2 text-muted small">CBCT processing failed</p>
-                        {% else %}
-                            <span class="status-badge pending">
-                                <i class="fas fa-clock me-1"></i>PENDING
-                            </span>
-                            <p class="mt-2 text-muted small">Waiting to start processing</p>
-                        {% endif %}
-                    </div>
-                {% endif %}
-                
-                {% if not scan_pair.has_ios_scans and not scan_pair.has_cbct_scan %}
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        No scans uploaded. Please upload IOS scans or CBCT scan.
-                    </div>
-                {% endif %}
+        </div>
+        
+        {% if manual_classification %}
+            <div class="text-center mt-3 mb-3">
+                <span class="status-badge manual-verified">
+                    <i class="fas fa-check-circle me-1"></i>VERIFIED
+                </span>
+                <small class="text-muted d-block mt-1">
+                    By {{ manual_classification.annotator.username }} | {{ manual_classification.timestamp|date:"M d, H:i" }}
+                </small>
+            </div>
+        {% elif ai_classification %}
+            <div class="text-center mt-3 mb-3">
+                <span class="status-badge ai-pending">
+                    <i class="fas fa-robot me-1"></i>AI CLASSIFICATION
+                </span>
             </div>
         {% endif %}
     </div>
