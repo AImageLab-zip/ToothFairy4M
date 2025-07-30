@@ -303,8 +303,6 @@ def mark_job_completed(job_id, output_files, logs=None):
                 }
                 
                 registry_type = registry_type_map.get(job.job_type)
-                if job.job_type == 'ios':
-                    registry_type = f'ios_processed_{file_type}'
                 
                 FileRegistry.objects.create(
                     file_type=registry_type,
