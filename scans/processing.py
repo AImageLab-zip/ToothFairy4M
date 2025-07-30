@@ -170,3 +170,81 @@ def execute_cbct_processing_command(scanpair):
                 shutil.rmtree(processing_dir)
             except:
                 pass 
+
+
+def execute_speech_to_text_command(voice_caption):
+    """
+    Execute Docker command for speech-to-text processing
+    """
+    try:
+        # Update status to processing
+        voice_caption.processing_status = 'processing'
+        voice_caption.save()
+        
+        # Copy audio file to shared processing directory
+        processing_dir = f"/tmp/processing/voice_caption_{voice_caption.id}"
+        os.makedirs(processing_dir, exist_ok=True)
+        
+        audio_dest = os.path.join(processing_dir, f"audio_{voice_caption.id}.webm")
+        shutil.copy2(voice_caption.audio_file.path, audio_dest)
+        
+        # Prepare Docker command for speech-to-text
+        # TODO: Replace 'your-speech-to-text:latest' with your actual Docker image
+        command = [
+            'docker', 'run', '--rm',
+            '-v', f'{processing_dir}:/data',
+            'your-speech-to-text:latest',  # Replace with your Docker image
+            '--voice-caption-id', str(voice_caption.id),
+            '--audio-file', f'/data/{os.path.basename(audio_dest)}',
+            '--output-file', f'/data/transcription_{voice_caption.id}.txt',
+            '--language', 'en',  # Default to English, could be configurable
+            '--model', 'base'    # Whisper model size
+        ]
+        
+        print(f"Executing speech-to-text Docker command: {' '.join(command)}")
+        
+        # Execute the Docker command
+        result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            # Read the transcription result
+            transcription_file = os.path.join(processing_dir, f'transcription_{voice_caption.id}.txt')
+            if os.path.exists(transcription_file):
+                with open(transcription_file, 'r', encoding='utf-8') as f:
+                    transcription = f.read().strip()
+                
+                # Update voice caption with transcription
+                voice_caption.text_caption = transcription
+                voice_caption.processing_status = 'completed'
+                voice_caption.save()
+                
+                print(f"Speech-to-text processing completed successfully for VoiceCaption {voice_caption.id}")
+                return True
+            else:
+                print(f"Transcription file not found for VoiceCaption {voice_caption.id}")
+                voice_caption.processing_status = 'failed'
+                voice_caption.save()
+                return False
+        else:
+            print(f"Speech-to-text processing failed for VoiceCaption {voice_caption.id}: {result.stderr}")
+            voice_caption.processing_status = 'failed'
+            voice_caption.save()
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"Speech-to-text processing timed out for VoiceCaption {voice_caption.id}")
+        voice_caption.processing_status = 'failed'
+        voice_caption.save()
+        return False
+    except Exception as e:
+        print(f"Error executing speech-to-text command for VoiceCaption {voice_caption.id}: {e}")
+        voice_caption.processing_status = 'failed'
+        voice_caption.save()
+        return False
+    finally:
+        # Cleanup: Remove processing directory
+        if 'processing_dir' in locals():
+            try:
+                shutil.rmtree(processing_dir)
+            except:
+                pass 

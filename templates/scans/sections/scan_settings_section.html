@@ -1,0 +1,101 @@
+<!-- Scan Settings Section -->
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2" data-bs-toggle="collapse" data-bs-target="#scanSettingsCollapse" aria-expanded="false" aria-controls="scanSettingsCollapse" style="cursor: pointer;">
+        <h6 class="mb-0"><i class="fas fa-cog me-2"></i>Scan Settings</h6>
+        <i class="fas fa-chevron-right collapse-indicator"></i>
+    </div>
+    
+    <div class="collapse" id="scanSettingsCollapse">
+        <div class="scan-management-box">
+            <!-- Scan Information -->
+            <div class="scan-info-compact">
+                <div class="row g-2 mb-3">
+                    <div class="col-12">
+                        <div class="info-item-compact d-flex align-items-center justify-content-between">
+                            <div>
+                                <i class="fas fa-tag text-primary me-1"></i>
+                                <small><strong>{{ scan_pair.name }}</strong></small>
+                            </div>
+                            {% if user_profile.is_annotator %}
+                                <button class="btn btn-sm btn-outline-secondary btn-edit-name" title="Edit name">
+                                    <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="info-item-compact">
+                            <i class="fas fa-user text-secondary me-1"></i>
+                            <small>Patient {{ scan_pair.patient.patient_id }}</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="info-item-compact">
+                            <i class="fas fa-cube text-info me-1"></i>
+                            <small>Scan {{ scan_pair.scanpair_id }}</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="info-item-compact">
+                            <i class="fas fa-calendar text-success me-1"></i>
+                            <small>{{ scan_pair.uploaded_at|date:"M d, Y" }}</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="info-item-compact">
+                            <i class="fas fa-upload text-secondary me-1"></i>
+                            <small>{{ scan_pair.uploaded_by.username }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Management Controls (Only for Annotators) -->
+            {% if user_profile.is_annotator %}
+                <form method="post" class="scan-management-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_management">
+                    
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label-sm">{{ management_form.name.label }}</label>
+                            {{ management_form.name }}
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label-sm">{{ management_form.visibility.label }}</label>
+                            {{ management_form.visibility }}
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label-sm">{{ management_form.dataset.label }}</label>
+                            {{ management_form.dataset }}
+                        </div>
+                    </div>
+                    
+                    <div class="mt-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fas fa-save me-1"></i>Update Settings
+                        </button>
+                    </div>
+                </form>
+            {% else %}
+                <!-- Read-only view for non-annotators -->
+                <div class="row g-2">
+                    <div class="col-12">
+                        <small class="text-muted d-block">Name:</small>
+                        <small><strong>{{ scan_pair.name }}</strong></small>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted d-block">Visibility:</small>
+                        <span class="badge bg-{% if scan_pair.visibility == 'public' %}success{% else %}warning{% endif %}">
+                            {{ scan_pair.get_visibility_display }}
+                        </span>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted d-block">Dataset:</small>
+                        <small>{{ scan_pair.dataset.name|default:"None" }}</small>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div> 

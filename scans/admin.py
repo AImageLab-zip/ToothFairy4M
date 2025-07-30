@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserProfile, Dataset, Patient, ScanPair, Classification
+from .models import UserProfile, Dataset, Patient, ScanPair, Classification, VoiceCaption
 
 
 @admin.register(UserProfile)
@@ -38,3 +38,16 @@ class ClassificationAdmin(admin.ModelAdmin):
     list_filter = ['classifier', 'sagittal_left', 'sagittal_right', 'vertical', 'transverse', 'midline', 'timestamp']
     search_fields = ['scanpair__scanpair_id']
     readonly_fields = ['timestamp']
+
+
+@admin.register(VoiceCaption)
+class VoiceCaptionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'scanpair', 'modality', 'duration', 'processing_status', 'created_at']
+    list_filter = ['modality', 'processing_status', 'created_at']
+    search_fields = ['user__username', 'scanpair__scanpair_id', 'scanpair__patient__patient_id']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj:  # Editing an existing object
+            return self.readonly_fields + ['scanpair', 'user', 'audio_file']
+        return self.readonly_fields

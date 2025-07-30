@@ -1,0 +1,108 @@
+<!-- Vocal Caption Section -->
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2" data-bs-toggle="collapse" data-bs-target="#vocalCaptionCollapse" aria-expanded="true" aria-controls="vocalCaptionCollapse" style="cursor: pointer;">
+        <h6 class="mb-0"><i class="fas fa-microphone me-2"></i>Vocal Caption</h6>
+        <div class="d-flex align-items-center">
+            <small class="text-muted me-2">Describe the findings</small>
+            <i class="fas fa-chevron-down collapse-indicator"></i>
+        </div>
+    </div>
+    
+    <div class="collapse show" id="vocalCaptionCollapse">
+        <div class="vocal-caption-section">
+            <!-- Audio Recording Interface -->
+            <div class="audio-recorder-card mb-3">
+                <div class="recorder-controls-new">
+                    <button type="button" class="btn btn-primary btn-record-round" id="startRecording">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    
+                    <div class="recording-info d-none" id="recordingInfo">
+                        <div class="recording-modality">
+                            <small class="text-muted">
+                                <i class="fas fa-circle recording-pulse me-1"></i>
+                                Recording <span id="modalityIndicator">CBCT</span> annotation
+                            </small>
+                        </div>
+                        <div class="recording-controls-inline">
+                            <div class="recording-timer">
+                                <span id="recordingTimer">00:00</span>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress">
+                                    <div class="progress-bar" id="recordingProgress" role="progressbar"></div>
+                                </div>
+                            </div>
+                            <div class="action-buttons">
+                                <button type="button" class="btn btn-success btn-round-sm" id="saveRecording" title="Save">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger btn-round-sm" id="discardRecording" title="Discard">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <audio id="audioPlayback" class="d-none" controls></audio>
+            </div>
+            
+            <!-- Existing Voice Captions - Compact List -->
+            <div class="voice-captions-list">
+                {% if scan_pair.voice_captions.exists %}
+                    <div class="caption-list-compact">
+                        {% for caption in scan_pair.voice_captions.all %}
+                            <div class="caption-item-compact" data-caption-id="{{ caption.id }}">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="caption-info">
+                                        <small class="text-primary me-2">{{ caption.user.username }}</small>
+                                        <span class="badge bg-secondary me-1">{{ caption.get_modality_display }}</span>
+                                        <span class="badge bg-{{ caption.get_quality_status.color }} me-2">{{ caption.get_display_duration }}</span>
+                                        <small class="text-muted">{{ caption.created_at|date:"M d, H:i" }}</small>
+                                    </div>
+                                    <div class="caption-actions">
+                                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="{{ caption.audio_file.url }}" title="Play">
+                                            <i class="fas fa-play" style="font-size: 0.75rem;"></i>
+                                        </button>
+                                        {% if user_profile.is_annotator or caption.user == request.user %}
+                                        <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="{{ caption.id }}" title="Delete">
+                                            <i class="fas fa-trash" style="font-size: 0.75rem;"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                {% if caption.is_processed %}
+                                    <div class="caption-text-compact mt-1">
+                                        <small class="text-muted">{{ caption.text_caption }}</small>
+                                    </div>
+                                {% else %}
+                                    <div class="caption-text-compact mt-1">
+                                        <small class="text-muted">
+                                            <i class="fas fa-spinner fa-spin me-1"></i>
+                                            {% if caption.processing_status == 'processing' %}
+                                                Converting speech to text...
+                                            {% elif caption.processing_status == 'failed' %}
+                                                <span class="text-danger">Processing failed</span>
+                                            {% else %}
+                                                Preprocessing audio...
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="no-captions">
+                        <p class="text-muted mb-0 text-center">
+                            <i class="fas fa-microphone me-1"></i>
+                            No voice captions yet. Click the record button to start!
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div> 

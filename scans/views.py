@@ -8,9 +8,14 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import Patient, ScanPair, Classification, UserProfile, Dataset
-from .forms import PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 import json
+import os
+
+from .models import Patient, ScanPair, Classification, UserProfile, Dataset, VoiceCaption
+from .forms import PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm
+from .processing import execute_ios_processing_command, execute_cbct_processing_command
 
 
 def home(request):
@@ -229,7 +234,6 @@ def scan_detail(request, scanpair_id):
         
         elif action == 'update_files':
             # Handle file uploads
-            from .processing import execute_ios_processing_command, execute_cbct_processing_command
             updated_files = []
             reprocess_ios = False
             reprocess_cbct = False
@@ -455,3 +459,95 @@ def scan_cbct_data(request, scanpair_id):
     except Exception as e:
         print(f"Error serving CBCT data: {e}")
         return JsonResponse({'error': f'Failed to load CBCT data: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def upload_voice_caption(request, scanpair_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    
+    # Check permissions (could be expanded)
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    try:
+        audio_file = request.FILES.get('audio_file')
+        duration = float(request.POST.get('duration', 0))
+        modality = request.POST.get('modality', 'cbct')  # Default to CBCT
+        
+        if not audio_file:
+            return JsonResponse({'error': 'No audio file provided'}, status=400)
+        
+        if duration <= 0:
+            return JsonResponse({'error': 'Invalid duration'}, status=400)
+        
+        # Validate modality
+        if modality not in ['ios', 'cbct']:
+            modality = 'cbct'  # Default fallback
+        
+        # Create VoiceCaption instance
+        voice_caption = VoiceCaption.objects.create(
+            scanpair=scan_pair,
+            user=request.user,
+            modality=modality,
+            audio_file=audio_file,
+            duration=duration,
+            processing_status='pending'
+        )
+        
+        # Trigger speech-to-text processing
+        try:
+            execute_speech_to_text_command(voice_caption)
+        except Exception as e:
+            print(f"Error triggering speech-to-text processing: {e}")
+            # Continue anyway, the caption is saved
+        
+        # Return caption data for the UI
+        quality_status = voice_caption.get_quality_status()
+        
+        return JsonResponse({
+            'success': True,
+            'caption': {
+                'id': voice_caption.id,
+                'user_username': voice_caption.user.username,
+                'modality_display': voice_caption.get_modality_display(),
+                'display_duration': voice_caption.get_display_duration(),
+                'quality_color': quality_status['color'],
+                'created_at': voice_caption.created_at.strftime('%b %d, %H:%M'),
+                'audio_url': voice_caption.audio_file.url,
+                'is_processed': voice_caption.is_processed(),
+                'text_caption': voice_caption.text_caption if voice_caption.is_processed() else None
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+def delete_voice_caption(request, scanpair_id, caption_id):
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    voice_caption = get_object_or_404(VoiceCaption, id=caption_id, scanpair=scan_pair)
+    
+    # Check permissions - only allow the user who created it or annotators to delete
+    user_profile = getattr(request.user, 'userprofile', None)
+    if voice_caption.user != request.user and (not user_profile or not user_profile.is_annotator):
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    try:
+        # Delete the audio file from storage
+        if voice_caption.audio_file:
+            voice_caption.audio_file.delete(save=False)
+        
+        # Delete the caption
+        voice_caption.delete()
+        
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

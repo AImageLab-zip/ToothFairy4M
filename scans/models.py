@@ -60,6 +60,10 @@ def cbct_upload_path(instance, filename):
     return f"scans/patient_{instance.patient.patient_id}/cbct/{filename}"
 
 
+def voice_caption_upload_path(instance, filename):
+    return f"scans/patient_{instance.scanpair.patient.patient_id}/voice_captions/{filename}"
+
+
 class ScanPair(models.Model):
     VISIBILITY_CHOICES = [
         ('public', 'Public'),
@@ -217,3 +221,51 @@ class Classification(models.Model):
     
     def __str__(self):
         return f"Classification {self.id} - {self.get_classifier_display()} - ScanPair {self.scanpair.scanpair_id}"
+
+
+class VoiceCaption(models.Model):
+    PROCESSING_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    
+    MODALITY_CHOICES = [
+        ('ios', 'Intra-Oral Scans'),
+        ('cbct', 'CBCT'),
+    ]
+    
+    scanpair = models.ForeignKey(ScanPair, on_delete=models.CASCADE, related_name='voice_captions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='voice_captions')
+    modality = models.CharField(max_length=10, choices=MODALITY_CHOICES, default='ios', help_text='Whether this caption describes IOS or CBCT scans')
+    audio_file = models.FileField(upload_to=voice_caption_upload_path, validators=[FileExtensionValidator(allowed_extensions=['wav', 'mp3', 'ogg', 'webm'])])
+    duration = models.FloatField(help_text='Duration of audio recording in seconds')
+    text_caption = models.TextField(blank=True, null=True, help_text='Transcribed text from audio')
+    processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS_CHOICES, default='pending', help_text='Status of speech-to-text processing')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def get_display_duration(self):
+        """Return a human-readable duration string"""
+        minutes = int(self.duration // 60)
+        seconds = int(self.duration % 60)
+        if minutes > 0:
+            return f"{minutes}:{seconds:02d}"
+        return f"{seconds}s"
+    
+    def get_quality_status(self):
+        """Return quality status based on duration"""
+        if self.duration < 30:
+            return {'color': 'danger', 'message': 'Short'}
+        elif self.duration <= 45:
+            return {'color': 'warning', 'message': 'Good'}
+        else:
+            return {'color': 'success', 'message': 'Perfect'}
+    
+    def is_processed(self):
+        """Check if speech-to-text processing is complete"""
+        return self.processing_status == 'completed' and self.text_caption
