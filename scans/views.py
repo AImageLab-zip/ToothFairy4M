@@ -90,7 +90,8 @@ def scan_list(request):
     scans = scans.prefetch_related(
         'classifications', 
         'uploaded_by', 
-        'patient'
+        'patient',
+        'voice_captions'
     ).select_related('dataset').order_by('-uploaded_at')
     
     # Prepare classification status for each scan
@@ -99,6 +100,19 @@ def scan_list(request):
         manual_classification = scan.classifications.filter(classifier='manual').first()
         ai_classification = scan.classifications.filter(classifier='pipeline').first()
         
+        # Voice caption processing status
+        voice_captions = scan.voice_captions.all()
+        voice_caption_processing = any(
+            vc.processing_status in ['pending', 'processing'] for vc in voice_captions
+        )
+        voice_caption_processed = (
+            voice_captions.exists() and 
+            all(vc.processing_status == 'completed' for vc in voice_captions)
+        )
+        
+        # Get unique voice caption annotators
+        voice_annotators = list(set(vc.user.username for vc in voice_captions))
+        
         scan_data = {
             'scan': scan,
             'manual_classification': manual_classification,
@@ -106,6 +120,9 @@ def scan_list(request):
             'has_manual': manual_classification is not None,
             'has_ai_only': ai_classification is not None and manual_classification is None,
             'needs_processing': manual_classification is None and ai_classification is None,
+            'voice_caption_processing': voice_caption_processing,
+            'voice_caption_processed': voice_caption_processed,
+            'voice_annotators': voice_annotators,
         }
         scans_with_status.append(scan_data)
     
@@ -170,12 +187,52 @@ def upload_scan(request):
             # Create patient first (no form data needed)
             patient = Patient.objects.create()
             
+            # Extract files from form before saving
+            upper_scan_file = scan_form.cleaned_data.get('upper_scan_raw')
+            lower_scan_file = scan_form.cleaned_data.get('lower_scan_raw')
+            cbct_file = scan_form.cleaned_data.get('cbct')
+            
+            # Save scan pair without file fields (they'll be stored in /dataset)
             scan_pair = scan_form.save(commit=False)
             scan_pair.patient = patient
             scan_pair.uploaded_by = request.user
+            # Clear file fields since we'll store them in /dataset instead
+            scan_pair.upper_scan_raw = None
+            scan_pair.lower_scan_raw = None
+            scan_pair.cbct = None
             scan_pair.save()
             
-            messages.success(request, 'Scan uploaded successfully! Processing will begin shortly.')
+            # Now process files using the new deferred processing system
+            try:
+                from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
+                processing_jobs = []
+                
+                # Handle IOS files if provided
+                if upper_scan_file or lower_scan_file:
+                    scan_pair.ios_processing_status = 'processing'
+                    scan_pair.save()
+                    
+                    result = save_ios_to_dataset(scan_pair, upper_scan_file, lower_scan_file)
+                    if result['processing_job']:
+                        processing_jobs.append(f"IOS Job #{result['processing_job'].id}")
+                
+                # Handle CBCT file if provided
+                if cbct_file:
+                    scan_pair.cbct_processing_status = 'processing'  
+                    scan_pair.save()
+                    
+                    file_path, processing_job = save_cbct_to_dataset(scan_pair, cbct_file)
+                    processing_jobs.append(f"CBCT Job #{processing_job.id}")
+                
+                if processing_jobs:
+                    job_list = ', '.join(processing_jobs)
+                    messages.success(request, f'Scan uploaded successfully! Processing jobs created: {job_list}')
+                else:
+                    messages.success(request, 'Scan uploaded successfully!')
+                    
+            except Exception as e:
+                messages.error(request, f'Error setting up processing: {e}')
+            
             return redirect('scan_detail', scanpair_id=scan_pair.scanpair_id)
     else:
         patient_form = PatientForm()
@@ -252,16 +309,15 @@ def scan_detail(request, scanpair_id):
             
             # Handle CBCT upload
             if 'cbct' in request.FILES:
-                scan_pair.cbct = request.FILES['cbct']
                 updated_files.append('CBCT')
                 reprocess_cbct = True
             
             if updated_files:
-                # Save the scan pair to update file fields
-                scan_pair.save()
+                # Import the new file utilities
+                from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
                 
                 # Reset processing status for updated scan types
-                if reprocess_ios and scan_pair.has_ios_scans():
+                if reprocess_ios and (request.FILES.get('upper_scan') or request.FILES.get('lower_scan')):
                     # Clear existing classifications to trigger reprocessing
                     scan_pair.classifications.filter(classifier='pipeline').delete()
                     # Reset normalized scans
@@ -269,26 +325,33 @@ def scan_detail(request, scanpair_id):
                     scan_pair.lower_scan_norm = None
                     scan_pair.ios_processing_status = 'processing'
                     scan_pair.save()
+                    
+                    # Save IOS files to dataset and create processing job
+                    try:
+                        result = save_ios_to_dataset(
+                            scan_pair, 
+                            request.FILES.get('upper_scan'),
+                            request.FILES.get('lower_scan')
+                        )
+                        if result['processing_job']:
+                            messages.success(request, f'IOS scan(s) uploaded and queued for processing (Job #{result["processing_job"].id})')
+                    except Exception as e:
+                        messages.error(request, f'Error uploading IOS scan(s): {e}')
                 
-                if reprocess_cbct and scan_pair.has_cbct_scan():
+                if reprocess_cbct and 'cbct' in request.FILES:
                     scan_pair.cbct_processing_status = 'processing'
                     scan_pair.save()
-                
-                # Trigger processing
-                try:
-                    # Process IOS scans if they need reprocessing
-                    if reprocess_ios and scan_pair.has_ios_scans():
-                        execute_ios_processing_command(scan_pair)
                     
-                    # Process CBCT if it needs reprocessing
-                    if reprocess_cbct and scan_pair.has_cbct_scan():
-                        execute_cbct_processing_command(scan_pair)
-                        
-                except Exception as e:
-                    print(f"Error processing scans: {e}")
+                    # Save CBCT file to dataset and create processing job
+                    try:
+                        file_path, processing_job = save_cbct_to_dataset(scan_pair, request.FILES['cbct'])
+                        messages.success(request, f'CBCT uploaded and queued for processing (Job #{processing_job.id})')
+                    except Exception as e:
+                        messages.error(request, f'Error uploading CBCT: {e}')
                 
+                # Success message
                 files_str = ', '.join(updated_files)
-                messages.success(request, f'Successfully updated {files_str}! Processing will begin shortly.')
+                messages.success(request, f'Successfully uploaded {files_str}! Files are queued for processing.')
                 return redirect('scan_detail', scanpair_id=scanpair_id)
             else:
                 messages.warning(request, 'No files were selected for upload.')
@@ -398,13 +461,44 @@ def scan_viewer_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
-    # Use normalized scans if available, otherwise raw scans
-    upper_scan = scan_pair.upper_scan_norm.url if scan_pair.upper_scan_norm else scan_pair.upper_scan_raw.url
-    lower_scan = scan_pair.lower_scan_norm.url if scan_pair.lower_scan_norm else scan_pair.lower_scan_raw.url
+    # Try to get scan URLs from FileRegistry first, fallback to old fields
+    upper_scan_url = None
+    lower_scan_url = None
+    
+    # Check FileRegistry for processed files first, then raw files
+    try:
+        # Look for processed files first
+        processed_files = scan_pair.get_ios_processed_files()
+        if processed_files['upper'] and processed_files['lower']:
+            upper_scan_url = f'/api/processing/files/serve/{processed_files["upper"].id}/'
+            lower_scan_url = f'/api/processing/files/serve/{processed_files["lower"].id}/'
+        else:
+            # Fallback to raw files from FileRegistry
+            raw_files = scan_pair.get_ios_raw_files()
+            if raw_files['upper'] and raw_files['lower']:
+                upper_scan_url = f'/api/processing/files/serve/{raw_files["upper"].id}/'
+                lower_scan_url = f'/api/processing/files/serve/{raw_files["lower"].id}/'
+    except:
+        pass
+    
+    # Fallback to old file fields if FileRegistry doesn't have files
+    if not upper_scan_url or not lower_scan_url:
+        try:
+            if scan_pair.upper_scan_norm and scan_pair.lower_scan_norm:
+                upper_scan_url = scan_pair.upper_scan_norm.url
+                lower_scan_url = scan_pair.lower_scan_norm.url
+            elif scan_pair.upper_scan_raw and scan_pair.lower_scan_raw:
+                upper_scan_url = scan_pair.upper_scan_raw.url
+                lower_scan_url = scan_pair.lower_scan_raw.url
+        except:
+            pass
+    
+    if not upper_scan_url or not lower_scan_url:
+        return JsonResponse({'error': 'No IOS scan data available'}, status=404)
     
     data = {
-        'upper_scan_url': request.build_absolute_uri(upper_scan),
-        'lower_scan_url': request.build_absolute_uri(lower_scan),
+        'upper_scan_url': request.build_absolute_uri(upper_scan_url),
+        'lower_scan_url': request.build_absolute_uri(lower_scan_url),
         'patient_info': {
             'patient_id': scan_pair.patient.patient_id,
         }
@@ -426,12 +520,33 @@ def scan_cbct_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
-    # Check if CBCT exists
-    if not scan_pair.cbct:
+    # Get CBCT file path from FileRegistry first, fallback to old field
+    file_path = None
+    
+    try:
+        # Check FileRegistry for processed CBCT first
+        processed_cbct = scan_pair.get_cbct_processed_file()
+        if processed_cbct and os.path.exists(processed_cbct.file_path):
+            file_path = processed_cbct.file_path
+        else:
+            # Fallback to raw CBCT from FileRegistry
+            raw_cbct = scan_pair.get_cbct_raw_file()
+            if raw_cbct and os.path.exists(raw_cbct.file_path):
+                file_path = raw_cbct.file_path
+    except:
+        pass
+    
+    # Fallback to old file field
+    if not file_path and scan_pair.cbct:
+        try:
+            file_path = scan_pair.cbct.path
+        except:
+            pass
+    
+    if not file_path or not os.path.exists(file_path):
         return JsonResponse({'error': 'No CBCT data available'}, status=404)
     
     try:
-        file_path = scan_pair.cbct.path
         
         # Check if file is gzipped and decompress if needed
         with open(file_path, 'rb') as f:
@@ -488,25 +603,32 @@ def upload_voice_caption(request, scanpair_id):
         if modality not in ['ios', 'cbct']:
             modality = 'cbct'  # Default fallback
         
-        # Create VoiceCaption instance
+        # Create VoiceCaption instance (without audio file initially)
         voice_caption = VoiceCaption.objects.create(
             scanpair=scan_pair,
             user=request.user,
             modality=modality,
-            audio_file=audio_file,
             duration=duration,
             processing_status='pending'
         )
         
-        # Trigger speech-to-text processing
+        # Save audio file to dataset and create processing job
         try:
-            execute_speech_to_text_command(voice_caption)
+            from .file_utils import save_audio_to_dataset
+            file_path, processing_job = save_audio_to_dataset(voice_caption, audio_file)
+            print(f"Audio file saved to {file_path}, processing job #{processing_job.id} created")
         except Exception as e:
-            print(f"Error triggering speech-to-text processing: {e}")
+            print(f"Error saving audio file or creating processing job: {e}")
             # Continue anyway, the caption is saved
         
         # Return caption data for the UI
         quality_status = voice_caption.get_quality_status()
+        
+        # Get audio file URL from FileRegistry
+        audio_file = voice_caption.get_audio_file()
+        audio_url = None
+        if audio_file and os.path.exists(audio_file.file_path):
+            audio_url = f'/api/processing/files/serve/{audio_file.id}/'
         
         return JsonResponse({
             'success': True,
@@ -517,7 +639,7 @@ def upload_voice_caption(request, scanpair_id):
                 'display_duration': voice_caption.get_display_duration(),
                 'quality_color': quality_status['color'],
                 'created_at': voice_caption.created_at.strftime('%b %d, %H:%M'),
-                'audio_url': voice_caption.audio_file.url,
+                'audio_url': audio_url,
                 'is_processed': voice_caption.is_processed(),
                 'text_caption': voice_caption.text_caption if voice_caption.is_processed() else None
             }

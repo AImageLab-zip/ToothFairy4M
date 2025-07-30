@@ -146,10 +146,10 @@
     <!-- Scan List -->
     {% if page_obj %}
         <div class="scan-list">
-            <div class="scan-list-header scan-row">
+            <div class="scan-list-header">
                 <div>Scan Name</div>
-                <div>Status</div>
-                <div>Annotator</div>
+                <div>Processing Status</div>
+                <div>Annotators</div>
                 <div>Upload Info</div>
                 <div>Privacy</div>
                 <div>Action</div>
@@ -173,37 +173,118 @@
                         {% endif %}
                     </div>
                     
-                    <!-- Status -->
-                    <div>
-                        {% if scan_data.has_manual %}
-                            <span class="status-badge status-verified">
-                                <i class="fas fa-check-circle me-1"></i>Verified
-                            </span>
-                        {% elif scan_data.has_ai_only %}
-                            <span class="status-badge status-needs-review">
-                                <i class="fas fa-exclamation-triangle me-1"></i>Review
-                            </span>
-                        {% else %}
-                            <span class="status-badge status-processing">
-                                <i class="fas fa-cog fa-spin me-1"></i>Processing
-                            </span>
-                        {% endif %}
+                    <!-- Processing Status -->
+                    <div class="processing-status">
+                        <div class="status-indicators">
+                            <!-- IOS Status -->
+                            {% if not scan.has_ios_scans %}
+                                <div class="status-icon status-absent" title="No IOS Scans">
+                                    <i class="fas fa-tooth"></i>
+                                </div>
+                            {% elif scan.ios_processing_status == 'processing' %}
+                                <div class="status-icon status-processing" title="IOS Processing">
+                                    <i class="fas fa-tooth"></i>
+                                </div>
+                            {% elif scan.ios_processing_status == 'processed' %}
+                                <div class="status-icon status-processed" title="IOS Processed">
+                                    <i class="fas fa-tooth"></i>
+                                </div>
+                            {% elif scan.ios_processing_status == 'failed' %}
+                                <div class="status-icon status-failed" title="IOS Processing Failed">
+                                    <i class="fas fa-tooth"></i>
+                                </div>
+                            {% else %}
+                                <div class="status-icon status-pending" title="IOS Processing Pending">
+                                    <i class="fas fa-tooth"></i>
+                                </div>
+                            {% endif %}
+                            
+                            <!-- CBCT Status -->
+                            {% if not scan.has_cbct_scan %}
+                                <div class="status-icon status-absent" title="No CBCT Scan">
+                                    <i class="fas fa-cube"></i>
+                                </div>
+                            {% elif scan.cbct_processing_status == 'processing' %}
+                                <div class="status-icon status-processing" title="CBCT Processing">
+                                    <i class="fas fa-cube"></i>
+                                </div>
+                            {% elif scan.cbct_processing_status == 'processed' %}
+                                <div class="status-icon status-processed" title="CBCT Processed">
+                                    <i class="fas fa-cube"></i>
+                                </div>
+                            {% elif scan.cbct_processing_status == 'failed' %}
+                                <div class="status-icon status-failed" title="CBCT Processing Failed">
+                                    <i class="fas fa-cube"></i>
+                                </div>
+                            {% else %}
+                                <div class="status-icon status-pending" title="CBCT Processing Pending">
+                                    <i class="fas fa-cube"></i>
+                                </div>
+                            {% endif %}
+                            
+                            <!-- Voice Captions Status -->
+                            {% if not scan.voice_captions.exists %}
+                                <div class="status-icon status-absent" title="No Voice Captions">
+                                    <i class="fas fa-microphone"></i>
+                                </div>
+                            {% elif scan_data.voice_caption_processing %}
+                                <div class="status-icon status-processing" title="Voice Captions Processing">
+                                    <i class="fas fa-microphone"></i>
+                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                </div>
+                            {% elif scan_data.voice_caption_processed %}
+                                <div class="status-icon status-processed" title="All Voice Captions Processed">
+                                    <i class="fas fa-microphone"></i>
+                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                </div>
+                            {% else %}
+                                <div class="status-icon status-pending" title="Voice Captions Pending">
+                                    <i class="fas fa-microphone"></i>
+                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                </div>
+                            {% endif %}
+
+                            <!-- Bite Classification Status -->
+                            {% if not scan.has_ios_scans %}
+                                <div class="status-icon status-absent" title="No IOS - Classification Not Possible">
+                                    <i class="fas fa-teeth"></i>
+                                </div>
+                            {% elif scan_data.has_manual %}
+                                <div class="status-icon status-processed" title="Bite Classification Verified">
+                                    <i class="fas fa-teeth"></i>
+                                </div>
+                            {% elif scan_data.has_ai_only %}
+                                <div class="status-icon status-processing" title="AI Classification - Needs Review">
+                                    <i class="fas fa-teeth"></i>
+                                </div>
+                            {% else %}
+                                <div class="status-icon status-absent" title="No Classification Available">
+                                    <i class="fas fa-teeth"></i>
+                                </div>
+                            {% endif %}
+                        </div>
                     </div>
                     
-                    <!-- Annotator -->
-                    <div class="annotator-info">
-                        {% if scan_data.manual_classification %}
-                            <div>by <span class="annotator-name">{{ scan_data.manual_classification.annotator.username }}</span></div>
-                            <div class="text-muted" style="font-size: 0.7rem;">
-                                {{ scan_data.manual_classification.timestamp|date:"M d, H:i" }}
-                            </div>
-                        {% elif scan_data.has_ai_only %}
-                            <div class="text-warning">
-                                <i class="fas fa-clock me-1"></i>Needs Review
+                    <!-- Annotators -->
+                    <div class="annotators-info">
+                        {% if scan_data.has_manual or scan_data.voice_annotators %}
+                            <div class="annotator-list">
+                                {% if scan_data.has_manual %}
+                                    <div class="annotator-item">
+                                        <small class="text-primary">{{ scan_data.manual_classification.annotator.username }}</small>
+                                        <small class="text-muted">(Bite)</small>
+                                    </div>
+                                {% endif %}
+                                {% for annotator in scan_data.voice_annotators %}
+                                    <div class="annotator-item">
+                                        <small class="text-secondary">{{ annotator }}</small>
+                                        <small class="text-muted">(Voice)</small>
+                                    </div>
+                                {% endfor %}
                             </div>
                         {% else %}
-                            <div class="text-muted">
-                                <i class="fas fa-hourglass-half me-1"></i>Processing
+                            <div class="no-annotators">
+                                <small class="text-muted">-</small>
                             </div>
                         {% endif %}
                     </div>

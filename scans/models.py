@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
 import os
+from django.utils import timezone
 
 
 class UserProfile(models.Model):
@@ -138,18 +139,19 @@ class ScanPair(models.Model):
         if not self.name:
             self.name = f"Patient {self.patient.patient_id}"
         
-        # Update processing status based on file availability
+        # Legacy processing status logic - now we use FileRegistry and ProcessingJob
+        # Only update status automatically if we're still using the old file fields
         if self.upper_scan_raw and self.lower_scan_raw:
             if self.ios_processing_status == 'not_uploaded':
                 self.ios_processing_status = 'processing'
-        else:
-            self.ios_processing_status = 'not_uploaded'
+        # Don't automatically reset to 'not_uploaded' if files are empty - 
+        # they might be in FileRegistry now
             
         if self.cbct:
             if self.cbct_processing_status == 'not_uploaded':
                 self.cbct_processing_status = 'processing'
-        else:
-            self.cbct_processing_status = 'not_uploaded'
+        # Don't automatically reset to 'not_uploaded' if files are empty -
+        # they might be in FileRegistry now
             
         super().save(*args, **kwargs)
     
@@ -158,11 +160,29 @@ class ScanPair(models.Model):
     
     def has_ios_scans(self):
         """Check if both upper and lower scans are uploaded"""
-        return bool(self.upper_scan_raw and self.lower_scan_raw)
+        # Check old file fields first (for backward compatibility)
+        if self.upper_scan_raw and self.lower_scan_raw:
+            return True
+        
+        # Check FileRegistry for new processing flow
+        try:
+            upper_exists = self.files.filter(file_type='ios_raw_upper').exists()
+            lower_exists = self.files.filter(file_type='ios_raw_lower').exists()
+            return upper_exists and lower_exists
+        except:
+            return False
         
     def has_cbct_scan(self):
         """Check if CBCT scan is uploaded"""
-        return bool(self.cbct)
+        # Check old file field first (for backward compatibility)
+        if self.cbct:
+            return True
+            
+        # Check FileRegistry for new processing flow
+        try:
+            return self.files.filter(file_type='cbct_raw').exists()
+        except:
+            return False
         
     def is_ios_processed(self):
         """Check if IOS processing is complete"""
@@ -171,6 +191,82 @@ class ScanPair(models.Model):
     def is_cbct_processed(self):
         """Check if CBCT processing is complete"""
         return self.cbct_processing_status == 'processed'
+    
+    # New methods for working with FileRegistry system
+    def get_raw_files(self):
+        """Get all raw files from FileRegistry"""
+        return self.files.filter(
+            file_type__in=['cbct_raw', 'ios_raw_upper', 'ios_raw_lower', 'audio_raw']
+        )
+    
+    def get_processed_files(self):
+        """Get all processed files from FileRegistry"""
+        return self.files.filter(
+            file_type__in=['cbct_processed', 'ios_processed_upper', 'ios_processed_lower', 'audio_processed']
+        )
+    
+    def get_cbct_raw_file(self):
+        """Get CBCT raw file from FileRegistry"""
+        try:
+            return self.files.get(file_type='cbct_raw')
+        except FileRegistry.DoesNotExist:
+            return None
+    
+    def get_cbct_processed_file(self):
+        """Get CBCT processed file from FileRegistry"""
+        try:
+            return self.files.get(file_type='cbct_processed')
+        except FileRegistry.DoesNotExist:
+            return None
+    
+    def get_ios_raw_files(self):
+        """Get IOS raw files from FileRegistry"""
+        upper = None
+        lower = None
+        try:
+            upper = self.files.get(file_type='ios_raw_upper')
+        except FileRegistry.DoesNotExist:
+            pass
+        try:
+            lower = self.files.get(file_type='ios_raw_lower')
+        except FileRegistry.DoesNotExist:
+            pass
+        return {'upper': upper, 'lower': lower}
+    
+    def get_ios_processed_files(self):
+        """Get IOS processed files from FileRegistry"""
+        upper = None
+        lower = None
+        try:
+            upper = self.files.get(file_type='ios_processed_upper')
+        except FileRegistry.DoesNotExist:
+            pass
+        try:
+            lower = self.files.get(file_type='ios_processed_lower')
+        except FileRegistry.DoesNotExist:
+            pass
+        return {'upper': upper, 'lower': lower}
+    
+    def has_ios_scans_new(self):
+        """Check if both upper and lower scans are available in FileRegistry"""
+        ios_files = self.get_ios_raw_files()
+        return ios_files['upper'] is not None and ios_files['lower'] is not None
+        
+    def has_cbct_scan_new(self):
+        """Check if CBCT scan is available in FileRegistry"""
+        return self.get_cbct_raw_file() is not None
+    
+    def get_pending_jobs(self):
+        """Get pending processing jobs for this scan pair"""
+        return self.processing_jobs.filter(status__in=['pending', 'processing', 'retrying'])
+    
+    def get_completed_jobs(self):
+        """Get completed processing jobs for this scan pair"""
+        return self.processing_jobs.filter(status='completed')
+    
+    def get_failed_jobs(self):
+        """Get failed processing jobs for this scan pair"""
+        return self.processing_jobs.filter(status='failed')
 
 
 class Classification(models.Model):
@@ -239,7 +335,7 @@ class VoiceCaption(models.Model):
     scanpair = models.ForeignKey(ScanPair, on_delete=models.CASCADE, related_name='voice_captions')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='voice_captions')
     modality = models.CharField(max_length=10, choices=MODALITY_CHOICES, default='ios', help_text='Whether this caption describes IOS or CBCT scans')
-    audio_file = models.FileField(upload_to=voice_caption_upload_path, validators=[FileExtensionValidator(allowed_extensions=['wav', 'mp3', 'ogg', 'webm'])])
+    # Note: audio_file now stored in FileRegistry, not directly in model
     duration = models.FloatField(help_text='Duration of audio recording in seconds')
     text_caption = models.TextField(blank=True, null=True, help_text='Transcribed text from audio')
     processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS_CHOICES, default='pending', help_text='Status of speech-to-text processing')
@@ -269,3 +365,157 @@ class VoiceCaption(models.Model):
     def is_processed(self):
         """Check if speech-to-text processing is complete"""
         return self.processing_status == 'completed' and self.text_caption
+    
+    def get_audio_file(self):
+        """Get audio file from FileRegistry"""
+        try:
+            return self.files.get(file_type='audio_raw')
+        except FileRegistry.DoesNotExist:
+            return None
+    
+    def get_processed_text_file(self):
+        """Get processed text file from FileRegistry"""
+        try:
+            return self.files.get(file_type='audio_processed')
+        except FileRegistry.DoesNotExist:
+            return None
+    
+    def get_pending_jobs(self):
+        """Get pending processing jobs for this voice caption"""
+        return self.processing_jobs.filter(status__in=['pending', 'processing', 'retrying'])
+
+
+class ProcessingJob(models.Model):
+    """
+    Central processing job queue for all file types (CBCT, IOS, Audio)
+    """
+    JOB_TYPE_CHOICES = [
+        ('cbct', 'CBCT Processing'),
+        ('ios', 'IOS Processing'),
+        ('audio', 'Audio Speech-to-Text'),
+    ]
+    
+    JOB_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('retrying', 'Retrying'),
+    ]
+    
+    # Basic job info
+    job_type = models.CharField(max_length=10, choices=JOB_TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='pending')
+    priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
+    
+    # Related objects
+    scanpair = models.ForeignKey(ScanPair, on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+    voice_caption = models.ForeignKey(VoiceCaption, on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+    
+    # File paths
+    input_file_path = models.CharField(max_length=500, help_text='Path to input file in /dataset')
+    output_files = models.JSONField(default=dict, blank=True, help_text='Dict of output file paths and metadata')
+    
+    # Processing info
+    docker_image = models.CharField(max_length=200, help_text='Docker image used for processing')
+    docker_command = models.JSONField(default=list, help_text='Docker command arguments')
+    
+    # Timing and metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Error handling
+    retry_count = models.IntegerField(default=0)
+    max_retries = models.IntegerField(default=3)
+    error_logs = models.TextField(blank=True, help_text='Error logs if processing failed')
+    
+    # Worker info
+    worker_id = models.CharField(max_length=100, blank=True, help_text='ID of worker processing this job')
+    
+    class Meta:
+        ordering = ['-priority', 'created_at']
+        indexes = [
+            models.Index(fields=['job_type', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+    
+    def __str__(self):
+        related_obj = self.scanpair or self.voice_caption
+        return f"ProcessingJob {self.id} - {self.get_job_type_display()} - {self.get_status_display()} - {related_obj}"
+    
+    def can_retry(self):
+        """Check if job can be retried"""
+        return self.status == 'failed' and self.retry_count < self.max_retries
+    
+    def mark_processing(self, worker_id=None):
+        """Mark job as being processed"""
+        self.status = 'processing'
+        self.started_at = timezone.now()
+        if worker_id:
+            self.worker_id = worker_id
+        self.save()
+    
+    def mark_completed(self, output_files=None):
+        """Mark job as completed with optional output file info"""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        if output_files:
+            self.output_files = output_files
+        self.save()
+    
+    def mark_failed(self, error_msg, can_retry=True):
+        """Mark job as failed with error message"""
+        self.error_logs = error_msg
+        if can_retry and self.can_retry():
+            self.status = 'retrying'
+            self.retry_count += 1
+        else:
+            self.status = 'failed'
+        self.save()
+    
+    def get_processing_duration(self):
+        """Get processing duration if completed"""
+        if self.started_at and self.completed_at:
+            return self.completed_at - self.started_at
+        return None
+
+
+class FileRegistry(models.Model):
+    """
+    Registry of all files in the /dataset and /database directories
+    """
+    FILE_TYPE_CHOICES = [
+        ('cbct_raw', 'CBCT Raw'),
+        ('cbct_processed', 'CBCT Processed'),
+        ('ios_raw_upper', 'IOS Raw Upper'),
+        ('ios_raw_lower', 'IOS Raw Lower'),
+        ('ios_processed_upper', 'IOS Processed Upper'),
+        ('ios_processed_lower', 'IOS Processed Lower'),
+        ('audio_raw', 'Audio Raw'),
+        ('audio_processed', 'Audio Processed Text'),
+    ]
+    
+    # File identification
+    file_type = models.CharField(max_length=20, choices=FILE_TYPE_CHOICES)
+    file_path = models.CharField(max_length=500, unique=True, help_text='Full path to file')
+    file_size = models.BigIntegerField(help_text='File size in bytes')
+    file_hash = models.CharField(max_length=64, help_text='SHA256 hash of file')
+    
+    # Related objects
+    scanpair = models.ForeignKey(ScanPair, on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+    voice_caption = models.ForeignKey(VoiceCaption, on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+    processing_job = models.ForeignKey(ProcessingJob, on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(default=dict, blank=True, help_text='Additional file metadata')
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['file_type', 'scanpair']),
+            models.Index(fields=['file_path']),
+        ]
+    
+    def __str__(self):
+        return f"FileRegistry {self.id} - {self.get_file_type_display()} - {self.file_path}"
