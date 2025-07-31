@@ -1,5 +1,12 @@
 from django import forms
-from .models import Patient, ScanPair, Classification, Dataset
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+from datetime import timedelta
+from django.utils import timezone
+from .models import (
+    Patient, ScanPair, Classification, Dataset, 
+    Invitation
+)
 
 
 class PatientForm(forms.ModelForm):
@@ -101,4 +108,48 @@ class DatasetForm(forms.ModelForm):
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Dataset name'}),
             'description': forms.Textarea(attrs={'class': 'form-control form-control-sm', 'rows': 2, 'placeholder': 'Optional description'}),
-        } 
+        }
+
+
+class InvitationForm(forms.ModelForm):
+    email = forms.EmailField(required=False, 
+                           widget=forms.EmailInput(attrs={'class': 'form-control'}),
+                           help_text="Optional: Restrict invitation to specific email")
+    expiry_days = forms.IntegerField(min_value=1, max_value=30, initial=7,
+                                   widget=forms.NumberInput(attrs={'class': 'form-control'}),
+                                   help_text="Number of days before invitation expires")
+    
+    class Meta:
+        model = Invitation
+        fields = ['email', 'role', 'expiry_days']
+        widgets = {
+            'role': forms.Select(attrs={'class': 'form-control'}),
+        }
+    
+    def save(self, commit=True):
+        instance = super().save(False)
+        instance.expires_at = timezone.now() + timedelta(days=self.cleaned_data['expiry_days'])
+        if commit:
+            instance.save()
+        return instance
+
+
+class InvitedUserCreationForm(UserCreationForm):
+    invitation_code = forms.CharField(max_length=64)
+    email = forms.EmailField(required=True)
+    
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password1', 'password2', 'invitation_code']
+    
+    def clean_invitation_code(self):
+        code = self.cleaned_data.get('invitation_code')
+        try:
+            invitation = Invitation.objects.get(code=code)
+            if not invitation.is_valid():
+                raise forms.ValidationError("This invitation has expired or has already been used.")
+            if invitation.email and invitation.email != self.cleaned_data.get('email'):
+                raise forms.ValidationError("This invitation was created for a different email address.")
+            return code
+        except Invitation.DoesNotExist:
+            raise forms.ValidationError("Invalid invitation code.") 

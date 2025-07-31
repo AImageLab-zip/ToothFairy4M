@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, authenticate
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
@@ -12,9 +12,17 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import json
 import os
+from django.utils import timezone
+from django.contrib.auth.models import User
+from django.urls import reverse
+import uuid
 
-from .models import Patient, ScanPair, Classification, UserProfile, Dataset, VoiceCaption
-from .forms import PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm
+from .models import (
+    Patient, ScanPair, Classification, UserProfile, Dataset, VoiceCaption, ProcessingJob, FileRegistry, Invitation
+)
+from .forms import (
+    PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm, InvitationForm, InvitedUserCreationForm
+)
 from .processing import execute_ios_processing_command, execute_cbct_processing_command
 
 
@@ -26,15 +34,63 @@ def home(request):
 
 def register(request):
     if request.method == 'POST':
-        form = UserCreationForm(request.POST)
+        form = InvitedUserCreationForm(request.POST)
         if form.is_valid():
+            invitation = Invitation.objects.get(code=form.cleaned_data['invitation_code'])
             user = form.save()
-            username = form.cleaned_data.get('username')
-            messages.success(request, f'Account created for {username}!')
+            # Create user profile with role from invitation
+            UserProfile.objects.create(user=user, role=invitation.role)
+            # Mark invitation as used
+            invitation.used_at = timezone.now()
+            invitation.used_by = user
+            invitation.save()
+            messages.success(request, f'Account created for {user.username}!')
             return redirect('login')
     else:
-        form = UserCreationForm()
+        # Pre-fill invitation code if provided in URL
+        initial = {}
+        if 'code' in request.GET:
+            initial['invitation_code'] = request.GET['code']
+            try:
+                invitation = Invitation.objects.get(code=request.GET['code'])
+                if invitation.email:
+                    initial['email'] = invitation.email
+            except Invitation.DoesNotExist:
+                pass
+        form = InvitedUserCreationForm(initial=initial)
     return render(request, 'registration/register.html', {'form': form})
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+def invitation_list(request):
+    invitations = Invitation.objects.all().order_by('-created_at')
+    if request.method == 'POST':
+        form = InvitationForm(request.POST)
+        if form.is_valid():
+            invitation = form.save(commit=False)
+            invitation.code = str(uuid.uuid4())
+            invitation.created_by = request.user
+            invitation.save()
+            messages.success(request, 'Invitation created successfully!')
+            return redirect('invitation_list')
+    else:
+        form = InvitationForm()
+    return render(request, 'registration/invitation_list.html', {
+        'invitations': invitations,
+        'form': form,
+        'registration_base_url': request.build_absolute_uri(reverse('register'))
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+def delete_invitation(request, code):
+    invitation = get_object_or_404(Invitation, code=code)
+    if not invitation.used_at:  # Only allow deleting unused invitations
+        invitation.delete()
+        messages.success(request, 'Invitation deleted successfully!')
+    return redirect('invitation_list')
 
 
 @login_required
@@ -143,7 +199,6 @@ def scan_list(request):
         ]
     
     # Get filter options for dropdowns
-    from django.contrib.auth.models import User
     uploaders = User.objects.filter(scanpair__isnull=False).distinct().order_by('username')
     annotators = User.objects.filter(
         profile__role__in=['annotator', 'admin'],

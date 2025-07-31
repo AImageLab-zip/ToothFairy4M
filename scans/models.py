@@ -25,6 +25,23 @@ class UserProfile(models.Model):
         return self.role == 'admin'
 
 
+class Invitation(models.Model):
+    code = models.CharField(max_length=64, unique=True)
+    email = models.EmailField(blank=True, null=True)
+    role = models.CharField(max_length=10, choices=UserProfile.ROLE_CHOICES, default='standard')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    used_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='used_invitation')
+    
+    def __str__(self):
+        return f"Invitation {self.code} - {self.get_role_display()}"
+    
+    def is_valid(self):
+        return not self.used_at and self.expires_at > timezone.now()
+
+
 class Dataset(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)

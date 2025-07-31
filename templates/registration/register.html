@@ -13,13 +13,29 @@
                 <div class="card-body">
                     <form method="post">
                         {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.invitation_code.id_for_label }}" class="form-label">Invitation Code</label>
+                            <input type="text" class="form-control" name="invitation_code" id="{{ form.invitation_code.id_for_label }}" value="{{ form.invitation_code.value|default:'' }}" required>
+                            {% if form.invitation_code.errors %}
+                                <div class="text-danger">{{ form.invitation_code.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
                         <div class="mb-3">
                             <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
                             <input type="text" class="form-control" name="username" id="{{ form.username.id_for_label }}" required>
                             {% if form.username.errors %}
                                 <div class="text-danger">{{ form.username.errors }}</div>
                             {% endif %}
-                            <small class="form-text text-muted">150 characters or fewer. Letters, digits and @/./+/-/_ only.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" id="{{ form.email.id_for_label }}" value="{{ form.email.value|default:'' }}" required>
+                            {% if form.email.errors %}
+                                <div class="text-danger">{{ form.email.errors }}</div>
+                            {% endif %}
                         </div>
                         
                         <div class="mb-3">
@@ -28,7 +44,9 @@
                             {% if form.password1.errors %}
                                 <div class="text-danger">{{ form.password1.errors }}</div>
                             {% endif %}
-                            <small class="form-text text-muted">Your password must contain at least 8 characters.</small>
+                            {% if form.password1.help_text %}
+                                <div class="form-text">{{ form.password1.help_text }}</div>
+                            {% endif %}
                         </div>
                         
                         <div class="mb-3">

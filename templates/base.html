@@ -16,6 +16,26 @@
     
     <!-- Pako for gzip decompression -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <style>
+        .form-control, .form-select {
+            margin-top: 0.25rem;
+        }
+        
+        /* Logout button styling */
+        .dropdown-item.p-0 .btn-link {
+            color: inherit;
+            font-weight: inherit;
+        }
+        
+        .dropdown-item.p-0 .btn-link:hover {
+            background-color: #f8f9fa;
+            color: inherit;
+        }
+        
+        .dropdown-item.p-0 {
+            overflow: hidden;
+        }
+    </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -63,20 +83,28 @@
                                 <span class="badge bg-secondary ms-1">{{ user.profile.get_role_display }}</span>
                             </a>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{% url 'logout' %}">
-                                    <i class="fas fa-sign-out-alt me-1"></i>Logout
-                                </a></li>
+                                {% if user.is_staff %}
+                                    <li>
+                                        <a class="dropdown-item" href="{% url 'invitation_list' %}">
+                                            <i class="fas fa-envelope me-1"></i>Manage Invitations
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                {% endif %}
+                                <li>
+                                    <form method="post" action="{% url 'logout' %}" class="dropdown-item p-0">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-link text-decoration-none px-3 py-2 w-100 text-start">
+                                            <i class="fas fa-sign-out-alt me-1"></i>Logout
+                                        </button>
+                                    </form>
+                                </li>
                             </ul>
                         </li>
                     {% else %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'login' %}">
                                 <i class="fas fa-sign-in-alt me-1"></i>Login
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'register' %}">
-                                <i class="fas fa-user-plus me-1"></i>Register
                             </a>
                         </li>
                     {% endif %}
