@@ -8,6 +8,7 @@ class VocalCaptionRecorder {
         this.currentAudio = null;
         
         this.initializeElements();
+        this.checkBrowserSupport();
         this.attachEventListeners();
     }
     
@@ -22,8 +23,82 @@ class VocalCaptionRecorder {
         this.audioPlayback = document.getElementById('audioPlayback');
     }
     
+    checkBrowserSupport() {
+        // Check if all required APIs are supported
+        const isSupported = navigator.mediaDevices && 
+                           navigator.mediaDevices.getUserMedia && 
+                           window.MediaRecorder;
+        
+        // Check if we're in development mode (HTTP on remote)
+        const isDevelopment = window.location.protocol === 'http:' && 
+                             !window.location.hostname.includes('localhost') &&
+                             !window.location.hostname.includes('127.0.0.1');
+        
+        if (!isSupported) {
+            // Disable the record button and show a helpful message
+            if (this.startBtn) {
+                this.startBtn.disabled = true;
+                
+                if (isDevelopment) {
+                    this.startBtn.innerHTML = '<i class="fas fa-microphone me-1"></i>Dev Mode';
+                    this.startBtn.classList.add('btn-warning');
+                    this.startBtn.classList.remove('btn-primary');
+                    this.startBtn.title = 'Voice recording disabled in HTTP development mode';
+                } else {
+                    this.startBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Not Supported';
+                    this.startBtn.classList.add('btn-secondary');
+                    this.startBtn.classList.remove('btn-primary');
+                    this.startBtn.title = 'Voice recording requires HTTPS and a modern browser';
+                }
+            }
+            
+            // Add a small notice below the button
+            let noticeHtml = '';
+            if (isDevelopment) {
+                noticeHtml = `
+                    <div class="mt-2 text-center">
+                        <small class="text-warning">
+                            <i class="fas fa-tools me-1"></i>
+                            Voice recording disabled in HTTP development mode
+                        </small>
+                    </div>
+                `;
+            } else {
+                noticeHtml = `
+                    <div class="mt-2 text-center">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Voice recording requires HTTPS connection
+                        </small>
+                    </div>
+                `;
+            }
+            
+            if (this.startBtn && this.startBtn.parentNode) {
+                this.startBtn.parentNode.insertAdjacentHTML('afterend', noticeHtml);
+            }
+        }
+    }
+    
     attachEventListeners() {
-        this.startBtn.addEventListener('click', () => this.startRecording());
+        // Check if we're in development mode (HTTP on remote)
+        const isDevelopment = window.location.protocol === 'http:' && 
+                             !window.location.hostname.includes('localhost') &&
+                             !window.location.hostname.includes('127.0.0.1');
+        
+        // Only attach recording listener if APIs are supported
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
+            this.startBtn.addEventListener('click', () => this.startRecording());
+        } else {
+            this.startBtn.addEventListener('click', () => {
+                if (isDevelopment) {
+                    alert('Voice recording is disabled in HTTP development mode. Use browser flags or HTTPS for testing.');
+                } else {
+                    alert('Voice recording is not available. This feature requires HTTPS and a modern browser.');
+                }
+            });
+        }
+        
         this.saveBtn.addEventListener('click', () => this.saveRecording());
         this.discardBtn.addEventListener('click', () => this.discardRecording());
         
@@ -57,9 +132,40 @@ class VocalCaptionRecorder {
     }
     
     async startRecording() {
+        // Early return if APIs not supported - prevent any execution
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+            alert('Voice recording is not supported. Please use HTTPS and a modern browser.');
+            return;
+        }
+        
         try {
+            // Additional check for MediaDevices API support
+            if (!navigator.mediaDevices) {
+                throw new Error('MediaRecorder API not available. This feature requires HTTPS connection.');
+            }
+            
+            if (!navigator.mediaDevices.getUserMedia) {
+                throw new Error('getUserMedia not supported. Please use a modern browser with HTTPS.');
+            }
+            
+            // Check for MediaRecorder support
+            if (!window.MediaRecorder) {
+                throw new Error('MediaRecorder API not supported in this browser.');
+            }
+            
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            
+            // Check if webm is supported, fallback to default
+            let options = {};
+            if (MediaRecorder.isTypeSupported('audio/webm')) {
+                options.mimeType = 'audio/webm';
+            } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                options.mimeType = 'audio/mp4';
+            } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                options.mimeType = 'audio/ogg';
+            }
+            
+            this.mediaRecorder = new MediaRecorder(stream, options);
             
             this.audioChunks = [];
             this.mediaRecorder.ondataavailable = (event) => {
@@ -79,7 +185,22 @@ class VocalCaptionRecorder {
             
         } catch (error) {
             console.error('Error accessing microphone:', error);
-            alert('Unable to access microphone. Please check permissions.');
+            
+            let errorMessage = 'Unable to access microphone. ';
+            
+            if (error.name === 'NotAllowedError') {
+                errorMessage += 'Please allow microphone access in your browser settings.';
+            } else if (error.name === 'NotFoundError') {
+                errorMessage += 'No microphone found. Please connect a microphone.';
+            } else if (error.name === 'NotSupportedError' || error.message.includes('not supported')) {
+                errorMessage += 'This feature requires HTTPS or a modern browser.';
+            } else if (error.name === 'NotReadableError') {
+                errorMessage += 'Microphone is already in use by another application.';
+            } else {
+                errorMessage += 'Please check your browser settings and permissions.';
+            }
+            
+            alert(errorMessage);
         }
     }
     
