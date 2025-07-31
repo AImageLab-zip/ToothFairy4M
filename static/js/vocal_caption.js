@@ -220,6 +220,8 @@ class VocalCaptionRecorder {
     }
     
     async saveRecording() {
+        if (!this.recording) return;  // If not recording, do nothing
+        
         this.stopRecording();
         
         if (this.audioChunks.length === 0) return;
@@ -347,8 +349,8 @@ class VocalCaptionRecorder {
         const secs = Math.floor(seconds % 60);
         this.recordingTimer.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         
-        // Update progress bar (max 60 seconds for visual purposes)
-        const progress = Math.min((seconds / 60) * 100, 100);
+        // Update progress bar (max 300 seconds / 5 minutes)
+        const progress = Math.min((seconds / 300) * 100, 100);
         this.progressBar.style.width = `${progress}%`;
         
         // Update progress bar color based on duration
@@ -360,6 +362,11 @@ class VocalCaptionRecorder {
             this.progressBar.classList.add('duration-medium');
         } else {
             this.progressBar.classList.add('duration-good');
+        }
+
+        // Auto-stop at 5 minutes
+        if (seconds >= 300) {
+            this.saveRecording();
         }
     }
     
