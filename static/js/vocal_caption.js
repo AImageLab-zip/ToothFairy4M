@@ -2,12 +2,17 @@ class VocalCaptionRecorder {
     constructor() {
         this.mediaRecorder = null;
         this.audioChunks = [];
-        this.recording = false;
-        this.paused = false;
-        this.startTime = null;
-        this.pausedTime = 0;  // Initialize to 0
+        this.stream = null;
+        
+        // Simple state tracking
+        this.isRecording = false;
+        this.isPaused = false;
+        
+        // Simple timing - just track total duration
+        this.recordingStartTime = null;
+        this.totalPausedDuration = 0;
+        this.currentPauseStart = null;
         this.timerInterval = null;
-        this.currentAudio = null;
         
         this.initializeElements();
         this.checkBrowserSupport();
@@ -19,170 +24,81 @@ class VocalCaptionRecorder {
         this.pauseBtn = document.getElementById('pauseRecording');
         this.saveBtn = document.getElementById('saveRecording');
         this.discardBtn = document.getElementById('discardRecording');
-        this.recordingInfo = document.getElementById('recordingInfo');
+        this.recordingInfo = document.querySelector('.recording-info');
         this.recordingTimer = document.getElementById('recordingTimer');
+        this.progressBar = document.querySelector('.recording-progress .progress-bar');
+        this.audioPlayback = document.querySelector('.audio-playback');
         this.modalityIndicator = document.getElementById('modalityIndicator');
-        this.progressBar = document.getElementById('recordingProgress');
-        this.audioPlayback = document.getElementById('audioPlayback');
+        
+        if (!this.startBtn || !this.recordingTimer || !this.progressBar) {
+            console.warn('Some recording UI elements not found');
+        }
     }
     
     checkBrowserSupport() {
-        // Check if all required APIs are supported
         const isSupported = navigator.mediaDevices && 
                            navigator.mediaDevices.getUserMedia && 
                            window.MediaRecorder;
         
-        // Check if we're in development mode (HTTP on remote)
-        const isDevelopment = window.location.protocol === 'http:' && 
-                             !window.location.hostname.includes('localhost') &&
-                             !window.location.hostname.includes('127.0.0.1');
-        
         if (!isSupported) {
-            // Disable the record button and show a helpful message
+            console.warn('Voice recording not supported in this browser');
             if (this.startBtn) {
                 this.startBtn.disabled = true;
-                
-                if (isDevelopment) {
-                    this.startBtn.innerHTML = '<i class="fas fa-microphone me-1"></i>Dev Mode';
-                    this.startBtn.classList.add('btn-warning');
-                    this.startBtn.classList.remove('btn-primary');
-                    this.startBtn.title = 'Voice recording disabled in HTTP development mode';
-                } else {
-                    this.startBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Not Supported';
-                    this.startBtn.classList.add('btn-secondary');
-                    this.startBtn.classList.remove('btn-primary');
-                    this.startBtn.title = 'Voice recording requires HTTPS and a modern browser';
-                }
-            }
-            
-            // Add a small notice below the button
-            let noticeHtml = '';
-            if (isDevelopment) {
-                noticeHtml = `
-                    <div class="mt-2 text-center">
-                        <small class="text-warning">
-                            <i class="fas fa-tools me-1"></i>
-                            Voice recording disabled in HTTP development mode
-                        </small>
-                    </div>
-                `;
-            } else {
-                noticeHtml = `
-                    <div class="mt-2 text-center">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Voice recording requires HTTPS connection
-                        </small>
-                    </div>
-                `;
-            }
-            
-            if (this.startBtn && this.startBtn.parentNode) {
-                this.startBtn.parentNode.insertAdjacentHTML('afterend', noticeHtml);
+                this.startBtn.title = 'Voice recording not supported';
             }
         }
     }
     
     attachEventListeners() {
-        // Check if we're in development mode (HTTP on remote)
-        const isDevelopment = window.location.protocol === 'http:' && 
-                             !window.location.hostname.includes('localhost') &&
-                             !window.location.hostname.includes('127.0.0.1');
+        if (!this.startBtn) return;
         
-        // Only attach recording listener if APIs are supported
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
+        const isSupported = navigator.mediaDevices && 
+                           navigator.mediaDevices.getUserMedia && 
+                           window.MediaRecorder;
+        
+        if (isSupported) {
             this.startBtn.addEventListener('click', () => this.startRecording());
-            this.pauseBtn.addEventListener('click', () => this.togglePause());
+            this.pauseBtn?.addEventListener('click', () => this.togglePause());
+            this.saveBtn?.addEventListener('click', () => this.saveRecording());
+            this.discardBtn?.addEventListener('click', () => this.discardRecording());
         } else {
             this.startBtn.addEventListener('click', () => {
-                if (isDevelopment) {
-                    alert('Voice recording is disabled in HTTP development mode. Use browser flags or HTTPS for testing.');
-                } else {
-                    alert('Voice recording is not available. This feature requires HTTPS and a modern browser.');
-                }
+                alert('Voice recording is not supported. Please use HTTPS and a modern browser.');
             });
         }
         
-        this.saveBtn.addEventListener('click', () => this.saveRecording());
-        this.discardBtn.addEventListener('click', () => this.discardRecording());
-        
-        // Compact list audio controls
+        // Audio playback controls
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-play-audio')) {
-                const audioUrl = e.target.closest('.btn-play-audio').dataset.audioUrl;
+            if (e.target.classList.contains('play-audio-btn')) {
+                const audioUrl = e.target.dataset.audioUrl;
                 this.playAudio(audioUrl);
-            }
-            
-            if (e.target.closest('.btn-delete-caption')) {
-                const captionId = e.target.closest('.btn-delete-caption').dataset.captionId;
-                this.deleteCaption(captionId);
-            }
-            
-            // Instagram-style caption toggle
-            if (e.target.closest('.caption-toggle-btn')) {
-                const captionId = e.target.closest('.caption-toggle-btn').dataset.captionId;
-                this.toggleCaption(captionId);
             }
         });
     }
     
     getCurrentModality() {
-        // Check which viewer is selected
-        const iosViewer = document.getElementById('iosViewer');
-        const cbctViewer = document.getElementById('cbctViewer');
+        const cbctTab = document.querySelector('#cbct-tab');
+        const iosTab = document.querySelector('#ios-tab');
         
-        if (iosViewer && iosViewer.checked) {
-            return { value: 'ios', display: 'IOS' };
-        } else if (cbctViewer && cbctViewer.checked) {
+        if (cbctTab && cbctTab.classList.contains('active')) {
             return { value: 'cbct', display: 'CBCT' };
+        } else if (iosTab && iosTab.classList.contains('active')) {
+            return { value: 'ios', display: 'Intra-Oral Scans' };
         }
         
-        // Default to CBCT if no selection or viewers not found
         return { value: 'cbct', display: 'CBCT' };
     }
     
     async startRecording() {
-        // Early return if APIs not supported - prevent any execution
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-            alert('Voice recording is not supported. Please use HTTPS and a modern browser.');
-            return;
-        }
-        
         try {
-            // Additional check for MediaDevices API support
-            if (!navigator.mediaDevices) {
-                throw new Error('MediaRecorder API not available. This feature requires HTTPS connection.');
-            }
+            // Get microphone access
+            this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
-            if (!navigator.mediaDevices.getUserMedia) {
-                throw new Error('getUserMedia not supported. Please use a modern browser with HTTPS.');
-            }
+            // Configure MediaRecorder
+            const options = this.getRecorderOptions();
+            this.mediaRecorder = new MediaRecorder(this.stream, options);
             
-            // Check for MediaRecorder support
-            if (!window.MediaRecorder) {
-                throw new Error('MediaRecorder API not supported in this browser.');
-            }
-            
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // Check if webm is supported, fallback to default
-            let options = {
-                mimeType: 'audio/webm',
-                audioBitsPerSecond: 128000
-            };
-            
-            if (!MediaRecorder.isTypeSupported('audio/webm')) {
-                if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                    options.mimeType = 'audio/mp4';
-                } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-                    options.mimeType = 'audio/ogg';
-                } else {
-                    options = {}; // Fall back to browser default
-                }
-            }
-            
-            this.mediaRecorder = new MediaRecorder(stream, options);
-            
+            // Setup data collection
             this.audioChunks = [];
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -190,104 +106,89 @@ class VocalCaptionRecorder {
                 }
             };
             
-            // Start recording and request data every 1 second
-            this.mediaRecorder.start(1000);
-            this.recording = true;
-            this.paused = false;
-            this.startTime = Date.now() - this.pausedTime;
-            this.pausedTime = 0;
+            // Start recording
+            this.mediaRecorder.start(1000); // Collect data every second
             
-            // Update modality indicator
-            const modality = this.getCurrentModality();
-            this.modalityIndicator.textContent = modality.display;
+            // Set state
+            this.isRecording = true;
+            this.isPaused = false;
+            this.recordingStartTime = Date.now();
+            this.totalPausedDuration = 0;
+            this.currentPauseStart = null;
             
+            // Update UI and start timer
             this.updateUI();
             this.startTimer();
             
+            // Update modality indicator
+            const modality = this.getCurrentModality();
+            if (this.modalityIndicator) {
+                this.modalityIndicator.textContent = modality.display;
+            }
+            
         } catch (error) {
-            console.error('Error accessing microphone:', error);
-            
-            let errorMessage = 'Unable to access microphone. ';
-            
-            if (error.name === 'NotAllowedError') {
-                errorMessage += 'Please allow microphone access in your browser settings.';
-            } else if (error.name === 'NotFoundError') {
-                errorMessage += 'No microphone found. Please connect a microphone.';
-            } else if (error.name === 'NotSupportedError' || error.message.includes('not supported')) {
-                errorMessage += 'This feature requires HTTPS or a modern browser.';
-            } else if (error.name === 'NotReadableError') {
-                errorMessage += 'Microphone is already in use by another application.';
-            } else {
-                errorMessage += 'Please check your browser settings and permissions.';
-            }
-            
-            // Reset state when recording fails to start
-            if (this.mediaRecorder && this.mediaRecorder.stream) {
-                this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            }
-            this.mediaRecorder = null;
-            this.recording = false;
-            this.paused = false;
-            this.startTime = null;
-            this.pausedTime = 0;
-            this.audioChunks = [];
-            this.stopTimer();
-            this.resetUI();
-            
-            alert(errorMessage);
+            console.error('Error starting recording:', error);
+            this.handleRecordingError(error);
+            this.cleanup();
         }
     }
-
+    
     togglePause() {
-        if (!this.mediaRecorder || !this.recording) return;
-
-        if (!this.paused) {
-            // Pause recording
-            this.mediaRecorder.pause();
-            this.paused = true;
-            this.pausedTime += Date.now() - this.startTime;  // Accumulate paused time
-            this.stopTimer();
-            this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-            this.pauseBtn.title = 'Resume';
-        } else {
-            // Resume recording
+        if (!this.mediaRecorder || !this.isRecording) return;
+        
+        if (this.isPaused) {
+            // Resume
             this.mediaRecorder.resume();
-            this.paused = false;
-            this.startTime = Date.now();  // Reset start time to now
-            this.startTimer();
+            this.isPaused = false;
+            
+            // Add the pause duration to total
+            if (this.currentPauseStart) {
+                this.totalPausedDuration += Date.now() - this.currentPauseStart;
+                this.currentPauseStart = null;
+            }
+            
             this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
             this.pauseBtn.title = 'Pause';
+        } else {
+            // Pause
+            this.mediaRecorder.pause();
+            this.isPaused = true;
+            this.currentPauseStart = Date.now();
+            
+            this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+            this.pauseBtn.title = 'Resume';
         }
     }
     
     stopRecording() {
-        if (this.mediaRecorder && this.recording) {
-            if (this.paused) {
-                this.mediaRecorder.resume(); // Resume if paused before stopping
+        if (this.mediaRecorder && this.isRecording) {
+            if (this.isPaused) {
+                this.mediaRecorder.resume();
             }
             this.mediaRecorder.stop();
-            // Properly cleanup all tracks
-            if (this.mediaRecorder.stream) {
-                this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            }
-            this.recording = false;
-            this.paused = false;
+            this.isRecording = false;
+            this.isPaused = false;
             this.stopTimer();
         }
+        
+        this.cleanup();
     }
     
     async saveRecording() {
-        if (this.recording) {
-            // Request the final chunk of data
+        if (this.isRecording) {
+            // Get final data chunk
             this.mediaRecorder.requestData();
-            // Stop the recording and wait for the final data
+            
+            // Wait for final data and stop
             await new Promise(resolve => {
-                const originalDataAvailable = this.mediaRecorder.ondataavailable;
-                this.mediaRecorder.ondataavailable = (event) => {
-                    this.audioChunks.push(event.data);
-                    this.mediaRecorder.ondataavailable = originalDataAvailable;
+                const handleFinalData = (event) => {
+                    if (event.data.size > 0) {
+                        this.audioChunks.push(event.data);
+                    }
+                    this.mediaRecorder.removeEventListener('dataavailable', handleFinalData);
                     resolve();
                 };
+                this.mediaRecorder.addEventListener('dataavailable', handleFinalData);
                 this.stopRecording();
             });
         }
@@ -297,16 +198,16 @@ class VocalCaptionRecorder {
             return;
         }
         
-        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        const duration = this.pausedTime + (Date.now() - this.startTime) / 1000;
-        const modality = this.getCurrentModality();
-        
-        const formData = new FormData();
-        formData.append('audio_file', audioBlob, 'recording.webm');
-        formData.append('duration', duration);
-        formData.append('modality', modality.value);
-        
         try {
+            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            const duration = this.getTotalDuration();
+            const modality = this.getCurrentModality();
+            
+            const formData = new FormData();
+            formData.append('audio_file', audioBlob, 'recording.webm');
+            formData.append('duration', duration.toFixed(2));
+            formData.append('modality', modality.value);
+            
             const response = await fetch(window.location.pathname + 'voice-caption/', {
                 method: 'POST',
                 headers: {
@@ -320,12 +221,12 @@ class VocalCaptionRecorder {
                 this.addCaptionToList(result.caption);
                 this.resetUI();
             } else {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error occurred' }));
-                throw new Error(errorData.error || `Upload failed with status ${response.status}`);
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || `Upload failed (${response.status})`);
             }
         } catch (error) {
             console.error('Error saving recording:', error);
-            alert(`Failed to save recording: ${error.message}. Please try again.`);
+            alert(`Failed to save recording: ${error.message}`);
             this.resetUI();
         }
     }
@@ -335,77 +236,26 @@ class VocalCaptionRecorder {
         this.resetUI();
     }
     
-    playAudio(audioUrl) {
-        // Stop any currently playing audio
-        if (this.currentAudio) {
-            this.currentAudio.pause();
-            this.currentAudio.currentTime = 0;
+    getTotalDuration() {
+        if (!this.recordingStartTime) return 0;
+        
+        const now = Date.now();
+        const totalElapsed = now - this.recordingStartTime;
+        
+        // Calculate current pause duration if paused
+        let currentPauseDuration = 0;
+        if (this.isPaused && this.currentPauseStart) {
+            currentPauseDuration = now - this.currentPauseStart;
         }
         
-        this.currentAudio = new Audio(audioUrl);
-        this.currentAudio.play();
-    }
-    
-    toggleCaption(captionId) {
-        const previewElement = document.querySelector(`[data-caption-id="${captionId}"] .caption-text-preview`);
-        const fullElement = document.getElementById(`caption-full-${captionId}`);
-        
-        if (previewElement && fullElement) {
-            if (fullElement.style.display === 'none') {
-                // Show full caption
-                previewElement.style.display = 'none';
-                fullElement.style.display = 'block';
-            } else {
-                // Show preview
-                previewElement.style.display = 'block';
-                fullElement.style.display = 'none';
-            }
-        }
-    }
-    
-    async deleteCaption(captionId) {
-        if (!confirm('Are you sure you want to delete this voice caption?')) return;
-        
-        try {
-            const response = await fetch(`${window.location.pathname}voice-caption/${captionId}/delete/`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                }
-            });
-            
-            if (response.ok) {
-                const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
-                if (captionElement) {
-                    captionElement.remove();
-                }
-                
-                // Show no captions message if list is empty
-                const captionList = document.querySelector('.caption-list-compact');
-                if (captionList && captionList.children.length === 0) {
-                    const noCaptionsHtml = `
-                        <div class="no-captions">
-                            <p class="text-muted mb-0 text-center">
-                                <i class="fas fa-microphone me-1"></i>
-                                No voice captions yet. Click the record button to start!
-                            </p>
-                        </div>
-                    `;
-                    captionList.parentElement.innerHTML = noCaptionsHtml;
-                }
-            } else {
-                throw new Error('Delete failed');
-            }
-        } catch (error) {
-            console.error('Error deleting caption:', error);
-            alert('Failed to delete caption. Please try again.');
-        }
+        const totalPaused = this.totalPausedDuration + currentPauseDuration;
+        return (totalElapsed - totalPaused) / 1000; // Convert to seconds
     }
     
     startTimer() {
         this.timerInterval = setInterval(() => {
-            const elapsed = (Date.now() - this.startTime) / 1000;
-            this.updateTimer(elapsed);
+            const duration = this.getTotalDuration();
+            this.updateTimerDisplay(duration);
         }, 100);
     }
     
@@ -416,154 +266,194 @@ class VocalCaptionRecorder {
         }
     }
     
-    updateTimer(seconds) {
+    updateTimerDisplay(seconds) {
         const minutes = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
-        this.recordingTimer.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         
-        // Update progress bar (max 300 seconds / 5 minutes)
-        const progress = Math.min((seconds / 300) * 100, 100);
-        this.progressBar.style.width = `${progress}%`;
-        
-        // Update progress bar color based on duration
-        this.progressBar.classList.remove('duration-short', 'duration-medium', 'duration-good');
-        
-        if (seconds < 30) {
-            this.progressBar.classList.add('duration-short');
-        } else if (seconds <= 45) {
-            this.progressBar.classList.add('duration-medium');
-        } else {
-            this.progressBar.classList.add('duration-good');
+        if (this.recordingTimer) {
+            this.recordingTimer.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
-
-        // Auto-stop at 5 minutes
+        
+        if (this.progressBar) {
+            const progress = Math.min((seconds / 300) * 100, 100); // Max 5 minutes
+            this.progressBar.style.width = `${progress}%`;
+            
+            // Update color based on duration
+            this.progressBar.classList.remove('duration-short', 'duration-medium', 'duration-good');
+            if (seconds < 30) {
+                this.progressBar.classList.add('duration-short');
+            } else if (seconds <= 45) {
+                this.progressBar.classList.add('duration-medium');
+            } else {
+                this.progressBar.classList.add('duration-good');
+            }
+        }
+        
+        // Auto-save at 5 minutes
         if (seconds >= 300) {
             this.saveRecording();
         }
     }
     
     updateUI() {
-        if (this.recording) {
-            this.startBtn.classList.add('d-none');
-            this.recordingInfo.classList.remove('d-none');
-            this.pauseBtn.classList.remove('d-none');
-            if (this.paused) {
-                this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-                this.pauseBtn.title = 'Resume';
-            } else {
-                this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-                this.pauseBtn.title = 'Pause';
-            }
+        if (this.isRecording) {
+            this.startBtn?.classList.add('d-none');
+            this.recordingInfo?.classList.remove('d-none');
+            this.pauseBtn?.classList.remove('d-none');
         } else {
             this.resetUI();
         }
     }
     
     resetUI() {
-        this.startBtn.classList.remove('d-none');
-        this.recordingInfo.classList.add('d-none');
-        this.audioPlayback.classList.add('d-none');
-        this.pauseBtn.classList.add('d-none');
+        this.startBtn?.classList.remove('d-none');
+        this.recordingInfo?.classList.add('d-none');
+        this.audioPlayback?.classList.add('d-none');
+        this.pauseBtn?.classList.add('d-none');
         
-        this.recordingTimer.textContent = '00:00';
-        this.progressBar.style.width = '0%';
-        this.progressBar.classList.remove('duration-short', 'duration-medium', 'duration-good');
+        if (this.recordingTimer) {
+            this.recordingTimer.textContent = '00:00';
+        }
         
-        // Reset pause button state
-        this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-        this.pauseBtn.title = 'Pause';
+        if (this.progressBar) {
+            this.progressBar.style.width = '0%';
+            this.progressBar.classList.remove('duration-short', 'duration-medium', 'duration-good');
+        }
+        
+        if (this.pauseBtn) {
+            this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+            this.pauseBtn.title = 'Pause';
+        }
+        
+        // Reset state
+        this.audioChunks = [];
+        this.recordingStartTime = null;
+        this.totalPausedDuration = 0;
+        this.currentPauseStart = null;
+        this.isRecording = false;
+        this.isPaused = false;
+    }
+    
+    cleanup() {
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+        this.mediaRecorder = null;
+    }
+    
+    getRecorderOptions() {
+        const options = {
+            audioBitsPerSecond: 128000
+        };
+        
+        // Try preferred formats in order
+        const formats = ['audio/webm', 'audio/mp4', 'audio/ogg'];
+        for (const format of formats) {
+            if (MediaRecorder.isTypeSupported(format)) {
+                options.mimeType = format;
+                break;
+            }
+        }
+        
+        return options;
+    }
+    
+    handleRecordingError(error) {
+        let message = 'Unable to access microphone. ';
+        
+        switch (error.name) {
+            case 'NotAllowedError':
+                message += 'Please allow microphone access in your browser settings.';
+                break;
+            case 'NotFoundError':
+                message += 'No microphone found. Please connect a microphone.';
+                break;
+            case 'NotSupportedError':
+                message += 'This feature requires HTTPS or a modern browser.';
+                break;
+            case 'NotReadableError':
+                message += 'Microphone is already in use by another application.';
+                break;
+            default:
+                message += 'Please check your browser settings and permissions.';
+        }
+        
+        alert(message);
     }
     
     addCaptionToList(caption) {
         const captionListContainer = document.querySelector('.voice-captions-list');
-        const noCaptions = captionListContainer.querySelector('.no-captions');
-        
-        if (noCaptions) {
-            noCaptions.remove();
-        }
-        
-        let captionList = captionListContainer.querySelector('.caption-list-compact');
-        if (!captionList) {
-            captionList = document.createElement('div');
-            captionList.className = 'caption-list-compact';
-            captionListContainer.appendChild(captionList);
-        }
-        
-        // Determine if caption is processed and has text
-        const isProcessed = caption.processing_status === 'completed' && caption.text_caption;
-        
-        let captionTextSection;
-        if (caption.processing_status === 'processing') {
-            captionTextSection = `
-                <small class="text-muted">
-                    <i class="fas fa-spinner fa-spin me-1"></i>
-                    Converting speech to text...
-                </small>
-            `;
-        } else if (caption.processing_status === 'failed') {
-            captionTextSection = `
-                <small class="text-muted">
-                    <i class="fas fa-exclamation-triangle me-1 text-danger"></i>
-                    Processing failed
-                </small>
-            `;
-        } else if (isProcessed) {
-            captionTextSection = `
-                <div class="caption-text-display">
-                    <div class="caption-text-preview">
-                        <small class="text-dark">${caption.text_caption.length > 100 ? caption.text_caption.substring(0, 100) + '...' : caption.text_caption}</small>
-                        ${caption.text_caption.length > 100 ? `
-                            <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
-                                <small class="text-primary">more</small>
-                            </button>
-                        ` : ''}
-                    </div>
-                    <div class="caption-text-full" id="caption-full-${caption.id}" style="display: none;">
-                        <small class="text-dark">${caption.text_caption}</small>
-                        <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
-                            <small class="text-primary">less</small>
-                        </button>
-                    </div>
-                </div>
-            `;
-        } else {
-            captionTextSection = `
-                <small class="text-muted">
-                    <i class="fas fa-clock me-1"></i>
-                    Preprocessing audio...
-                </small>
-            `;
-        }
+        if (!captionListContainer) return;
         
         const captionHtml = `
-            <div class="caption-item-compact" data-caption-id="${caption.id}">
-                <div class="d-flex align-items-center justify-content-between">
-                    <div class="caption-info">
-                        <small class="text-primary me-2">${caption.user_username}</small>
-                        <span class="badge bg-secondary me-1">${caption.modality_display}</span>
-                        <span class="badge bg-${caption.quality_color} me-2">${caption.display_duration}</span>
+            <div class="voice-caption-item border rounded p-3 mb-2" data-caption-id="${caption.id}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="caption-info flex-grow-1">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <span class="badge bg-primary">${caption.modality_display}</span>
+                            <span class="badge bg-${caption.quality_color}">${caption.display_duration}</span>
+                            <small class="text-muted">by ${caption.user_username}</small>
+                        </div>
                         <small class="text-muted">${caption.created_at}</small>
+                        ${caption.is_processed && caption.text_caption ? 
+                            `<div class="mt-2"><small class="text-success">Transcription: ${caption.text_caption}</small></div>` : 
+                            '<div class="mt-2"><small class="text-warning">Processing...</small></div>'
+                        }
                     </div>
-                    <div class="caption-actions">
-                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="${caption.audio_url}" title="Play">
-                            <i class="fas fa-play" style="font-size: 0.75rem;"></i>
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="${caption.id}" title="Delete">
-                            <i class="fas fa-trash" style="font-size: 0.75rem;"></i>
+                    <div class="caption-actions d-flex gap-1">
+                        ${caption.audio_url ? 
+                            `<button class="btn btn-sm btn-outline-primary play-audio-btn" data-audio-url="${caption.audio_url}" title="Play">
+                                <i class="fas fa-play"></i>
+                            </button>` : ''
+                        }
+                        <button class="btn btn-sm btn-outline-danger delete-caption-btn" onclick="recorder.deleteCaption(${caption.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </div>
-                </div>
-                <div class="caption-text-compact mt-1">
-                    ${captionTextSection}
                 </div>
             </div>
         `;
         
-        captionList.insertAdjacentHTML('afterbegin', captionHtml);
+        captionListContainer.insertAdjacentHTML('afterbegin', captionHtml);
+    }
+    
+    async deleteCaption(captionId) {
+        if (!confirm('Are you sure you want to delete this voice caption?')) return;
+        
+        try {
+            const response = await fetch(`${window.location.pathname}voice-caption/${captionId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            });
+            
+            if (response.ok) {
+                document.querySelector(`[data-caption-id="${captionId}"]`)?.remove();
+            } else {
+                throw new Error('Delete failed');
+            }
+        } catch (error) {
+            console.error('Error deleting caption:', error);
+            alert('Failed to delete caption. Please try again.');
+        }
+    }
+    
+    playAudio(audioUrl) {
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+        }
+        
+        this.currentAudio = new Audio(audioUrl);
+        this.currentAudio.play().catch(error => {
+            console.error('Error playing audio:', error);
+            alert('Unable to play audio file.');
+        });
     }
 }
 
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    new VocalCaptionRecorder();
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.recorder = new VocalCaptionRecorder();
 }); 

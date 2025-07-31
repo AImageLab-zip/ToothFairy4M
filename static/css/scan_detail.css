@@ -721,7 +721,6 @@
 .caption-text-full {
     line-height: 1.4;
     word-wrap: break-word;
-    white-space: pre-wrap;
     max-height: 300px;
     overflow-y: auto;
 }
