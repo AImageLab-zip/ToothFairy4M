@@ -5,7 +5,7 @@ class VocalCaptionRecorder {
         this.recording = false;
         this.paused = false;
         this.startTime = null;
-        this.pausedTime = 0;
+        this.pausedTime = 0;  // Initialize to 0
         this.timerInterval = null;
         this.currentAudio = null;
         
@@ -212,6 +212,19 @@ class VocalCaptionRecorder {
                 errorMessage += 'Please check your browser settings and permissions.';
             }
             
+            // Reset state when recording fails to start
+            if (this.mediaRecorder && this.mediaRecorder.stream) {
+                this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+            this.mediaRecorder = null;
+            this.recording = false;
+            this.paused = false;
+            this.startTime = null;
+            this.pausedTime = 0;
+            this.audioChunks = [];
+            this.stopTimer();
+            this.resetUI();
+            
             alert(errorMessage);
         }
     }
@@ -223,7 +236,7 @@ class VocalCaptionRecorder {
             // Pause recording
             this.mediaRecorder.pause();
             this.paused = true;
-            this.pausedTime = Date.now() - this.startTime;
+            this.pausedTime += Date.now() - this.startTime;  // Accumulate paused time
             this.stopTimer();
             this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
             this.pauseBtn.title = 'Resume';
@@ -231,7 +244,7 @@ class VocalCaptionRecorder {
             // Resume recording
             this.mediaRecorder.resume();
             this.paused = false;
-            this.startTime = Date.now() - this.pausedTime;
+            this.startTime = Date.now();  // Reset start time to now
             this.startTimer();
             this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
             this.pauseBtn.title = 'Pause';
@@ -244,7 +257,10 @@ class VocalCaptionRecorder {
                 this.mediaRecorder.resume(); // Resume if paused before stopping
             }
             this.mediaRecorder.stop();
-            this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            // Properly cleanup all tracks
+            if (this.mediaRecorder.stream) {
+                this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
             this.recording = false;
             this.paused = false;
             this.stopTimer();
@@ -256,7 +272,10 @@ class VocalCaptionRecorder {
             this.stopRecording();
         }
         
-        if (this.audioChunks.length === 0) return;
+        if (this.audioChunks.length === 0) {
+            alert('No audio recorded. Please record something before saving.');
+            return;
+        }
         
         const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
         const duration = this.pausedTime + (Date.now() - this.startTime) / 1000;
@@ -281,11 +300,12 @@ class VocalCaptionRecorder {
                 this.addCaptionToList(result.caption);
                 this.resetUI();
             } else {
-                throw new Error('Upload failed');
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error occurred' }));
+                throw new Error(errorData.error || `Upload failed with status ${response.status}`);
             }
         } catch (error) {
             console.error('Error saving recording:', error);
-            alert('Failed to save recording. Please try again.');
+            alert(`Failed to save recording: ${error.message}. Please try again.`);
             this.resetUI();
         }
     }
