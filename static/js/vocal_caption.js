@@ -259,7 +259,7 @@ class VocalCaptionRecorder {
         if (this.audioChunks.length === 0) return;
         
         const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        const duration = this.pausedTime || (Date.now() - this.startTime) / 1000;
+        const duration = this.pausedTime + (Date.now() - this.startTime) / 1000;
         const modality = this.getCurrentModality();
         
         const formData = new FormData();
