@@ -370,6 +370,9 @@
     border-radius: 0.375rem;
     padding: 0.75rem;
     transition: background-color 0.15s ease;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .caption-item-compact:hover {
@@ -695,11 +698,17 @@
 .caption-text-display {
     border-top: 1px solid #f1f3f4;
     padding-top: 0.5rem;
+    width: 100%;
+    max-width: 100%;
 }
 
 .caption-text-preview {
     line-height: 1.4;
     word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .caption-text-full {
