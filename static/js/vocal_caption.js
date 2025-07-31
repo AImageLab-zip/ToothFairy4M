@@ -166,23 +166,32 @@ class VocalCaptionRecorder {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
             // Check if webm is supported, fallback to default
-            let options = {};
-            if (MediaRecorder.isTypeSupported('audio/webm')) {
-                options.mimeType = 'audio/webm';
-            } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                options.mimeType = 'audio/mp4';
-            } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-                options.mimeType = 'audio/ogg';
+            let options = {
+                mimeType: 'audio/webm',
+                audioBitsPerSecond: 128000
+            };
+            
+            if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                    options.mimeType = 'audio/mp4';
+                } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                    options.mimeType = 'audio/ogg';
+                } else {
+                    options = {}; // Fall back to browser default
+                }
             }
             
             this.mediaRecorder = new MediaRecorder(stream, options);
             
             this.audioChunks = [];
             this.mediaRecorder.ondataavailable = (event) => {
-                this.audioChunks.push(event.data);
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
             };
             
-            this.mediaRecorder.start();
+            // Start recording and request data every 1 second
+            this.mediaRecorder.start(1000);
             this.recording = true;
             this.paused = false;
             this.startTime = Date.now() - this.pausedTime;
@@ -230,9 +239,9 @@ class VocalCaptionRecorder {
     }
 
     togglePause() {
-        if (!this.mediaRecorder) return;
+        if (!this.mediaRecorder || !this.recording) return;
 
-        if (this.recording && !this.paused) {
+        if (!this.paused) {
             // Pause recording
             this.mediaRecorder.pause();
             this.paused = true;
@@ -240,7 +249,7 @@ class VocalCaptionRecorder {
             this.stopTimer();
             this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
             this.pauseBtn.title = 'Resume';
-        } else if (this.recording && this.paused) {
+        } else {
             // Resume recording
             this.mediaRecorder.resume();
             this.paused = false;
@@ -269,7 +278,18 @@ class VocalCaptionRecorder {
     
     async saveRecording() {
         if (this.recording) {
-            this.stopRecording();
+            // Request the final chunk of data
+            this.mediaRecorder.requestData();
+            // Stop the recording and wait for the final data
+            await new Promise(resolve => {
+                const originalDataAvailable = this.mediaRecorder.ondataavailable;
+                this.mediaRecorder.ondataavailable = (event) => {
+                    this.audioChunks.push(event.data);
+                    this.mediaRecorder.ondataavailable = originalDataAvailable;
+                    resolve();
+                };
+                this.stopRecording();
+            });
         }
         
         if (this.audioChunks.length === 0) {
