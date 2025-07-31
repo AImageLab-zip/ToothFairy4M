@@ -28,6 +28,15 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
+# HTTPS settings - enforce HTTPS everywhere
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -133,10 +142,11 @@ MEDIA_ROOT = BASE_DIR / "storage"
 
 # CORS settings for frontend
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "https://toothfairy4m.ing.unimore.it",
+    "https://localhost:3000",
+    "https://127.0.0.1:3000",
+    "https://localhost:8000",
+    "https://127.0.0.1:8000",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
