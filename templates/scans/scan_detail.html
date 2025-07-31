@@ -234,7 +234,7 @@
 {
     "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
     "scanId": {{ scan_pair.scanpair_id }},
-    "hasCBCT": {% if scan_pair.cbct %}true{% else %}false{% endif %}
+    "hasCBCT": {{ has_cbct|yesno:"true,false" }}
 }
 </script>
 <script src="{% static 'js/scan_detail.js' %}"></script>

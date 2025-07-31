@@ -318,6 +318,17 @@ def scan_detail(request, scanpair_id):
     # Initialize scan management form
     management_form = ScanManagementForm(instance=scan_pair)
     
+    # Check for CBCT availability in FileRegistry
+    has_cbct = False
+    try:
+        raw_cbct = scan_pair.get_cbct_raw_file()
+        if raw_cbct and os.path.exists(raw_cbct.file_path):
+            has_cbct = True
+        elif scan_pair.cbct:  # Fallback to old field
+            has_cbct = True
+    except:
+        pass
+    
     # Handle POST requests
     if request.method == 'POST' and user_profile.is_annotator():
         action = request.POST.get('action')
@@ -419,6 +430,7 @@ def scan_detail(request, scanpair_id):
         'manual_classification': manual_classification,
         'user_profile': user_profile,
         'management_form': management_form,
+        'has_cbct': has_cbct,  # Add has_cbct to context
     }
     return render(request, 'scans/scan_detail.html', context)
 
