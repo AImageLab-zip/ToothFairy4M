@@ -399,24 +399,49 @@ class VocalCaptionRecorder {
         
         // Determine if caption is processed and has text
         const isProcessed = caption.processing_status === 'completed' && caption.text_caption;
-        const expandSection = isProcessed ? `
-            <div class="caption-text-display mt-2">
-                <div class="caption-text-preview">
-                    <small class="text-dark">${caption.text_caption.length > 100 ? caption.text_caption.substring(0, 100) + '...' : caption.text_caption}</small>
-                    ${caption.text_caption.length > 100 ? `
+        
+        let captionTextSection;
+        if (caption.processing_status === 'processing') {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    Converting speech to text...
+                </small>
+            `;
+        } else if (caption.processing_status === 'failed') {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-exclamation-triangle me-1 text-danger"></i>
+                    Processing failed
+                </small>
+            `;
+        } else if (isProcessed) {
+            captionTextSection = `
+                <div class="caption-text-display">
+                    <div class="caption-text-preview">
+                        <small class="text-dark">${caption.text_caption.length > 100 ? caption.text_caption.substring(0, 100) + '...' : caption.text_caption}</small>
+                        ${caption.text_caption.length > 100 ? `
+                            <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
+                                <small class="text-primary">more</small>
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div class="caption-text-full" id="caption-full-${caption.id}" style="display: none;">
+                        <small class="text-dark">${caption.text_caption}</small>
                         <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
-                            <small class="text-primary">more</small>
+                            <small class="text-primary">less</small>
                         </button>
-                    ` : ''}
+                    </div>
                 </div>
-                <div class="caption-text-full" id="caption-full-${caption.id}" style="display: none;">
-                    <small class="text-dark">${caption.text_caption}</small>
-                    <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
-                        <small class="text-primary">less</small>
-                    </button>
-                </div>
-            </div>
-        ` : '';
+            `;
+        } else {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-clock me-1"></i>
+                    Preprocessing audio...
+                </small>
+            `;
+        }
         
         const captionHtml = `
             <div class="caption-item-compact" data-caption-id="${caption.id}">
@@ -437,11 +462,7 @@ class VocalCaptionRecorder {
                     </div>
                 </div>
                 <div class="caption-text-compact mt-1">
-                    <small class="text-muted">
-                        <i class="fas fa-spinner fa-spin me-1"></i>
-                        Preprocessing audio...
-                    </small>
-                    ${expandSection}
+                    ${captionTextSection}
                 </div>
             </div>
         `;

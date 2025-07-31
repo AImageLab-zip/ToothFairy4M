@@ -76,21 +76,18 @@
                                 </div>
                                 
                                 <div class="caption-text-compact mt-1">
-                                    <small class="text-muted">
-                                        {% if caption.processing_status == 'processing' %}
+                                    {% if caption.processing_status == 'processing' %}
+                                        <small class="text-muted">
                                             <i class="fas fa-spinner fa-spin me-1"></i>
-                                        {% elif caption.processing_status == 'failed' %}
+                                            Converting speech to text...
+                                        </small>
+                                    {% elif caption.processing_status == 'failed' %}
+                                        <small class="text-muted">
                                             <i class="fas fa-exclamation-triangle me-1 text-danger"></i>
-                                        {% elif caption.is_processed %}
-                                            <i class="fas fa-check me-1 text-success"></i>
-                                        {% else %}
-                                            <i class="fas fa-clock me-1"></i>
-                                        {% endif %}
-                                        {{ caption.get_processing_display_text }}
-                                    </small>
-                                    
-                                    {% if caption.is_processed and caption.text_caption %}
-                                        <div class="caption-text-display mt-2">
+                                            Processing failed
+                                        </small>
+                                    {% elif caption.is_processed and caption.text_caption %}
+                                        <div class="caption-text-display">
                                             <div class="caption-text-preview">
                                                 <small class="text-dark">{{ caption.text_caption|truncatechars:100 }}</small>
                                                 {% if caption.text_caption|length > 100 %}
@@ -108,6 +105,11 @@
                                                 </button>
                                             </div>
                                         </div>
+                                    {% else %}
+                                        <small class="text-muted">
+                                            <i class="fas fa-clock me-1"></i>
+                                            Preprocessing audio...
+                                        </small>
                                     {% endif %}
                                 </div>
                             </div>
