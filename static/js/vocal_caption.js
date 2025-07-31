@@ -374,6 +374,28 @@ class VocalCaptionRecorder {
             captionListContainer.appendChild(captionList);
         }
         
+        // Determine if caption is processed and has text
+        const isProcessed = caption.processing_status === 'completed' && caption.text_caption;
+        const expandSection = isProcessed ? `
+            <div class="caption-expand-section mt-2">
+                <button class="btn btn-link btn-sm p-0 caption-expand-btn" 
+                        data-caption-id="${caption.id}" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#caption-${caption.id}" 
+                        aria-expanded="false">
+                    <small class="text-primary">
+                        <i class="fas fa-chevron-down me-1"></i>
+                        Read caption
+                    </small>
+                </button>
+                <div class="collapse caption-content" id="caption-${caption.id}">
+                    <div class="caption-text-expanded mt-2 p-2">
+                        <small class="text-dark">${caption.text_caption}</small>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+        
         const captionHtml = `
             <div class="caption-item-compact" data-caption-id="${caption.id}">
                 <div class="d-flex align-items-center justify-content-between">
@@ -397,6 +419,7 @@ class VocalCaptionRecorder {
                         <i class="fas fa-spinner fa-spin me-1"></i>
                         Preprocessing audio...
                     </small>
+                    ${expandSection}
                 </div>
             </div>
         `;

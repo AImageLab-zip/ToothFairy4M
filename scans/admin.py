@@ -49,7 +49,7 @@ class VoiceCaptionAdmin(admin.ModelAdmin):
     
     def get_readonly_fields(self, request, obj=None):
         if obj:  # Editing an existing object
-            return self.readonly_fields + ['scanpair', 'user', 'audio_file']
+            return self.readonly_fields + ['scanpair', 'user']
         return self.readonly_fields
 
 

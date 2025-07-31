@@ -347,13 +347,26 @@ def mark_job_completed(job_id, output_files, logs=None):
             logger.info(f"Updating voice caption processing status")
             job.voice_caption.processing_status = 'completed'
             # Extract text from output files if available
+            text_extracted = False
             for file_path in output_files.values():
                 if file_path.endswith('.txt'):
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
-                            job.voice_caption.text_caption = f.read()
-                    except:
-                        pass
+                            text_content = f.read().strip()
+                            if text_content:  # Only update if we got actual text
+                                job.voice_caption.text_caption = text_content
+                                text_extracted = True
+                                logger.info(f"Successfully extracted text from {file_path}: {text_content[:50]}...")
+                            else:
+                                logger.warning(f"Text file {file_path} is empty")
+                    except Exception as e:
+                        logger.error(f"Error reading text file {file_path}: {e}")
+            
+            if not text_extracted:
+                logger.warning(f"No text was extracted for voice caption {job.voice_caption.id}")
+                # Set a placeholder text to indicate processing completed but no text found
+                job.voice_caption.text_caption = "[Audio processed but no transcription available]"
+            
             job.voice_caption.save()
             
         logger.info(f"mark_job_completed completed successfully")

@@ -62,9 +62,11 @@
                                         <small class="text-muted">{{ caption.created_at|date:"M d, H:i" }}</small>
                                     </div>
                                     <div class="caption-actions">
-                                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="{{ caption.audio_file.url }}" title="Play">
+                                        {% if caption.get_audio_file %}
+                                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="/api/processing/files/serve/{{ caption.get_audio_file.id }}/" title="Play">
                                             <i class="fas fa-play" style="font-size: 0.75rem;"></i>
                                         </button>
+                                        {% endif %}
                                         {% if user_profile.is_annotator or caption.user == request.user %}
                                         <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="{{ caption.id }}" title="Delete">
                                             <i class="fas fa-trash" style="font-size: 0.75rem;"></i>
@@ -73,24 +75,40 @@
                                     </div>
                                 </div>
                                 
-                                {% if caption.is_processed %}
-                                    <div class="caption-text-compact mt-1">
-                                        <small class="text-muted">{{ caption.text_caption }}</small>
-                                    </div>
-                                {% else %}
-                                    <div class="caption-text-compact mt-1">
-                                        <small class="text-muted">
+                                <div class="caption-text-compact mt-1">
+                                    <small class="text-muted">
+                                        {% if caption.processing_status == 'processing' %}
                                             <i class="fas fa-spinner fa-spin me-1"></i>
-                                            {% if caption.processing_status == 'processing' %}
-                                                Converting speech to text...
-                                            {% elif caption.processing_status == 'failed' %}
-                                                <span class="text-danger">Processing failed</span>
-                                            {% else %}
-                                                Preprocessing audio...
-                                            {% endif %}
-                                        </small>
-                                    </div>
-                                {% endif %}
+                                        {% elif caption.processing_status == 'failed' %}
+                                            <i class="fas fa-exclamation-triangle me-1 text-danger"></i>
+                                        {% elif caption.is_processed %}
+                                            <i class="fas fa-check me-1 text-success"></i>
+                                        {% else %}
+                                            <i class="fas fa-clock me-1"></i>
+                                        {% endif %}
+                                        {{ caption.get_processing_display_text }}
+                                    </small>
+                                    
+                                    {% if caption.is_processed and caption.text_caption %}
+                                        <div class="caption-expand-section mt-2">
+                                            <button class="btn btn-link btn-sm p-0 caption-expand-btn" 
+                                                    data-caption-id="{{ caption.id }}" 
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#caption-{{ caption.id }}" 
+                                                    aria-expanded="false">
+                                                <small class="text-primary">
+                                                    <i class="fas fa-chevron-down me-1"></i>
+                                                    Read caption
+                                                </small>
+                                            </button>
+                                            <div class="collapse caption-content" id="caption-{{ caption.id }}">
+                                                <div class="caption-text-expanded mt-2 p-2">
+                                                    <small class="text-dark">{{ caption.text_caption }}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </div>
                             </div>
                         {% endfor %}
                     </div>

@@ -364,7 +364,21 @@ class VoiceCaption(models.Model):
     
     def is_processed(self):
         """Check if speech-to-text processing is complete"""
-        return self.processing_status == 'completed' and self.text_caption
+        return self.processing_status == 'completed' and self.text_caption and self.text_caption != "[Audio processed but no transcription available]"
+    
+    def get_processing_display_text(self):
+        """Get display text based on processing status"""
+        if self.processing_status == 'completed':
+            if self.text_caption and self.text_caption != "[Audio processed but no transcription available]":
+                return self.text_caption
+            else:
+                return "[Audio processed but no transcription available]"
+        elif self.processing_status == 'processing':
+            return "Converting speech to text..."
+        elif self.processing_status == 'failed':
+            return "Processing failed"
+        else:
+            return "Preprocessing audio..."
     
     def get_audio_file(self):
         """Get audio file from FileRegistry"""
