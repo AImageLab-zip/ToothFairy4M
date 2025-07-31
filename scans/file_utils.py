@@ -344,7 +344,7 @@ def mark_job_completed(job_id, output_files, logs=None):
             job.scanpair.ios_processing_status = 'processed'
             job.scanpair.save()
         elif job.voice_caption and job.job_type == 'audio':
-            logger.info(f"Updating voice caption processing status")
+            
             job.voice_caption.processing_status = 'completed'
             
             # Use logs parameter directly if it contains transcription text
@@ -352,6 +352,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                 job.voice_caption.text_caption = logs.strip()
                 logger.info(f"Successfully saved transcription from logs: {logs[:50]}...")
             else:
+                logger.warning(f"Logs parameter is empty or invalid: {logs}")
                 # Fallback: try to extract text from output files if available
                 text_extracted = False
                 for file_path in output_files.values():
@@ -371,7 +372,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                 if not text_extracted:
                     logger.warning(f"No text was extracted for voice caption {job.voice_caption.id}")
                     # Set a placeholder text to indicate processing completed but no text found
-                    job.voice_caption.text_caption = "[Audio processed but no transcription available]"
+                    job.voice_caption.text_caption = ""
             
             job.voice_caption.save()
             

@@ -115,9 +115,21 @@ def mark_job_completed_api(request, job_id):
         output_files = data.get('output_files', {})
         logs = data.get('logs', None)
         
-        logger.info(f"Parsed data - output_files keys: {list(output_files.keys()) if output_files else 'None'}, logs present: {logs is not None}")
+        # Also check for transcription in other possible fields
+        transcription = data.get('transcription', None)
+        text = data.get('text', None)
         
-        success = mark_job_completed(job_id, output_files, logs)
+        # Use the first available transcription source
+        if logs and isinstance(logs, str) and logs.strip():
+            transcription_text = logs
+        elif transcription and isinstance(transcription, str) and transcription.strip():
+            transcription_text = transcription
+        elif text and isinstance(text, str) and text.strip():
+            transcription_text = text
+        else:
+            transcription_text = "Error"
+        
+        success = mark_job_completed(job_id, output_files, transcription_text)
         
         if success:
             job = ProcessingJob.objects.get(id=job_id)
