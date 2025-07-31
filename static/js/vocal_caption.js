@@ -3,7 +3,9 @@ class VocalCaptionRecorder {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.recording = false;
+        this.paused = false;
         this.startTime = null;
+        this.pausedTime = 0;
         this.timerInterval = null;
         this.currentAudio = null;
         
@@ -14,6 +16,7 @@ class VocalCaptionRecorder {
     
     initializeElements() {
         this.startBtn = document.getElementById('startRecording');
+        this.pauseBtn = document.getElementById('pauseRecording');
         this.saveBtn = document.getElementById('saveRecording');
         this.discardBtn = document.getElementById('discardRecording');
         this.recordingInfo = document.getElementById('recordingInfo');
@@ -89,6 +92,7 @@ class VocalCaptionRecorder {
         // Only attach recording listener if APIs are supported
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
             this.startBtn.addEventListener('click', () => this.startRecording());
+            this.pauseBtn.addEventListener('click', () => this.togglePause());
         } else {
             this.startBtn.addEventListener('click', () => {
                 if (isDevelopment) {
@@ -180,7 +184,9 @@ class VocalCaptionRecorder {
             
             this.mediaRecorder.start();
             this.recording = true;
-            this.startTime = Date.now();
+            this.paused = false;
+            this.startTime = Date.now() - this.pausedTime;
+            this.pausedTime = 0;
             
             // Update modality indicator
             const modality = this.getCurrentModality();
@@ -209,25 +215,51 @@ class VocalCaptionRecorder {
             alert(errorMessage);
         }
     }
+
+    togglePause() {
+        if (!this.mediaRecorder) return;
+
+        if (this.recording && !this.paused) {
+            // Pause recording
+            this.mediaRecorder.pause();
+            this.paused = true;
+            this.pausedTime = Date.now() - this.startTime;
+            this.stopTimer();
+            this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+            this.pauseBtn.title = 'Resume';
+        } else if (this.recording && this.paused) {
+            // Resume recording
+            this.mediaRecorder.resume();
+            this.paused = false;
+            this.startTime = Date.now() - this.pausedTime;
+            this.startTimer();
+            this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+            this.pauseBtn.title = 'Pause';
+        }
+    }
     
     stopRecording() {
         if (this.mediaRecorder && this.recording) {
+            if (this.paused) {
+                this.mediaRecorder.resume(); // Resume if paused before stopping
+            }
             this.mediaRecorder.stop();
             this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
             this.recording = false;
+            this.paused = false;
             this.stopTimer();
         }
     }
     
     async saveRecording() {
-        if (!this.recording) return;  // If not recording, do nothing
-        
-        this.stopRecording();
+        if (this.recording) {
+            this.stopRecording();
+        }
         
         if (this.audioChunks.length === 0) return;
         
         const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        const duration = (Date.now() - this.startTime) / 1000;
+        const duration = this.pausedTime || (Date.now() - this.startTime) / 1000;
         const modality = this.getCurrentModality();
         
         const formData = new FormData();
@@ -374,6 +406,14 @@ class VocalCaptionRecorder {
         if (this.recording) {
             this.startBtn.classList.add('d-none');
             this.recordingInfo.classList.remove('d-none');
+            this.pauseBtn.classList.remove('d-none');
+            if (this.paused) {
+                this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
+                this.pauseBtn.title = 'Resume';
+            } else {
+                this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                this.pauseBtn.title = 'Pause';
+            }
         } else {
             this.resetUI();
         }
@@ -383,10 +423,15 @@ class VocalCaptionRecorder {
         this.startBtn.classList.remove('d-none');
         this.recordingInfo.classList.add('d-none');
         this.audioPlayback.classList.add('d-none');
+        this.pauseBtn.classList.add('d-none');
         
         this.recordingTimer.textContent = '00:00';
         this.progressBar.style.width = '0%';
         this.progressBar.classList.remove('duration-short', 'duration-medium', 'duration-good');
+        
+        // Reset pause button state
+        this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+        this.pauseBtn.title = 'Pause';
     }
     
     addCaptionToList(caption) {

@@ -707,9 +707,10 @@ def delete_voice_caption(request, scanpair_id, caption_id):
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
     try:
-        # Delete the audio file from storage
-        if voice_caption.audio_file:
-            voice_caption.audio_file.delete(save=False)
+        # Delete the audio file from FileRegistry if it exists
+        audio_file = voice_caption.get_audio_file()
+        if audio_file:
+            audio_file.delete()
         
         # Delete the caption
         voice_caption.delete()
