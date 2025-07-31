@@ -578,7 +578,6 @@ def scan_viewer_data(request, scanpair_id):
 @login_required
 def scan_cbct_data(request, scanpair_id):
     """API endpoint to serve CBCT data"""
-    import gzip
     import os
     
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
@@ -610,28 +609,12 @@ def scan_cbct_data(request, scanpair_id):
         return JsonResponse({'error': 'No CBCT data available'}, status=404)
     
     try:
-        # Check if file is gzipped and decompress if needed
+        # Just read and send the file as-is, whether it's compressed or not
         with open(file_path, 'rb') as f:
-            # Read first 2 bytes to check for gzip magic number
-            magic = f.read(2)
-            f.seek(0)
-            
-            if magic == b'\x1f\x8b':  # gzip magic number
-                print(f"Decompressing gzipped CBCT file: {file_path}")
-                # Decompress the file
-                with gzip.open(file_path, 'rb') as gz_file:
-                    decompressed_data = gz_file.read()
-                
-                response = HttpResponse(decompressed_data, content_type='application/octet-stream')
-                response['Content-Disposition'] = f'attachment; filename="cbct_{scanpair_id}.nii"'
-                response['X-Decompressed'] = 'true'  # Header to indicate decompression
-                return response
-            else:
-                # File is not gzipped, serve as-is
-                data = f.read()
-                response = HttpResponse(data, content_type='application/octet-stream')
-                response['Content-Disposition'] = f'attachment; filename="cbct_{scanpair_id}.nii"'
-                return response
+            data = f.read()
+            response = HttpResponse(data, content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="cbct_{scanpair_id}.nii.gz"'
+            return response
                 
     except Exception as e:
         print(f"Error serving CBCT data: {e}")

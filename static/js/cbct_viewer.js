@@ -79,20 +79,34 @@ window.CBCTViewer = {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
-                // Check if server decompressed the data
-                const isDecompressed = response.headers.get('X-Decompressed') === 'true';
-                console.log('Server decompressed:', isDecompressed);
-                
                 return response.arrayBuffer();
             })
-            .then(data => {
-                console.log('CBCT data loaded, size:', data.byteLength);
-                this.parseNiftiData(data);
+            .then(async compressedData => {
+                console.log('Compressed CBCT data loaded, size:', compressedData.byteLength);
+                
+                try {
+                    // Check for gzip magic number (0x1f, 0x8b)
+                    const header = new Uint8Array(compressedData.slice(0, 2));
+                    if (header[0] === 0x1f && header[1] === 0x8b) {
+                        console.log('Decompressing gzipped NIFTI data...');
+                        // Use pako or fflate for decompression
+                        const decompressedData = pako.inflate(new Uint8Array(compressedData));
+                        console.log('Decompressed size:', decompressedData.length);
+                        this.parseNiftiData(decompressedData.buffer);
+                    } else {
+                        // Data is not compressed, use as-is
+                        console.log('NIFTI data is not compressed, using as-is');
+                        this.parseNiftiData(compressedData);
+                    }
+                } catch (error) {
+                    console.error('Error during decompression:', error);
+                    this.loading = false;
+                    this.showError('Failed to decompress CBCT data');
+                }
             })
             .catch(error => {
                 console.error('Error loading CBCT data:', error);
-                this.loading = false; // Reset loading state on error
+                this.loading = false;
                 this.showError('Failed to load CBCT data');
             });
     },
