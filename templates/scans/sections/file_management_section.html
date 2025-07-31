@@ -17,10 +17,10 @@
                         <label class="form-label-sm">Upper Scan</label>
                         <input type="file" name="upper_scan" class="form-control form-control-sm" accept=".stl,.obj">
                         <small class="text-muted">Current: 
-                            {% if scan_pair.upper_scan_raw %}
-                                <i class="fas fa-check text-success"></i> Uploaded
+                            {% if scan_pair.has_ios_scans %}
+                                <i class="fas fa-check text-success"></i> Available
                             {% else %}
-                                <i class="fas fa-times text-danger"></i> Not uploaded
+                                <i class="fas fa-times text-danger"></i> Not available
                             {% endif %}
                         </small>
                     </div>
@@ -28,10 +28,10 @@
                         <label class="form-label-sm">Lower Scan</label>
                         <input type="file" name="lower_scan" class="form-control form-control-sm" accept=".stl,.obj">
                         <small class="text-muted">Current: 
-                            {% if scan_pair.lower_scan_raw %}
-                                <i class="fas fa-check text-success"></i> Uploaded
+                            {% if scan_pair.has_ios_scans %}
+                                <i class="fas fa-check text-success"></i> Available
                             {% else %}
-                                <i class="fas fa-times text-danger"></i> Not uploaded
+                                <i class="fas fa-times text-danger"></i> Not available
                             {% endif %}
                         </small>
                     </div>
@@ -40,10 +40,10 @@
                         <input type="file" name="cbct" class="form-control form-control-sm" accept=".nii.gz,.nii">
                         <small class="text-muted">
                             Current: 
-                            {% if scan_pair.cbct %}
-                                <i class="fas fa-check text-success"></i> Uploaded
+                            {% if scan_pair.has_cbct_scan %}
+                                <i class="fas fa-check text-success"></i> Available
                             {% else %}
-                                <i class="fas fa-times text-danger"></i> Not uploaded
+                                <i class="fas fa-times text-danger"></i> Not available
                             {% endif %}
                             | Volumetric data for patient {{ scan_pair.patient.patient_id }}
                         </small>

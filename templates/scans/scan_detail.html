@@ -145,42 +145,58 @@
                 
                 <!-- CBCT Viewer -->
                 <div id="cbct-viewer" class="viewer-container" style="display: none;">
-                    <div class="cbct-loading" id="cbctLoading">
-                        <div class="text-center py-4">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 text-muted">Loading CBCT data...</p>
-                        </div>
-                    </div>
-                    <div class="cbct-views" id="cbctViews" style="display: none;">
-                        <div class="row g-2 h-100">
-                            <div class="col-6">
-                                <div class="cbct-view-container">
-                                    <div class="cbct-view-label">Axial</div>
-                                    <div id="axialView" class="cbct-view"></div>
+                    {% if not scan_pair.has_cbct_scan %}
+                        <!-- No CBCT Data State -->
+                        <div class="ios-status-display">
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="fas fa-cube fa-3x text-secondary"></i>
                                 </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="cbct-view-container">
-                                    <div class="cbct-view-label">Sagittal</div>
-                                    <div id="sagittalView" class="cbct-view"></div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="cbct-view-container">
-                                    <div class="cbct-view-label">Coronal</div>
-                                    <div id="coronalView" class="cbct-view"></div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="cbct-view-container">
-                                    <div class="cbct-view-label">3D Volume</div>
-                                    <div id="volumeView" class="cbct-view"></div>
-                                </div>
+                                <h5 class="text-secondary mb-2">No CBCT Data</h5>
+                                <p class="text-muted">
+                                    Upload CBCT scan to view volumetric data here.
+                                </p>
                             </div>
                         </div>
-                    </div>
+                    {% else %}
+                        <!-- CBCT Loading and Views -->
+                        <div class="cbct-loading" id="cbctLoading">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Loading CBCT data...</p>
+                            </div>
+                        </div>
+                        <div class="cbct-views" id="cbctViews" style="display: none;">
+                            <div class="row g-2 h-100">
+                                <div class="col-6">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Axial</div>
+                                        <div id="axialView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Sagittal</div>
+                                        <div id="sagittalView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Coronal</div>
+                                        <div id="coronalView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">3D Volume</div>
+                                        <div id="volumeView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

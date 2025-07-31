@@ -166,10 +166,16 @@ class ScanPair(models.Model):
         
         # Check FileRegistry for new processing flow
         try:
-            upper_exists = self.files.filter(file_type='ios_raw_upper').exists()
-            lower_exists = self.files.filter(file_type='ios_raw_lower').exists()
-            return upper_exists and lower_exists
-        except:
+            # Check for both raw and processed files
+            upper_raw = self.files.filter(file_type='ios_raw_upper').exists()
+            lower_raw = self.files.filter(file_type='ios_raw_lower').exists()
+            upper_processed = self.files.filter(file_type='ios_processed_upper').exists()
+            lower_processed = self.files.filter(file_type='ios_processed_lower').exists()
+            
+            # Return True if we have either raw or processed files for both upper and lower
+            return (upper_raw or upper_processed) and (lower_raw or lower_processed)
+        except Exception as e:
+            print(f"Error checking IOS files for scanpair {self.scanpair_id}: {e}")
             return False
         
     def has_cbct_scan(self):
@@ -180,8 +186,12 @@ class ScanPair(models.Model):
             
         # Check FileRegistry for new processing flow
         try:
-            return self.files.filter(file_type='cbct_raw').exists()
-        except:
+            # Check for both raw and processed CBCT files
+            has_raw = self.files.filter(file_type='cbct_raw').exists()
+            has_processed = self.files.filter(file_type='cbct_processed').exists()
+            return has_raw or has_processed
+        except Exception as e:
+            print(f"Error checking CBCT files for scanpair {self.scanpair_id}: {e}")
             return False
         
     def is_ios_processed(self):
