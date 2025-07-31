@@ -38,8 +38,9 @@ def register(request):
         if form.is_valid():
             invitation = Invitation.objects.get(code=form.cleaned_data['invitation_code'])
             user = form.save()
-            # Create user profile with role from invitation
-            UserProfile.objects.create(user=user, role=invitation.role)
+            # Update the user profile with role from invitation (signal already created it)
+            user.profile.role = invitation.role
+            user.profile.save()
             # Mark invitation as used
             invitation.used_at = timezone.now()
             invitation.used_by = user
