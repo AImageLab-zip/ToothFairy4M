@@ -113,6 +113,12 @@ class VocalCaptionRecorder {
                 const captionId = e.target.closest('.btn-delete-caption').dataset.captionId;
                 this.deleteCaption(captionId);
             }
+            
+            // Instagram-style caption toggle
+            if (e.target.closest('.caption-toggle-btn')) {
+                const captionId = e.target.closest('.caption-toggle-btn').dataset.captionId;
+                this.toggleCaption(captionId);
+            }
         });
     }
     
@@ -266,6 +272,23 @@ class VocalCaptionRecorder {
         this.currentAudio.play();
     }
     
+    toggleCaption(captionId) {
+        const previewElement = document.querySelector(`[data-caption-id="${captionId}"] .caption-text-preview`);
+        const fullElement = document.getElementById(`caption-full-${captionId}`);
+        
+        if (previewElement && fullElement) {
+            if (fullElement.style.display === 'none') {
+                // Show full caption
+                previewElement.style.display = 'none';
+                fullElement.style.display = 'block';
+            } else {
+                // Show preview
+                previewElement.style.display = 'block';
+                fullElement.style.display = 'none';
+            }
+        }
+    }
+    
     async deleteCaption(captionId) {
         if (!confirm('Are you sure you want to delete this voice caption?')) return;
         
@@ -377,21 +400,20 @@ class VocalCaptionRecorder {
         // Determine if caption is processed and has text
         const isProcessed = caption.processing_status === 'completed' && caption.text_caption;
         const expandSection = isProcessed ? `
-            <div class="caption-expand-section mt-2">
-                <button class="btn btn-link btn-sm p-0 caption-expand-btn" 
-                        data-caption-id="${caption.id}" 
-                        data-bs-toggle="collapse" 
-                        data-bs-target="#caption-${caption.id}" 
-                        aria-expanded="false">
-                    <small class="text-primary">
-                        <i class="fas fa-chevron-down me-1"></i>
-                        Read caption
-                    </small>
-                </button>
-                <div class="collapse caption-content" id="caption-${caption.id}">
-                    <div class="caption-text-expanded mt-2 p-2">
-                        <small class="text-dark">${caption.text_caption}</small>
-                    </div>
+            <div class="caption-text-display mt-2">
+                <div class="caption-text-preview">
+                    <small class="text-dark">${caption.text_caption.length > 100 ? caption.text_caption.substring(0, 100) + '...' : caption.text_caption}</small>
+                    ${caption.text_caption.length > 100 ? `
+                        <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
+                            <small class="text-primary">more</small>
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="caption-text-full" id="caption-full-${caption.id}" style="display: none;">
+                    <small class="text-dark">${caption.text_caption}</small>
+                    <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
+                        <small class="text-primary">less</small>
+                    </button>
                 </div>
             </div>
         ` : '';

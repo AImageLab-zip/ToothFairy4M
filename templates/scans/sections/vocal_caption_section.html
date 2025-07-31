@@ -90,21 +90,22 @@
                                     </small>
                                     
                                     {% if caption.is_processed and caption.text_caption %}
-                                        <div class="caption-expand-section mt-2">
-                                            <button class="btn btn-link btn-sm p-0 caption-expand-btn" 
-                                                    data-caption-id="{{ caption.id }}" 
-                                                    data-bs-toggle="collapse" 
-                                                    data-bs-target="#caption-{{ caption.id }}" 
-                                                    aria-expanded="false">
-                                                <small class="text-primary">
-                                                    <i class="fas fa-chevron-down me-1"></i>
-                                                    Read caption
-                                                </small>
-                                            </button>
-                                            <div class="collapse caption-content" id="caption-{{ caption.id }}">
-                                                <div class="caption-text-expanded mt-2 p-2">
-                                                    <small class="text-dark">{{ caption.text_caption }}</small>
-                                                </div>
+                                        <div class="caption-text-display mt-2">
+                                            <div class="caption-text-preview">
+                                                <small class="text-dark">{{ caption.text_caption|truncatechars:100 }}</small>
+                                                {% if caption.text_caption|length > 100 %}
+                                                    <button class="btn btn-link btn-sm p-0 caption-toggle-btn" 
+                                                            data-caption-id="{{ caption.id }}">
+                                                        <small class="text-primary">more</small>
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                            <div class="caption-text-full" id="caption-full-{{ caption.id }}" style="display: none;">
+                                                <small class="text-dark">{{ caption.text_caption }}</small>
+                                                <button class="btn btn-link btn-sm p-0 caption-toggle-btn" 
+                                                        data-caption-id="{{ caption.id }}">
+                                                    <small class="text-primary">less</small>
+                                                </button>
                                             </div>
                                         </div>
                                     {% endif %}
