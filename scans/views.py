@@ -580,15 +580,10 @@ def scan_cbct_data(request, scanpair_id):
     file_path = None
     
     try:
-        # Check FileRegistry for processed CBCT first
-        processed_cbct = scan_pair.get_cbct_processed_file()
-        if processed_cbct and os.path.exists(processed_cbct.file_path):
-            file_path = processed_cbct.file_path
-        else:
-            # Fallback to raw CBCT from FileRegistry
-            raw_cbct = scan_pair.get_cbct_raw_file()
-            if raw_cbct and os.path.exists(raw_cbct.file_path):
-                file_path = raw_cbct.file_path
+        # Check FileRegistry for raw CBCT first (prioritize raw file)
+        raw_cbct = scan_pair.get_cbct_raw_file()
+        if raw_cbct and os.path.exists(raw_cbct.file_path):
+            file_path = raw_cbct.file_path
     except:
         pass
     
@@ -603,7 +598,6 @@ def scan_cbct_data(request, scanpair_id):
         return JsonResponse({'error': 'No CBCT data available'}, status=404)
     
     try:
-        
         # Check if file is gzipped and decompress if needed
         with open(file_path, 'rb') as f:
             # Read first 2 bytes to check for gzip magic number
