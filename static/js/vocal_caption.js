@@ -3,6 +3,7 @@ class VocalCaptionRecorder {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.stream = null;
+        this.currentAudio = null;
         
         // Simple state tracking
         this.isRecording = false;
@@ -67,11 +68,22 @@ class VocalCaptionRecorder {
             });
         }
         
-        // Audio playback controls
+        // Audio playback and delete controls
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('play-audio-btn')) {
-                const audioUrl = e.target.dataset.audioUrl;
+            if (e.target.closest('.btn-play-audio')) {
+                const audioUrl = e.target.closest('.btn-play-audio').dataset.audioUrl;
                 this.playAudio(audioUrl);
+            }
+            
+            if (e.target.closest('.btn-delete-caption')) {
+                const captionId = e.target.closest('.btn-delete-caption').dataset.captionId;
+                this.deleteCaption(captionId);
+            }
+            
+            // Caption toggle functionality
+            if (e.target.closest('.caption-toggle-btn')) {
+                const captionId = e.target.closest('.caption-toggle-btn').dataset.captionId;
+                this.toggleCaption(captionId);
             }
         });
     }
@@ -175,8 +187,9 @@ class VocalCaptionRecorder {
     }
     
     async saveRecording() {
+        // Always stop recording first if it's running
         if (this.isRecording) {
-            // Get final data chunk
+            // Get final data chunk before stopping
             this.mediaRecorder.requestData();
             
             // Wait for final data and stop
@@ -386,38 +399,117 @@ class VocalCaptionRecorder {
         const captionListContainer = document.querySelector('.voice-captions-list');
         if (!captionListContainer) return;
         
-        const captionHtml = `
-            <div class="voice-caption-item border rounded p-3 mb-2" data-caption-id="${caption.id}">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="caption-info flex-grow-1">
-                        <div class="d-flex align-items-center gap-2 mb-1">
-                            <span class="badge bg-primary">${caption.modality_display}</span>
-                            <span class="badge bg-${caption.quality_color}">${caption.display_duration}</span>
-                            <small class="text-muted">by ${caption.user_username}</small>
-                        </div>
-                        <small class="text-muted">${caption.created_at}</small>
-                        ${caption.is_processed && caption.text_caption ? 
-                            `<div class="mt-2"><small class="text-success">Transcription: ${caption.text_caption}</small></div>` : 
-                            '<div class="mt-2"><small class="text-warning">Processing...</small></div>'
-                        }
+        // Remove "no captions" message if it exists
+        const noCaptions = captionListContainer.querySelector('.no-captions');
+        if (noCaptions) {
+            noCaptions.remove();
+        }
+        
+        // Create or get the caption list container
+        let captionList = captionListContainer.querySelector('.caption-list-compact');
+        if (!captionList) {
+            captionList = document.createElement('div');
+            captionList.className = 'caption-list-compact';
+            captionListContainer.appendChild(captionList);
+        }
+        
+        // Determine processing status display
+        let captionTextSection;
+        if (caption.processing_status === 'processing') {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    Converting speech to text...
+                </small>
+            `;
+        } else if (caption.processing_status === 'failed') {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-exclamation-triangle me-1 text-danger"></i>
+                    Processing failed
+                </small>
+            `;
+        } else if (caption.is_processed && caption.text_caption) {
+            const isLong = caption.text_caption.length > 100;
+            const truncatedText = isLong ? caption.text_caption.substring(0, 100) + '...' : caption.text_caption;
+            
+            captionTextSection = `
+                <div class="caption-text-display">
+                    <div class="caption-text-preview">
+                        <small class="text-dark">${truncatedText}</small>
+                        ${isLong ? `
+                            <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
+                                <small class="text-primary">more</small>
+                            </button>
+                        ` : ''}
                     </div>
-                    <div class="caption-actions d-flex gap-1">
-                        ${caption.audio_url ? 
-                            `<button class="btn btn-sm btn-outline-primary play-audio-btn" data-audio-url="${caption.audio_url}" title="Play">
-                                <i class="fas fa-play"></i>
-                            </button>` : ''
-                        }
-                        <button class="btn btn-sm btn-outline-danger delete-caption-btn" onclick="recorder.deleteCaption(${caption.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
+                    ${isLong ? `
+                        <div class="caption-text-full" id="caption-full-${caption.id}" style="display: none;">
+                            <small class="text-dark">${caption.text_caption}</small>
+                            <button class="btn btn-link btn-sm p-0 caption-toggle-btn" data-caption-id="${caption.id}">
+                                <small class="text-primary">less</small>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            captionTextSection = `
+                <small class="text-muted">
+                    <i class="fas fa-clock me-1"></i>
+                    Preprocessing audio...
+                </small>
+            `;
+        }
+        
+        // Create the caption HTML matching the existing structure
+        const captionHtml = `
+            <div class="caption-item-compact" data-caption-id="${caption.id}">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="caption-info">
+                        <small class="text-primary me-2">${caption.user_username}</small>
+                        <span class="badge bg-secondary me-1">${caption.modality_display}</span>
+                        <span class="badge bg-${caption.quality_color} me-2">${caption.display_duration}</span>
+                        <small class="text-muted">${caption.created_at}</small>
+                    </div>
+                    <div class="caption-actions">
+                        ${caption.audio_url ? `
+                            <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="${caption.audio_url}" title="Play">
+                                <i class="fas fa-play" style="font-size: 0.75rem;"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="${caption.id}" title="Delete">
+                            <i class="fas fa-trash" style="font-size: 0.75rem;"></i>
                         </button>
                     </div>
+                </div>
+                
+                <div class="caption-text-compact mt-1">
+                    ${captionTextSection}
                 </div>
             </div>
         `;
         
-        captionListContainer.insertAdjacentHTML('afterbegin', captionHtml);
+        captionList.insertAdjacentHTML('afterbegin', captionHtml);
     }
-    
+
+    toggleCaption(captionId) {
+        const previewElement = document.querySelector(`[data-caption-id="${captionId}"] .caption-text-preview`);
+        const fullElement = document.getElementById(`caption-full-${captionId}`);
+        
+        if (previewElement && fullElement) {
+            if (fullElement.style.display === 'none') {
+                // Show full caption
+                previewElement.style.display = 'none';
+                fullElement.style.display = 'block';
+            } else {
+                // Show preview
+                previewElement.style.display = 'block';
+                fullElement.style.display = 'none';
+            }
+        }
+    }
+
     async deleteCaption(captionId) {
         if (!confirm('Are you sure you want to delete this voice caption?')) return;
         
@@ -430,7 +522,26 @@ class VocalCaptionRecorder {
             });
             
             if (response.ok) {
-                document.querySelector(`[data-caption-id="${captionId}"]`)?.remove();
+                const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
+                if (captionElement) {
+                    captionElement.remove();
+                }
+                
+                // Show no captions message if list is empty
+                const captionList = document.querySelector('.caption-list-compact');
+                if (captionList && captionList.children.length === 0) {
+                    const captionListContainer = document.querySelector('.voice-captions-list');
+                    captionList.remove();
+                    const noCaptionsHtml = `
+                        <div class="no-captions">
+                            <p class="text-muted mb-0 text-center">
+                                <i class="fas fa-microphone me-1"></i>
+                                No voice captions yet. Click the record button to start!
+                            </p>
+                        </div>
+                    `;
+                    captionListContainer.innerHTML = noCaptionsHtml;
+                }
             } else {
                 throw new Error('Delete failed');
             }
