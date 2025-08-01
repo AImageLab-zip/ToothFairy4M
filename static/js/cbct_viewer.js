@@ -367,6 +367,16 @@ window.CBCTViewer = {
     
     initSliceViewer: function(containerId, orientation) {
         const container = document.getElementById(containerId);
+        
+        // Wait a bit for container to be properly sized if it has zero dimensions
+        if (container.clientWidth === 0 || container.clientHeight === 0) {
+            console.log(`Container ${containerId} has zero dimensions, waiting for proper sizing...`);
+            setTimeout(() => {
+                this.initSliceViewer(containerId, orientation);
+            }, 100);
+            return;
+        }
+        
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
         
@@ -394,22 +404,25 @@ window.CBCTViewer = {
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000); // Black background
         
-        // Create orthographic camera with bounds adjusted for container aspect ratio
-        // This prevents stretching of the content
+        // Create orthographic camera - use full container dimensions without aspect constraints
+        // Make the camera bounds fill the container while maintaining data aspect ratio
         let cameraLeft, cameraRight, cameraTop, cameraBottom;
         
-        if (containerAspectRatio > 1.0) {
-            // Container is wider than tall
+        // Scale to fit the container while maintaining data aspect ratio
+        if (dataAspectRatio > containerAspectRatio) {
+            // Data is wider relative to container - fit width, scale height
+            const scale = containerAspectRatio / dataAspectRatio;
             cameraLeft = -containerAspectRatio;
             cameraRight = containerAspectRatio;
+            cameraTop = scale;
+            cameraBottom = -scale;
+        } else {
+            // Data is taller relative to container - fit height, scale width
+            const scale = dataAspectRatio / containerAspectRatio;
+            cameraLeft = -scale;
+            cameraRight = scale;
             cameraTop = 1;
             cameraBottom = -1;
-        } else {
-            // Container is taller than wide
-            cameraLeft = -1;
-            cameraRight = 1;
-            cameraTop = 1 / containerAspectRatio;
-            cameraBottom = -1 / containerAspectRatio;
         }
         
         const camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, 0.1, 100);
@@ -1064,9 +1077,15 @@ window.CBCTViewer = {
     
     refreshAllViews: function() {
         // Fix black windows when switching to CBCT tab after background loading
-        if (this.initialized) {
-            console.log('Refreshing all CBCT views...');
-            
+        if (!this.initialized) {
+            console.log('CBCT viewer not initialized yet, cannot refresh');
+            return;
+        }
+        
+        console.log('Refreshing all CBCT views...');
+        
+        // Wait a moment for containers to be visible and properly sized
+        setTimeout(() => {
             // Re-render all slice views
             ['axial', 'sagittal', 'coronal'].forEach(orientation => {
                 if (this.renderers[orientation] && this.scenes[orientation] && this.cameras[orientation]) {
@@ -1074,28 +1093,34 @@ window.CBCTViewer = {
                     const containerId = orientation === 'axial' ? 'axialView' : 
                                        orientation === 'sagittal' ? 'sagittalView' : 'coronalView';
                     const container = document.getElementById(containerId);
-                    if (container) {
+                    if (container && container.clientWidth > 0 && container.clientHeight > 0) {
                         const containerWidth = container.clientWidth;
                         const containerHeight = container.clientHeight;
                         const containerAspectRatio = containerWidth / containerHeight;
+                        const dataAspectRatio = this.dataAspectRatios[orientation];
+                        
+                        console.log(`Refreshing ${orientation}: container ${containerWidth}x${containerHeight}, data aspect ${dataAspectRatio.toFixed(2)}`);
                         
                         this.renderers[orientation].setSize(containerWidth, containerHeight);
                         
-                        // Recalculate camera bounds for new container aspect ratio
+                        // Recalculate camera bounds for new container dimensions
                         let cameraLeft, cameraRight, cameraTop, cameraBottom;
                         
-                        if (containerAspectRatio > 1.0) {
-                            // Container is wider than tall
+                        // Scale to fit the container while maintaining data aspect ratio
+                        if (dataAspectRatio > containerAspectRatio) {
+                            // Data is wider relative to container - fit width, scale height
+                            const scale = containerAspectRatio / dataAspectRatio;
                             cameraLeft = -containerAspectRatio;
                             cameraRight = containerAspectRatio;
+                            cameraTop = scale;
+                            cameraBottom = -scale;
+                        } else {
+                            // Data is taller relative to container - fit height, scale width
+                            const scale = dataAspectRatio / containerAspectRatio;
+                            cameraLeft = -scale;
+                            cameraRight = scale;
                             cameraTop = 1;
                             cameraBottom = -1;
-                        } else {
-                            // Container is taller than wide
-                            cameraLeft = -1;
-                            cameraRight = 1;
-                            cameraTop = 1 / containerAspectRatio;
-                            cameraBottom = -1 / containerAspectRatio;
                         }
                         
                         // Update stored bounds
@@ -1120,22 +1145,23 @@ window.CBCTViewer = {
                         
                         // Force re-render
                         this.updateSlice(orientation);
+                    } else {
+                        console.warn(`Container ${containerId} not ready for refresh (${container ? container.clientWidth + 'x' + container.clientHeight : 'not found'})`);
                     }
                 }
             });
             
-            // Re-render volume view
-            if (this.renderers.volume && this.scenes.volume && this.cameras.volume) {
+            // Re-render volume view if using VolumeRenderer
+            if (typeof window.VolumeRenderer !== 'undefined' && window.VolumeRenderer.renderer) {
                 const container = document.getElementById('volumeView');
-                if (container) {
+                if (container && container.clientWidth > 0 && container.clientHeight > 0) {
                     const width = container.clientWidth;
                     const height = container.clientHeight;
-                    this.renderers.volume.setSize(width, height);
-                    this.cameras.volume.aspect = width / height;
-                    this.cameras.volume.updateProjectionMatrix();
+                    window.VolumeRenderer.handleResize();
+                    console.log(`Volume view refreshed: ${width}x${height}`);
                 }
             }
-        }
+        }, 50); // Small delay to ensure containers are visible
     },
     
     setupEventListeners: function() {
@@ -1150,6 +1176,18 @@ window.CBCTViewer = {
         // Window resize for 2D views
         window.addEventListener('resize', () => {
             this.handleResize();
+        });
+        
+        // Add a specific handler for CBCT view refresh on window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (this.initialized && document.getElementById('cbct-viewer').style.display !== 'none') {
+                    console.log('Window resized, refreshing CBCT views...');
+                    this.refreshAllViews();
+                }
+            }, 150); // Debounce resize events
         });
         
         // Note: Volume rendering events are handled by VolumeRenderer

@@ -51,8 +51,19 @@ window.VolumeRenderer = {
             return;
         }
         
-        const width = container.clientWidth;
-        const height = container.clientHeight;
+        // Wait for container to have proper dimensions
+        let width = container.clientWidth;
+        let height = container.clientHeight;
+        
+        // If container has zero dimensions, wait a bit and try again
+        if (width === 0 || height === 0) {
+            console.log(`Container ${containerId} has zero dimensions, waiting for proper sizing...`);
+            setTimeout(() => {
+                this.setupScene(containerId);
+            }, 100);
+            return;
+        }
+        
         const rect = container.getBoundingClientRect();
         
         console.log(`Setting up volume scene in container: ${containerId}`, {
@@ -64,11 +75,11 @@ window.VolumeRenderer = {
             visibility: getComputedStyle(container).visibility
         });
         
-        // If container has no dimensions, set minimum size
-        if (width === 0 || height === 0) {
-            console.warn('Container has zero dimensions, setting minimum size');
-            container.style.width = '300px';
-            container.style.height = '300px';
+        // Ensure minimum size for volume rendering
+        if (width < 200 || height < 200) {
+            console.warn(`Container dimensions (${width}x${height}) are small, using minimum size`);
+            width = Math.max(width, 200);
+            height = Math.max(height, 200);
         }
         
         // Create scene
@@ -97,7 +108,8 @@ window.VolumeRenderer = {
             sceneCreated: !!this.scene,
             cameraCreated: !!this.camera,
             rendererCreated: !!this.renderer,
-            canvasAdded: !!this.renderer.domElement.parentElement
+            canvasAdded: !!this.renderer.domElement.parentElement,
+            finalSize: `${width}x${height}`
         });
         
         // Scene setup complete

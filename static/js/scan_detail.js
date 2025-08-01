@@ -792,17 +792,21 @@ function initViewerToggle() {
             iosControls.style.display = 'none';
             cbctControls.style.display = 'block';
             
-            // Handle CBCT viewer state
-            if (typeof window.CBCTViewer !== 'undefined') {
-                if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
-                    // Not initialized and not loading - start initialization
-                    window.CBCTViewer.init();
-                } else if (window.CBCTViewer.initialized) {
-                    // Already initialized - refresh views
-                    window.CBCTViewer.refreshAllViews();
+            // Handle CBCT viewer state with a delay to ensure containers are visible
+            setTimeout(() => {
+                if (typeof window.CBCTViewer !== 'undefined') {
+                    if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
+                        // Not initialized and not loading - start initialization
+                        console.log('Initializing CBCT viewer after view switch...');
+                        window.CBCTViewer.init();
+                    } else if (window.CBCTViewer.initialized) {
+                        // Already initialized - refresh views
+                        console.log('Refreshing CBCT viewer after view switch...');
+                        window.CBCTViewer.refreshAllViews();
+                    }
+                    // If loading is in progress, do nothing - let it complete naturally
                 }
-                // If loading is in progress, do nothing - let it complete naturally
-            }
+            }, 100); // 100ms delay to ensure containers are visible and sized
         }
     });
 } 
