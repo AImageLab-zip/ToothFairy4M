@@ -48,6 +48,7 @@ window.CBCTViewer = {
     
     // Loading state
     loading: false,
+    panoramicLoaded: false,
     
     init: function() {
         if (this.loading || this.initialized) {
@@ -56,7 +57,50 @@ window.CBCTViewer = {
         }
         
         console.log('Initializing CBCT Viewer...');
-        this.loadVolumeData();
+        // Load panoramic first, then CBCT data
+        this.loadPanoramicImage();
+    },
+    
+    loadPanoramicImage: function() {
+        console.log('Loading panoramic image...');
+        
+        const panoramicImg = document.getElementById('panoramicImage');
+        const panoramicLoading = document.getElementById('panoramicLoading');
+        const panoramicError = document.getElementById('panoramicError');
+        
+        // Show loading state
+        panoramicLoading.style.display = 'block';
+        panoramicImg.style.display = 'none';
+        panoramicError.style.display = 'none';
+        
+        // Create a new image to test if panoramic exists
+        const testImg = new Image();
+        
+        testImg.onload = () => {
+            console.log('Panoramic image loaded successfully');
+            panoramicImg.src = testImg.src;
+            panoramicImg.style.display = 'block';
+            panoramicLoading.style.display = 'none';
+            panoramicError.style.display = 'none';
+            this.panoramicLoaded = true;
+            
+            // Now load CBCT data
+            this.loadVolumeData();
+        };
+        
+        testImg.onerror = () => {
+            console.log('Panoramic image not available');
+            panoramicLoading.style.display = 'none';
+            panoramicImg.style.display = 'none';
+            panoramicError.style.display = 'block';
+            this.panoramicLoaded = false;
+            
+            // Still proceed with CBCT data loading
+            this.loadVolumeData();
+        };
+        
+        // Try to load the panoramic image
+        testImg.src = `/api/scan/${window.scanId}/panoramic/`;
     },
     
     loadVolumeData: function() {

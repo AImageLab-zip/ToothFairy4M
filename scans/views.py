@@ -719,3 +719,61 @@ def delete_voice_caption(request, scanpair_id, caption_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def scan_panoramic_data(request, scanpair_id):
+    """API endpoint to serve panoramic image data"""
+    from pathlib import Path
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    user_profile = request.user.profile
+    
+    # Check permissions
+    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    # Check if CBCT exists (panoramic is generated from CBCT)
+    if not scan_pair.has_cbct_scan():
+        return JsonResponse({'error': 'No CBCT data available for panoramic generation'}, status=404)
+    
+    # Get CBCT file path to determine input name
+    cbct_file_path = None
+    
+    try:
+        # Check FileRegistry for raw CBCT first
+        raw_cbct = scan_pair.get_cbct_raw_file()
+        if raw_cbct and os.path.exists(raw_cbct.file_path):
+            cbct_file_path = raw_cbct.file_path
+    except:
+        pass
+    
+    # Fallback to old file field
+    if not cbct_file_path and scan_pair.cbct:
+        try:
+            cbct_file_path = scan_pair.cbct.path
+        except:
+            pass
+    
+    if not cbct_file_path:
+        return JsonResponse({'error': 'CBCT file not found'}, status=404)
+    
+    # Generate panoramic file path
+    DATASET_ROOT = "/dataset"
+    input_name = Path(cbct_file_path).stem  # removes extension
+    panoramic_path = os.path.join(f"{DATASET_ROOT}/processed/cbct", f"{input_name}_pano.png")
+    
+    if not os.path.exists(panoramic_path):
+        return JsonResponse({'error': 'Panoramic image not available'}, status=404)
+    
+    try:
+        # Serve the panoramic image
+        with open(panoramic_path, 'rb') as f:
+            data = f.read()
+            response = HttpResponse(data, content_type='image/png')
+            response['Content-Disposition'] = f'inline; filename="panoramic_{scanpair_id}.png"'
+            return response
+                
+    except Exception as e:
+        print(f"Error serving panoramic data: {e}")
+        return JsonResponse({'error': 'Internal server error'}, status=500)

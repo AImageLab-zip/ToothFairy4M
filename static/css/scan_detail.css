@@ -659,7 +659,7 @@
     padding: 10px;
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 1fr 1fr !important;
+    grid-template-rows: 1fr 1fr 1fr !important; /* 3 rows: panoramic, 2D views row 1, 2D views row 2 */
     gap: 10px !important;
 }
 
@@ -668,6 +668,11 @@
 }
 
 .cbct-views .col-6 {
+    display: contents !important;
+}
+
+.cbct-views .col-12 {
+    grid-column: 1 / -1 !important; /* Span full width */
     display: contents !important;
 }
 
@@ -680,6 +685,41 @@
     aspect-ratio: 1 !important;
     width: 100%;
     height: 100%;
+}
+
+/* Panoramic view container - 2:1 aspect ratio container but preserve image aspect ratio */
+#panoramicView .cbct-view-container {
+    aspect-ratio: 2 / 1 !important; /* 2:1 container ratio */
+    background: #f8f9fa; /* Light background for panoramic */
+}
+
+/* Panoramic image styling */
+.panoramic-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* Preserve aspect ratio, fit within container */
+    background: #f8f9fa;
+}
+
+/* Panoramic loading and error states */
+.panoramic-loading,
+.panoramic-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: #6c757d;
+}
+
+.panoramic-loading .spinner-border-sm {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.panoramic-error i {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
 }
 
 .cbct-view-label {

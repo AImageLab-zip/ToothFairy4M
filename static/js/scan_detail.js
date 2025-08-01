@@ -760,6 +760,20 @@ function initViewerToggle() {
         cbctRadio.parentElement.title = 'No CBCT data available';
     }
     
+    // Handle initial state based on which radio button is checked
+    if (cbctRadio.checked && window.hasCBCT) {
+        // CBCT is initially selected - initialize CBCT viewer
+        if (typeof window.CBCTViewer !== 'undefined') {
+            if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
+                // Not initialized and not loading - start initialization
+                window.CBCTViewer.init();
+            } else if (window.CBCTViewer.initialized) {
+                // Already initialized - refresh views
+                window.CBCTViewer.refreshAllViews();
+            }
+        }
+    }
+    
     iosRadio.addEventListener('change', function() {
         if (this.checked) {
             iosContainer.style.display = 'block';

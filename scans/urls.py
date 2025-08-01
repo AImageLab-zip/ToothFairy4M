@@ -15,6 +15,7 @@ urlpatterns = [
     # API endpoints
     path('api/scan/<int:scanpair_id>/data/', views.scan_viewer_data, name='scan_viewer_data'),
     path('api/scan/<int:scanpair_id>/cbct/', views.scan_cbct_data, name='scan_cbct_data'),
+    path('api/scan/<int:scanpair_id>/panoramic/', views.scan_panoramic_data, name='scan_panoramic_data'),
     
     # Processing API endpoints for Docker containers
     path('api/processing/health/', api_views.health_check, name='api_health_check'),
