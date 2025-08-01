@@ -657,23 +657,29 @@
     position: relative;
     height: 100%;
     padding: 10px;
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 1fr 1fr 1fr !important; /* 3 rows: panoramic, 2D views row 1, 2D views row 2 */
-    gap: 10px !important;
 }
 
 .cbct-views .row {
-    display: contents !important;
+    margin: 0;
+    height: 100%;
+}
+
+.cbct-views .row:first-child {
+    height: 66.67%;
+}
+
+.cbct-views .row:last-child {
+    height: 33.33%;
 }
 
 .cbct-views .col-6 {
-    display: contents !important;
+    padding: 5px;
+    height: 100%;
 }
 
 .cbct-views .col-12 {
-    grid-column: 1 / -1 !important; /* Span full width */
-    display: contents !important;
+    padding: 5px;
+    height: 100%;
 }
 
 .cbct-view-container {

@@ -41,6 +41,10 @@ window.CBCTViewer = {
         coronal: { x: 0, y: 0 }
     },
     
+    // Panoramic view zoom and pan
+    panoramicZoom: 1.0,
+    panoramicPan: { x: 0, y: 0 },
+    
     // Volume rendering settings
     renderMode: 'mip', // 'mip', 'translucent', 'attenuated'
     windowLevel: 0.5,
@@ -103,6 +107,9 @@ window.CBCTViewer = {
             panoramicLoading.style.display = 'none';
             panoramicError.style.display = 'none';
             this.panoramicLoaded = true;
+            
+            // Initialize panoramic zoom and pan
+            this.initPanoramicInteraction();
             
             // Now load CBCT data
             this.loadVolumeData();
@@ -866,6 +873,141 @@ window.CBCTViewer = {
         
         // Debug output
         console.log(`${orientation} pan: (${panX.toFixed(3)}, ${panY.toFixed(3)})`);
+    },
+    
+    initPanoramicInteraction: function() {
+        const panoramicView = document.getElementById('panoramicView');
+        const panoramicImg = document.getElementById('panoramicImage');
+        
+        if (!panoramicView || !panoramicImg) {
+            console.log('Panoramic elements not found');
+            return;
+        }
+        
+        console.log('Initializing panoramic interaction...');
+        
+        // Reset zoom and pan
+        this.panoramicZoom = 1.0;
+        this.panoramicPan = { x: 0, y: 0 };
+        this.updatePanoramicTransform();
+        
+        // Mouse wheel for zoom
+        panoramicView.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            const zoomDelta = event.deltaY > 0 ? -0.1 : 0.1;
+            this.handlePanoramicZoom(zoomDelta);
+        });
+        
+        // Mouse drag for pan
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        
+        panoramicView.addEventListener('mousedown', (event) => {
+            if (event.button === 2) { // Right mouse button
+                event.preventDefault();
+                event.stopPropagation();
+                isDragging = true;
+                lastMouseX = event.clientX;
+                lastMouseY = event.clientY;
+                panoramicView.style.cursor = 'move';
+            }
+        });
+        
+        panoramicView.addEventListener('mousemove', (event) => {
+            if (isDragging && event.buttons === 2) { // Right button held
+                event.preventDefault();
+                event.stopPropagation();
+                
+                const deltaX = event.clientX - lastMouseX;
+                const deltaY = event.clientY - lastMouseY;
+                
+                this.handlePanoramicPan(deltaX, deltaY);
+                
+                lastMouseX = event.clientX;
+                lastMouseY = event.clientY;
+            }
+        });
+        
+        panoramicView.addEventListener('mouseup', (event) => {
+            if (event.button === 2) { // Right mouse button
+                isDragging = false;
+                panoramicView.style.cursor = 'crosshair';
+            }
+        });
+        
+        // Prevent context menu on right click
+        panoramicView.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+        
+        // Double-click to reset zoom and pan
+        panoramicView.addEventListener('dblclick', (event) => {
+            event.preventDefault();
+            this.resetPanoramicView();
+        });
+    },
+    
+    handlePanoramicZoom: function(zoomDelta) {
+        // Clamp zoom level between 0.5 and 5.0
+        this.panoramicZoom = Math.max(0.5, Math.min(5.0, this.panoramicZoom + zoomDelta));
+        
+        // Reset pan when zooming out to 1.0 or less
+        if (this.panoramicZoom <= 1.0) {
+            this.panoramicPan.x = 0;
+            this.panoramicPan.y = 0;
+        }
+        
+        this.updatePanoramicTransform();
+        console.log(`Panoramic zoom: ${this.panoramicZoom.toFixed(2)}x`);
+    },
+    
+    handlePanoramicPan: function(deltaX, deltaY) {
+        // Only allow panning when zoomed in
+        if (this.panoramicZoom <= 1.0) {
+            return;
+        }
+        
+        // Calculate pan sensitivity based on zoom level
+        const panSensitivity = 1.0 / this.panoramicZoom;
+        
+        // Update pan offsets
+        this.panoramicPan.x += deltaX * panSensitivity;
+        this.panoramicPan.y += deltaY * panSensitivity;
+        
+        // Get container dimensions to clamp panning
+        const panoramicView = document.getElementById('panoramicView');
+        const containerWidth = panoramicView.clientWidth;
+        const containerHeight = panoramicView.clientHeight;
+        
+        // Calculate maximum pan limits based on zoom level
+        const maxPanX = (containerWidth * (this.panoramicZoom - 1)) / (2 * this.panoramicZoom);
+        const maxPanY = (containerHeight * (this.panoramicZoom - 1)) / (2 * this.panoramicZoom);
+        
+        // Clamp pan offsets
+        this.panoramicPan.x = Math.max(-maxPanX, Math.min(maxPanX, this.panoramicPan.x));
+        this.panoramicPan.y = Math.max(-maxPanY, Math.min(maxPanY, this.panoramicPan.y));
+        
+        this.updatePanoramicTransform();
+        console.log(`Panoramic pan: (${this.panoramicPan.x.toFixed(1)}, ${this.panoramicPan.y.toFixed(1)})`);
+    },
+    
+    updatePanoramicTransform: function() {
+        const panoramicImg = document.getElementById('panoramicImage');
+        if (!panoramicImg) return;
+        
+        const transform = `scale(${this.panoramicZoom}) translate(${this.panoramicPan.x}px, ${this.panoramicPan.y}px)`;
+        panoramicImg.style.transform = transform;
+        panoramicImg.style.transformOrigin = 'center center';
+    },
+    
+    resetPanoramicView: function() {
+        console.log('Resetting panoramic view');
+        this.panoramicZoom = 1.0;
+        this.panoramicPan = { x: 0, y: 0 };
+        this.updatePanoramicTransform();
     },
     
     applyWindowing: function(rawValue) {
