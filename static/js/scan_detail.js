@@ -670,10 +670,12 @@ document.addEventListener('DOMContentLoaded', function() {
     window.canEdit = djangoData.canEdit;
     window.scanId = djangoData.scanId;
     window.hasCBCT = djangoData.hasCBCT;
+    window.isCBCTProcessed = djangoData.isCBCTProcessed;
     
     console.log('Can edit:', window.canEdit);
     console.log('Scan ID:', window.scanId);
     console.log('Has CBCT:', window.hasCBCT);
+    console.log('Is CBCT processed:', window.isCBCTProcessed);
     
     // Load scan data and initialize viewer
     loadScanDataAndInitViewer();

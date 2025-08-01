@@ -68,6 +68,26 @@ window.CBCTViewer = {
         const panoramicLoading = document.getElementById('panoramicLoading');
         const panoramicError = document.getElementById('panoramicError');
         
+        // Check if CBCT processing is complete
+        if (!window.isCBCTProcessed) {
+            console.log('CBCT processing not complete - panoramic not available yet');
+            panoramicLoading.style.display = 'none';
+            panoramicImg.style.display = 'none';
+            panoramicError.style.display = 'block';
+            
+            // Update error message to be more specific
+            const errorElement = panoramicError.querySelector('p');
+            if (errorElement) {
+                errorElement.textContent = 'Panoramic available after CBCT processing';
+            }
+            
+            this.panoramicLoaded = false;
+            
+            // Still proceed with CBCT data loading (raw CBCT can be loaded)
+            this.loadVolumeData();
+            return;
+        }
+        
         // Show loading state
         panoramicLoading.style.display = 'block';
         panoramicImg.style.display = 'none';

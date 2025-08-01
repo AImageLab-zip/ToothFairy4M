@@ -724,7 +724,6 @@ def delete_voice_caption(request, scanpair_id, caption_id):
 @login_required
 def scan_panoramic_data(request, scanpair_id):
     """API endpoint to serve panoramic image data"""
-    from pathlib import Path
     
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
@@ -733,42 +732,30 @@ def scan_panoramic_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
-    # Check if CBCT exists (panoramic is generated from CBCT)
-    if not scan_pair.has_cbct_scan():
-        return JsonResponse({'error': 'No CBCT data available for panoramic generation'}, status=404)
+    # Check if CBCT processing is complete (panoramic is only available after processing)
+    if not scan_pair.is_cbct_processed():
+        return JsonResponse({'error': 'CBCT processing not complete - panoramic not available yet'}, status=404)
     
-    # Get CBCT file path to determine input name
-    cbct_file_path = None
-    
+    # Look for panoramic file in FileRegistry (CBCT Processed files)
     try:
-        # Check FileRegistry for raw CBCT first
-        raw_cbct = scan_pair.get_cbct_raw_file()
-        if raw_cbct and os.path.exists(raw_cbct.file_path):
-            cbct_file_path = raw_cbct.file_path
-    except:
-        pass
-    
-    # Fallback to old file field
-    if not cbct_file_path and scan_pair.cbct:
-        try:
-            cbct_file_path = scan_pair.cbct.path
-        except:
-            pass
-    
-    if not cbct_file_path:
-        return JsonResponse({'error': 'CBCT file not found'}, status=404)
-    
-    # Generate panoramic file path
-    DATASET_ROOT = "/dataset"
-    input_name = Path(cbct_file_path).stem  # removes extension
-    panoramic_path = os.path.join(f"{DATASET_ROOT}/processed/cbct", f"{input_name}_pano.png")
-    
-    if not os.path.exists(panoramic_path):
-        return JsonResponse({'error': 'Panoramic image not available'}, status=404)
-    
-    try:
+        # Find all CBCT processed files for this scan pair
+        processed_files = scan_pair.files.filter(file_type='cbct_processed')
+        
+        # Look for panoramic file (ends with _pano.png)
+        panoramic_file = None
+        for file_obj in processed_files:
+            if file_obj.file_path.endswith('_pano.png'):
+                panoramic_file = file_obj
+                break
+        
+        if not panoramic_file:
+            return JsonResponse({'error': 'Panoramic image not found in processed files'}, status=404)
+        
+        if not os.path.exists(panoramic_file.file_path):
+            return JsonResponse({'error': 'Panoramic image file not found on disk'}, status=404)
+        
         # Serve the panoramic image
-        with open(panoramic_path, 'rb') as f:
+        with open(panoramic_file.file_path, 'rb') as f:
             data = f.read()
             response = HttpResponse(data, content_type='image/png')
             response['Content-Disposition'] = f'inline; filename="panoramic_{scanpair_id}.png"'
