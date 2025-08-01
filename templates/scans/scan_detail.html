@@ -169,35 +169,37 @@
                             </div>
                         </div>
                         <div class="cbct-views" id="cbctViews" style="display: none;">
-                            <div class="row g-2 h-100">
-                                <!-- 3D Views - 2 rows of 2 columns each, 2/3 height -->
-                                <div class="col-6" style="height: 33.33%;">
+                            <!-- Top 4 views in a 2x2 grid - 2/3 height -->
+                            <div class="row g-2" style="height: 66.67%;">
+                                <div class="col-6" style="height: 50%;">
                                     <div class="cbct-view-container">
                                         <div class="cbct-view-label">Axial</div>
                                         <div id="axialView" class="cbct-view"></div>
                                     </div>
                                 </div>
-                                <div class="col-6" style="height: 33.33%;">
+                                <div class="col-6" style="height: 50%;">
                                     <div class="cbct-view-container">
                                         <div class="cbct-view-label">Sagittal</div>
                                         <div id="sagittalView" class="cbct-view"></div>
                                     </div>
                                 </div>
-                                <div class="col-6" style="height: 33.33%;">
+                                <div class="col-6" style="height: 50%;">
                                     <div class="cbct-view-container">
                                         <div class="cbct-view-label">Coronal</div>
                                         <div id="coronalView" class="cbct-view"></div>
                                     </div>
                                 </div>
-                                <div class="col-6" style="height: 33.33%;">
+                                <div class="col-6" style="height: 50%;">
                                     <div class="cbct-view-container">
                                         <div class="cbct-view-label">3D Volume</div>
                                         <div id="volumeView" class="cbct-view"></div>
                                     </div>
                                 </div>
-                                
-                                <!-- Panoramic View - spans full width, 1/3 height -->
-                                <div class="col-12" style="height: 33.33%;">
+                            </div>
+                            
+                            <!-- Panoramic view in its own row - 1/3 height, full width -->
+                            <div class="row g-2" style="height: 33.33%;">
+                                <div class="col-12">
                                     <div class="cbct-view-container">
                                         <div class="cbct-view-label">Panoramic</div>
                                         <div id="panoramicView" class="cbct-view d-flex align-items-center justify-content-center">
