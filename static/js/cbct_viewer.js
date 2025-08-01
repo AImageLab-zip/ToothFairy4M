@@ -404,25 +404,27 @@ window.CBCTViewer = {
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000); // Black background
         
-        // Create orthographic camera - use full container dimensions without aspect constraints
-        // Make the camera bounds fill the container while maintaining data aspect ratio
+        // Create orthographic camera - maintain data aspect ratio, fit within container
         let cameraLeft, cameraRight, cameraTop, cameraBottom;
         
-        // Scale to fit the container while maintaining data aspect ratio
+        // Calculate how to fit the data aspect ratio within the container
+        // We want the image to be as large as possible while maintaining aspect ratio
         if (dataAspectRatio > containerAspectRatio) {
-            // Data is wider relative to container - fit width, scale height
-            const scale = containerAspectRatio / dataAspectRatio;
-            cameraLeft = -containerAspectRatio;
-            cameraRight = containerAspectRatio;
-            cameraTop = scale;
-            cameraBottom = -scale;
+            // Data is wider relative to container - fit to container width
+            const halfWidth = containerAspectRatio;
+            const halfHeight = containerAspectRatio / dataAspectRatio;
+            cameraLeft = -halfWidth;
+            cameraRight = halfWidth;
+            cameraTop = halfHeight;
+            cameraBottom = -halfHeight;
         } else {
-            // Data is taller relative to container - fit height, scale width
-            const scale = dataAspectRatio / containerAspectRatio;
-            cameraLeft = -scale;
-            cameraRight = scale;
-            cameraTop = 1;
-            cameraBottom = -1;
+            // Data is taller relative to container - fit to container height  
+            const halfWidth = dataAspectRatio;
+            const halfHeight = 1.0;
+            cameraLeft = -halfWidth;
+            cameraRight = halfWidth;
+            cameraTop = halfHeight;
+            cameraBottom = -halfHeight;
         }
         
         const camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, 0.1, 100);
@@ -1103,24 +1105,26 @@ window.CBCTViewer = {
                         
                         this.renderers[orientation].setSize(containerWidth, containerHeight);
                         
-                        // Recalculate camera bounds for new container dimensions
+                        // Recalculate camera bounds to maintain data aspect ratio
                         let cameraLeft, cameraRight, cameraTop, cameraBottom;
                         
-                        // Scale to fit the container while maintaining data aspect ratio
+                        // Calculate how to fit the data aspect ratio within the container
                         if (dataAspectRatio > containerAspectRatio) {
-                            // Data is wider relative to container - fit width, scale height
-                            const scale = containerAspectRatio / dataAspectRatio;
-                            cameraLeft = -containerAspectRatio;
-                            cameraRight = containerAspectRatio;
-                            cameraTop = scale;
-                            cameraBottom = -scale;
+                            // Data is wider relative to container - fit to container width
+                            const halfWidth = containerAspectRatio;
+                            const halfHeight = containerAspectRatio / dataAspectRatio;
+                            cameraLeft = -halfWidth;
+                            cameraRight = halfWidth;
+                            cameraTop = halfHeight;
+                            cameraBottom = -halfHeight;
                         } else {
-                            // Data is taller relative to container - fit height, scale width
-                            const scale = dataAspectRatio / containerAspectRatio;
-                            cameraLeft = -scale;
-                            cameraRight = scale;
-                            cameraTop = 1;
-                            cameraBottom = -1;
+                            // Data is taller relative to container - fit to container height
+                            const halfWidth = dataAspectRatio;
+                            const halfHeight = 1.0;
+                            cameraLeft = -halfWidth;
+                            cameraRight = halfWidth;
+                            cameraTop = halfHeight;
+                            cameraBottom = -halfHeight;
                         }
                         
                         // Update stored bounds
@@ -1226,21 +1230,27 @@ window.CBCTViewer = {
                     
                     this.renderers[orientation].setSize(containerWidth, containerHeight);
                     
-                    // Recalculate camera bounds for new container aspect ratio
+                    // Recalculate camera bounds to maintain data aspect ratio
+                    const dataAspectRatio = this.dataAspectRatios[orientation];
                     let cameraLeft, cameraRight, cameraTop, cameraBottom;
                     
-                    if (containerAspectRatio > 1.0) {
-                        // Container is wider than tall
-                        cameraLeft = -containerAspectRatio;
-                        cameraRight = containerAspectRatio;
-                        cameraTop = 1;
-                        cameraBottom = -1;
+                    // Calculate how to fit the data aspect ratio within the container
+                    if (dataAspectRatio > containerAspectRatio) {
+                        // Data is wider relative to container - fit to container width
+                        const halfWidth = containerAspectRatio;
+                        const halfHeight = containerAspectRatio / dataAspectRatio;
+                        cameraLeft = -halfWidth;
+                        cameraRight = halfWidth;
+                        cameraTop = halfHeight;
+                        cameraBottom = -halfHeight;
                     } else {
-                        // Container is taller than wide
-                        cameraLeft = -1;
-                        cameraRight = 1;
-                        cameraTop = 1 / containerAspectRatio;
-                        cameraBottom = -1 / containerAspectRatio;
+                        // Data is taller relative to container - fit to container height
+                        const halfWidth = dataAspectRatio;
+                        const halfHeight = 1.0;
+                        cameraLeft = -halfWidth;
+                        cameraRight = halfWidth;
+                        cameraTop = halfHeight;
+                        cameraBottom = -halfHeight;
                     }
                     
                     // Update stored bounds
