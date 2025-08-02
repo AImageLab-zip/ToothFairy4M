@@ -368,9 +368,7 @@ window.CBCTViewer = {
     initSliceViewer: function(containerId, orientation) {
         const container = document.getElementById(containerId);
         
-        // Wait a bit for container to be properly sized if it has zero dimensions
         if (container.clientWidth === 0 || container.clientHeight === 0) {
-            console.log(`Container ${containerId} has zero dimensions, waiting for proper sizing...`);
             setTimeout(() => {
                 this.initSliceViewer(containerId, orientation);
             }, 100);
@@ -380,12 +378,21 @@ window.CBCTViewer = {
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
         
-        // Make canvas square - use the smaller dimension to ensure it fits
-        const canvasSize = Math.min(containerWidth, containerHeight);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
         
-        console.log(`Initializing ${orientation} viewer: container ${containerWidth}x${containerHeight}, canvas ${canvasSize}x${canvasSize} (square)`);
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+        camera.position.set(0, 0, 1);
+        camera.lookAt(0, 0, 0);
         
-        // Determine the aspect ratio of the actual slice data
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(containerWidth, containerHeight);
+        container.appendChild(renderer.domElement);
+        
+        this.scenes[orientation] = scene;
+        this.cameras[orientation] = camera;
+        this.renderers[orientation] = renderer;
+        
         let sliceWidth, sliceHeight;
         if (orientation === 'axial') {
             sliceWidth = this.dimensions.x;
@@ -393,68 +400,21 @@ window.CBCTViewer = {
         } else if (orientation === 'sagittal') {
             sliceWidth = this.dimensions.y;
             sliceHeight = this.dimensions.z;
-        } else { // coronal
+        } else {
             sliceWidth = this.dimensions.x;
             sliceHeight = this.dimensions.z;
         }
         
-        const dataAspectRatio = sliceWidth / sliceHeight;
-        
-        console.log(`${orientation} data aspect: ${dataAspectRatio.toFixed(2)} (${sliceWidth}x${sliceHeight}), canvas will be square`);
-        
-        // Create scene
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000); // Black background
-        
-        // Create orthographic camera with square aspect ratio (1:1)
-        // The image will maintain its aspect ratio with padding as needed
-        const cameraLeft = -1.0;
-        const cameraRight = 1.0;
-        const cameraTop = 1.0;
-        const cameraBottom = -1.0;
-        
-        const camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, 0.1, 100);
-        camera.position.set(0, 0, 1);
-        camera.lookAt(0, 0, 0);
-        
-        console.log(`${orientation} camera bounds: [${cameraLeft.toFixed(3)}, ${cameraRight.toFixed(3)}, ${cameraTop.toFixed(3)}, ${cameraBottom.toFixed(3)}] (square)`);
-        
-        // Create renderer with square dimensions
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(canvasSize, canvasSize);
-        
-        // Center the canvas in the container
-        renderer.domElement.style.position = 'absolute';
-        renderer.domElement.style.left = '50%';
-        renderer.domElement.style.top = '50%';
-        renderer.domElement.style.transform = 'translate(-50%, -50%)';
-        
-        container.appendChild(renderer.domElement);
-        
-        // Store references
-        this.scenes[orientation] = scene;
-        this.cameras[orientation] = camera;
-        this.renderers[orientation] = renderer;
-        
-        // Store aspect ratios for this orientation
         this.dataAspectRatios = this.dataAspectRatios || {};
-        this.dataAspectRatios[orientation] = dataAspectRatio;
+        this.dataAspectRatios[orientation] = sliceWidth / sliceHeight;
         
-        this.containerAspectRatios = this.containerAspectRatios || {};
-        this.containerAspectRatios[orientation] = 1.0; // Canvas is always square
-        
-        // Store base camera bounds for zoom/pan (always square)
         this.baseCameraBounds = this.baseCameraBounds || {};
         this.baseCameraBounds[orientation] = {
-            left: cameraLeft,
-            right: cameraRight,
-            top: cameraTop,
-            bottom: cameraBottom
+            left: -1,
+            right: 1,
+            top: 1,
+            bottom: -1
         };
-        
-        // Store canvas size for this orientation
-        this.canvasSizes = this.canvasSizes || {};
-        this.canvasSizes[orientation] = canvasSize;
         
         // Initialize slice position based on orientation
         if (orientation === 'axial') {
@@ -633,50 +593,21 @@ window.CBCTViewer = {
         const position = this.slicePositions[orientation];
         const dataAspectRatio = this.dataAspectRatios[orientation];
         
-        console.log(`Updating ${orientation} slice ${position}`);
-        
-        // Debug: Show the actual dimensions used for this orientation
-        let sliceWidth, sliceHeight;
-        if (orientation === 'axial') {
-            sliceWidth = this.dimensions.x;
-            sliceHeight = this.dimensions.y;
-        } else if (orientation === 'sagittal') {
-            sliceWidth = this.dimensions.y;
-            sliceHeight = this.dimensions.z;
-        } else { // coronal
-            sliceWidth = this.dimensions.x;
-            sliceHeight = this.dimensions.z;
-        }
-        
-        const calculatedAspectRatio = sliceWidth / sliceHeight;
-        console.log(`${orientation} DEBUG: sliceWidth=${sliceWidth}, sliceHeight=${sliceHeight}, calculatedAspect=${calculatedAspectRatio.toFixed(3)}, storedAspect=${dataAspectRatio.toFixed(3)}`);
-        
-        // Clear previous slice
         while(scene.children.length > 0) {
             scene.remove(scene.children[0]);
         }
         
-        // Create slice texture
         const texture = this.createSliceTexture(orientation, position);
-        
-        // Debug: Check if texture has data
-        console.log(`${orientation} texture created:`, texture.image.width, 'x', texture.image.height, `aspect: ${(texture.image.width / texture.image.height).toFixed(3)}`);
-        
-        // Create plane geometry with correct aspect ratio
-        // Size the plane to maintain the data aspect ratio within the square [-1, 1] bounds
+        const containerAspect = this.renderers[orientation].domElement.width / this.renderers[orientation].domElement.height;
         let planeWidth, planeHeight;
         
-        if (dataAspectRatio > 1.0) {
-            // Data is wider than tall - fit to width, add vertical padding
-            planeWidth = 2.0;  // Full width of the square camera
-            planeHeight = 2.0 / dataAspectRatio; // Scale height to maintain aspect ratio
+        if (dataAspectRatio > containerAspect) {
+            planeWidth = 2.0;
+            planeHeight = 2.0 * containerAspect / dataAspectRatio;
         } else {
-            // Data is taller than wide - fit to height, add horizontal padding
-            planeHeight = 2.0; // Full height of the square camera
-            planeWidth = 2.0 * dataAspectRatio; // Scale width to maintain aspect ratio
+            planeHeight = 2.0;
+            planeWidth = 2.0 * dataAspectRatio / containerAspect;
         }
-        
-        console.log(`${orientation} plane size: ${planeWidth.toFixed(3)} x ${planeHeight.toFixed(3)} (aspect: ${dataAspectRatio.toFixed(3)}, fits in square camera with padding)`);
         
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
         const material = new THREE.MeshBasicMaterial({ 
@@ -688,14 +619,11 @@ window.CBCTViewer = {
         const plane = new THREE.Mesh(geometry, material);
         scene.add(plane);
         
-        // Render
         if (this.renderFunctions && this.renderFunctions[orientation]) {
             this.renderFunctions[orientation]();
         } else {
             this.renderers[orientation].render(scene, this.cameras[orientation]);
         }
-        
-        console.log(`${orientation} slice rendered`);
     },
     
     createSliceTexture: function(orientation, sliceIndex) {
@@ -748,14 +676,7 @@ window.CBCTViewer = {
             }
         }
         
-        // Debug: Check slice data
-        let nonZeroPixels = 0;
-        let maxValue = 0;
-        for (let i = 0; i < sliceData.length; i++) {
-            if (sliceData[i] > 0) nonZeroPixels++;
-            if (sliceData[i] > maxValue) maxValue = sliceData[i];
-        }
-        console.log(`${orientation} slice ${sliceIndex}: ${sliceWidth}x${sliceHeight}, non-zero: ${nonZeroPixels}/${sliceData.length}, max: ${maxValue}`);
+
         
         const texture = new THREE.DataTexture(sliceData, sliceWidth, sliceHeight, THREE.LuminanceFormat, THREE.UnsignedByteType);
         texture.minFilter = THREE.NearestFilter;
@@ -1085,64 +1006,24 @@ window.CBCTViewer = {
         
         // Wait a moment for containers to be visible and properly sized
         setTimeout(() => {
-            // Re-render all slice views
             ['axial', 'sagittal', 'coronal'].forEach(orientation => {
                 if (this.renderers[orientation] && this.scenes[orientation] && this.cameras[orientation]) {
-                    // Resize renderer to square dimensions based on current container size
                     const containerId = orientation === 'axial' ? 'axialView' : 
                                        orientation === 'sagittal' ? 'sagittalView' : 'coronalView';
                     const container = document.getElementById(containerId);
                     if (container && container.clientWidth > 0 && container.clientHeight > 0) {
-                        const containerWidth = container.clientWidth;
-                        const containerHeight = container.clientHeight;
-                        const canvasSize = Math.min(containerWidth, containerHeight);
-                        const dataAspectRatio = this.dataAspectRatios[orientation];
-                        
-                        console.log(`Refreshing ${orientation}: container ${containerWidth}x${containerHeight}, canvas ${canvasSize}x${canvasSize} (square), data aspect ${dataAspectRatio.toFixed(2)}`);
-                        
-                        this.renderers[orientation].setSize(canvasSize, canvasSize);
-                        
-                        // Center the canvas in the container
-                        const canvas = this.renderers[orientation].domElement;
-                        canvas.style.position = 'absolute';
-                        canvas.style.left = '50%';
-                        canvas.style.top = '50%';
-                        canvas.style.transform = 'translate(-50%, -50%)';
-                        
-                        // Camera bounds remain square
-                        const cameraLeft = -1.0;
-                        const cameraRight = 1.0;
-                        const cameraTop = 1.0;
-                        const cameraBottom = -1.0;
-                        
-                        // Update stored bounds (always square)
-                        this.baseCameraBounds[orientation] = {
-                            left: cameraLeft,
-                            right: cameraRight,
-                            top: cameraTop,
-                            bottom: cameraBottom
-                        };
-                        
-                        // Update stored canvas size
-                        this.canvasSizes = this.canvasSizes || {};
-                        this.canvasSizes[orientation] = canvasSize;
-                        
-                        // Reset zoom and pan for resize
+                        this.renderers[orientation].setSize(container.clientWidth, container.clientHeight);
                         this.zoomLevels[orientation] = 1.0;
                         this.panOffsets[orientation] = { x: 0, y: 0 };
                         
-                        // Apply to camera
                         const camera = this.cameras[orientation];
-                        camera.left = cameraLeft;
-                        camera.right = cameraRight;
-                        camera.top = cameraTop;
-                        camera.bottom = cameraBottom;
+                        camera.left = -1;
+                        camera.right = 1;
+                        camera.top = 1;
+                        camera.bottom = -1;
                         camera.updateProjectionMatrix();
                         
-                        // Force re-render
                         this.updateSlice(orientation);
-                    } else {
-                        console.warn(`Container ${containerId} not ready for refresh (${container ? container.clientWidth + 'x' + container.clientHeight : 'not found'})`);
                     }
                 }
             });
@@ -1209,51 +1090,20 @@ window.CBCTViewer = {
     },
     
     handleResize: function() {
-        // Handle slice viewers (full size with correct aspect ratio)
         ['axial', 'sagittal', 'coronal'].forEach(orientation => {
             if (this.renderers[orientation] && this.cameras[orientation]) {
                 const containerId = orientation === 'axial' ? 'axialView' : 
                                    orientation === 'sagittal' ? 'sagittalView' : 'coronalView';
                 const container = document.getElementById(containerId);
                 if (container) {
-                    const containerWidth = container.clientWidth;
-                    const containerHeight = container.clientHeight;
-                    const canvasSize = Math.min(containerWidth, containerHeight);
+                    this.renderers[orientation].setSize(container.clientWidth, container.clientHeight);
                     
-                    this.renderers[orientation].setSize(canvasSize, canvasSize);
-                    
-                    // Center the canvas in the container
-                    const canvas = this.renderers[orientation].domElement;
-                    canvas.style.position = 'absolute';
-                    canvas.style.left = '50%';
-                    canvas.style.top = '50%';
-                    canvas.style.transform = 'translate(-50%, -50%)';
-                    
-                    // Camera bounds remain square
-                    const cameraLeft = -1.0;
-                    const cameraRight = 1.0;
-                    const cameraTop = 1.0;
-                    const cameraBottom = -1.0;
-                    
-                    // Update stored bounds (always square)
-                    this.baseCameraBounds[orientation] = {
-                        left: cameraLeft,
-                        right: cameraRight,
-                        top: cameraTop,
-                        bottom: cameraBottom
-                    };
-                    
-                    // Update stored canvas size
-                    this.canvasSizes = this.canvasSizes || {};
-                    this.canvasSizes[orientation] = canvasSize;
-                    
-                    // Apply current zoom and pan with new bounds
                     const zoomLevel = this.zoomLevels[orientation] || 1.0;
                     const panX = (this.panOffsets[orientation] && this.panOffsets[orientation].x) || 0;
                     const panY = (this.panOffsets[orientation] && this.panOffsets[orientation].y) || 0;
                     
-                    const width = (cameraRight - cameraLeft) / zoomLevel;
-                    const height = (cameraTop - cameraBottom) / zoomLevel;
+                    const width = 2 / zoomLevel;
+                    const height = 2 / zoomLevel;
                     
                     const camera = this.cameras[orientation];
                     camera.left = -width / 2 + panX;
