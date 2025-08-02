@@ -488,7 +488,7 @@ def mark_job_completed(job_id, output_files, logs=None):
             # Create single FileRegistry entry for CBCT with all outputs in metadata
             if processed_files:
                 # Use pano path as primary file path (for backward compatibility)
-                primary_path = processed_files.get('pano', {}).get('path', '')
+                primary_path = processed_files.get('panoramic_view', {}).get('path', '')
                 if not primary_path and processed_files:
                     # Fallback to first available file
                     primary_path = list(processed_files.values())[0]['path']
