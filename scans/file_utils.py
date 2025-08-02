@@ -62,11 +62,8 @@ def save_cbct_to_dataset(scanpair, cbct_file):
     """
     ensure_directories()
     
-    # Determine file format and extension
     original_name = cbct_file.name
     filename_lower = original_name.lower()
-    
-    # Determine the file format and appropriate extension
     if filename_lower.endswith('.nii.gz'):
         extension = '.nii.gz'
         file_format = 'nifti_compressed'
@@ -77,7 +74,7 @@ def save_cbct_to_dataset(scanpair, cbct_file):
         extension = '.dcm'
         file_format = 'dicom_single'
     elif filename_lower == 'dicomdir' or filename_lower.endswith('/dicomdir'):
-        extension = ''  # DICOMDIR has no extension
+        extension = ''
         file_format = 'dicomdir'
     elif filename_lower.endswith('.mha'):
         extension = '.mha'
@@ -136,7 +133,7 @@ def save_cbct_to_dataset(scanpair, cbct_file):
             'original_filename': original_name,
             'uploaded_at': timezone.now().isoformat(),
             'file_format': file_format,
-            'needs_conversion': file_format != 'nifti_compressed',  # Only .nii.gz doesn't need conversion
+            'needs_conversion': file_format != 'nifti_compressed',
         }
     )
     
@@ -157,14 +154,115 @@ def save_cbct_to_dataset(scanpair, cbct_file):
         metadata={
             'input_format': file_format,
             'expected_outputs': [
-                'volume_nifti',  # Converted .nii.gz volume
-                'panoramic_view',  # Pano image  
-                'structures_mesh',  # STL meshes
+                'volume_nifti',
+                'panoramic_view',
+                'structures_mesh',
             ]
         }
     )
     
     return file_path, processing_job
+
+
+def save_cbct_folder_to_dataset(scanpair, folder_files):
+    """
+    Save CBCT folder (multiple DICOM files) to /dataset/raw/cbct/ and create processing job
+    
+    Args:
+        scanpair: ScanPair instance
+        folder_files: List of Django UploadedFile instances from folder
+        
+    Returns:
+        tuple: (folder_path, processing_job)
+    """
+    from .models import validate_cbct_folder
+    
+    ensure_directories()
+    
+    # Validate folder contents
+    valid_files = validate_cbct_folder(folder_files)
+    
+    # Create a folder for this CBCT dataset
+    base_filename = f"cbct_scanpair_{scanpair.scanpair_id}_patient_{scanpair.patient.patient_id}_folder"
+    folder_path = os.path.join(DATASET_DIRS['cbct'], base_filename)
+    os.makedirs(folder_path, exist_ok=True)
+    
+    # Save all valid files to the folder
+    saved_files = []
+    total_size = 0
+    
+    for file in valid_files:
+        # Preserve original filename
+        file_path = os.path.join(folder_path, file.name)
+        
+        # Create subdirectories if needed (preserve folder structure)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Save file
+        with open(file_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
+        file_size = os.path.getsize(file_path)
+        file_hash = calculate_file_hash(file_path)
+        total_size += file_size
+        
+        saved_files.append({
+            'name': file.name,
+            'path': file_path,
+            'size': file_size,
+            'hash': file_hash
+        })
+    
+    # Calculate folder hash (hash of all file hashes combined)
+    combined_hashes = ''.join(f['hash'] for f in saved_files)
+    hash_sha256 = hashlib.sha256()
+    hash_sha256.update(combined_hashes.encode())
+    folder_hash = hash_sha256.hexdigest()
+    
+    # Create file registry entry for the folder
+    file_registry = FileRegistry.objects.create(
+        file_type='cbct_raw',
+        file_path=folder_path,  # Path to folder
+        file_size=total_size,
+        file_hash=folder_hash,
+        scanpair=scanpair,
+        metadata={
+            'upload_type': 'folder',
+            'file_format': 'dicom_folder',
+            'uploaded_at': timezone.now().isoformat(),
+            'files': saved_files,  # List of all files in folder
+            'needs_conversion': True,
+        }
+    )
+    
+    # Create processing job
+    processing_job = ProcessingJob.objects.create(
+        job_type='cbct',
+        scanpair=scanpair,
+        input_file_path=folder_path,  # Pass folder path
+        docker_image='your-cbct-processor:latest',
+        docker_command=[
+            '--scanpair-id', str(scanpair.scanpair_id),
+            '--patient-id', str(scanpair.patient.patient_id),
+            '--input-folder', folder_path,  # Use folder flag
+            '--input-format', 'dicom_folder',
+            '--output-dir', PROCESSED_DIRS['cbct'],
+            '--convert-to-nifti',
+        ],
+        metadata={
+            'input_format': 'dicom_folder',
+            'input_type': 'folder',
+            'file_count': len(saved_files),
+            'expected_outputs': [
+                'volume_nifti',
+                'panoramic_view',
+                'structures_mesh',
+            ]
+        }
+    )
+    
+    return folder_path, processing_job
 
 
 def save_ios_to_dataset(scanpair, upper_file=None, lower_file=None):

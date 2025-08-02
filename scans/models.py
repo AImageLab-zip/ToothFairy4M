@@ -15,6 +15,8 @@ def validate_cbct_file(value):
     - NIfTI: .nii, .nii.gz
     - MetaImage: .mha, .mhd
     - NRRD: .nrrd, .nhdr
+    
+    Note: This validator is for single file uploads. Folder uploads are validated separately.
     """
     if hasattr(value, 'temporary_file_path'):
         file_path = value.temporary_file_path()
@@ -68,6 +70,49 @@ def validate_cbct_file(value):
                         )
         except Exception as e:
             raise ValidationError(f'Error reading archive file: {str(e)}')
+
+
+def validate_cbct_folder(files):
+    """
+    Validator for CBCT folder uploads.
+    Validates that the folder contains valid DICOM files.
+    
+    Args:
+        files: List of uploaded files from folder
+    """
+    if not files:
+        raise ValidationError('No files found in uploaded folder')
+    
+    # Check if any files have DICOM extensions or are DICOMDIR
+    valid_files = []
+    has_dicomdir = False
+    
+    for file in files:
+        filename = file.name.lower()
+        
+        # Check for DICOMDIR
+        if filename.endswith('dicomdir') or filename == 'dicomdir':
+            has_dicomdir = True
+            valid_files.append(file)
+        # Check for DICOM files
+        elif filename.endswith(('.dcm', '.dicom')):
+            valid_files.append(file)
+    
+    if not valid_files:
+        raise ValidationError(
+            'Folder must contain DICOM files (.dcm) or a DICOMDIR file'
+        )
+    
+    # Validate individual DICOM files (basic check)
+    for file in valid_files[:5]:  # Check first 5 files to avoid overwhelming validation
+        try:
+            # Basic file size check (DICOM files should not be empty)
+            if file.size == 0:
+                raise ValidationError(f'Invalid DICOM file: {file.name} (empty file)')
+        except AttributeError:
+            pass  # Skip if size attribute not available
+    
+    return valid_files
 
 
 class UserProfile(models.Model):

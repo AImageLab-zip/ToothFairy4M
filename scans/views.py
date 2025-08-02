@@ -248,6 +248,9 @@ def upload_scan(request):
             lower_scan_file = scan_form.cleaned_data.get('lower_scan_raw')
             cbct_file = scan_form.cleaned_data.get('cbct')
             
+            # Check for folder upload
+            cbct_folder_files = request.FILES.getlist('cbct_folder_files')
+            
             # Save scan pair without file fields (they'll be stored in /dataset)
             scan_pair = scan_form.save(commit=False)
             scan_pair.patient = patient
@@ -272,13 +275,34 @@ def upload_scan(request):
                     if result['processing_job']:
                         processing_jobs.append(f"IOS Job #{result['processing_job'].id}")
                 
-                # Handle CBCT file if provided
+                # Handle CBCT file or folder if provided
                 if cbct_file:
                     scan_pair.cbct_processing_status = 'processing'  
                     scan_pair.save()
                     
                     file_path, processing_job = save_cbct_to_dataset(scan_pair, cbct_file)
                     processing_jobs.append(f"CBCT Job #{processing_job.id}")
+                elif cbct_folder_files:
+                    from .file_utils import save_cbct_folder_to_dataset
+                    from .models import validate_cbct_folder
+                    
+                    try:
+                        # Validate folder first
+                        validate_cbct_folder(cbct_folder_files)
+                        
+                        scan_pair.cbct_processing_status = 'processing'
+                        scan_pair.save()
+                        
+                        folder_path, processing_job = save_cbct_folder_to_dataset(scan_pair, cbct_folder_files)
+                        processing_jobs.append(f"CBCT Folder Job #{processing_job.id}")
+                    except Exception as e:
+                        messages.error(request, f'Invalid CBCT folder: {e}')
+                        scan_pair.delete()  # Clean up if folder validation fails
+                        patient.delete()
+                        return render(request, 'scans/upload_scan.html', {
+                            'patient_form': patient_form,
+                            'scan_form': scan_form,
+                        })
                 
                 if processing_jobs:
                     job_list = ', '.join(processing_jobs)
@@ -374,9 +398,12 @@ def scan_detail(request, scanpair_id):
                 updated_files.append('lower scan')
                 reprocess_ios = True
             
-            # Handle CBCT upload
-            if 'cbct' in request.FILES:
-                updated_files.append('CBCT')
+            # Handle CBCT upload (file or folder)
+            if 'cbct' in request.FILES or 'cbct_folder_files' in request.FILES:
+                if 'cbct' in request.FILES:
+                    updated_files.append('CBCT')
+                else:
+                    updated_files.append('CBCT Folder')
                 reprocess_cbct = True
             
             if updated_files:
@@ -405,16 +432,33 @@ def scan_detail(request, scanpair_id):
                     except Exception as e:
                         messages.error(request, f'Error uploading IOS scan(s): {e}')
                 
-                if reprocess_cbct and 'cbct' in request.FILES:
+                if reprocess_cbct and ('cbct' in request.FILES or 'cbct_folder_files' in request.FILES):
                     scan_pair.cbct_processing_status = 'processing'
                     scan_pair.save()
                     
-                    # Save CBCT file to dataset and create processing job
-                    try:
-                        file_path, processing_job = save_cbct_to_dataset(scan_pair, request.FILES['cbct'])
-                        messages.success(request, f'CBCT uploaded and queued for processing (Job #{processing_job.id})')
-                    except Exception as e:
-                        messages.error(request, f'Error uploading CBCT: {e}')
+                    # Check for folder upload first
+                    cbct_folder_files = request.FILES.getlist('cbct_folder_files')
+                    
+                    if cbct_folder_files:
+                        # Handle folder upload
+                        try:
+                            from .file_utils import save_cbct_folder_to_dataset
+                            from .models import validate_cbct_folder
+                            
+                            # Validate folder first
+                            validate_cbct_folder(cbct_folder_files)
+                            
+                            folder_path, processing_job = save_cbct_folder_to_dataset(scan_pair, cbct_folder_files)
+                            messages.success(request, f'CBCT folder uploaded and queued for processing (Job #{processing_job.id})')
+                        except Exception as e:
+                            messages.error(request, f'Error uploading CBCT folder: {e}')
+                    elif 'cbct' in request.FILES:
+                        # Handle single file upload
+                        try:
+                            file_path, processing_job = save_cbct_to_dataset(scan_pair, request.FILES['cbct'])
+                            messages.success(request, f'CBCT uploaded and queued for processing (Job #{processing_job.id})')
+                        except Exception as e:
+                            messages.error(request, f'Error uploading CBCT: {e}')
                 
                 # Success message
                 files_str = ', '.join(updated_files)

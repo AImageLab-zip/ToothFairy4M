@@ -36,8 +36,32 @@
                         </small>
                     </div>
                     <div class="col-12">
-                        <label class="form-label-sm">CBCT (DICOM/NIfTI/MetaImage/NRRD)</label>
-                        <input type="file" name="cbct" class="form-control form-control-sm" accept=".dcm,.dicom,.nii,.nii.gz,.gz,.mha,.mhd,.nrrd,.nhdr,.zip,.tar,.tar.gz,.tgz,application/dicom">
+                        <label class="form-label-sm">CBCT Upload Type</label>
+                        <div class="btn-group w-100 mb-2" role="group" aria-label="CBCT upload type">
+                            <input type="radio" class="btn-check" name="cbct_upload_type_detail" id="cbct_file_upload_detail" value="file" checked>
+                            <label class="btn btn-outline-primary btn-sm" for="cbct_file_upload_detail">
+                                <i class="fas fa-file me-1"></i>Single File
+                            </label>
+                            <input type="radio" class="btn-check" name="cbct_upload_type_detail" id="cbct_folder_upload_detail" value="folder">
+                            <label class="btn btn-outline-primary btn-sm" for="cbct_folder_upload_detail">
+                                <i class="fas fa-folder me-1"></i>DICOM Folder
+                            </label>
+                        </div>
+                        
+                        <!-- File Upload -->
+                        <div id="cbct_file_section_detail">
+                            <label class="form-label-sm">CBCT File (DICOM/NIfTI/MetaImage/NRRD)</label>
+                            <input type="file" name="cbct" class="form-control form-control-sm" accept=".dcm,.dicom,.nii,.nii.gz,.gz,.mha,.mhd,.nrrd,.nhdr,.zip,.tar,.tar.gz,.tgz,application/dicom">
+                        </div>
+                        
+                        <!-- Folder Upload -->
+                        <div id="cbct_folder_section_detail" style="display: none;">
+                            <label class="form-label-sm">CBCT Folder</label>
+                            <input type="file" name="cbct_folder_files" id="cbct_folder_detail" class="form-control form-control-sm" 
+                                   webkitdirectory directory multiple 
+                                   accept=".dcm,.dicom,application/dicom">
+                        </div>
+                        
                         <small class="text-muted">
                             Current: 
                             {% if scan_pair.has_cbct_scan %}
