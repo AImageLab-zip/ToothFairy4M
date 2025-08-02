@@ -87,6 +87,7 @@ def validate_cbct_folder(files):
     valid_files = []
     has_dicomdir = False
     dicom_files = []
+    extensionless_files = []
     
     for file in files:
         filename = file.name.lower()
@@ -99,6 +100,10 @@ def validate_cbct_folder(files):
         elif filename.endswith(('.dcm', '.dicom')) or '.dcm' in filename or '.dicom' in filename:
             dicom_files.append(file.name)
             valid_files.append(file)
+        # Check for files without extensions (common for DICOM files)
+        elif '.' not in os.path.basename(filename):
+            extensionless_files.append(file.name)
+            valid_files.append(file)
     
 
     
@@ -110,7 +115,7 @@ def validate_cbct_folder(files):
                 ext = os.path.splitext(file.name.lower())[1]
                 file_extensions.add(ext)
         
-        error_msg = f'Folder must contain DICOM files (.dcm) and/or a DICOMDIR file. '
+        error_msg = f'Folder must contain DICOM files (.dcm, .dicom, or no extension) and/or a DICOMDIR file. '
         if file_extensions:
             error_msg += f'Found file types: {", ".join(sorted(file_extensions))}'
         else:
