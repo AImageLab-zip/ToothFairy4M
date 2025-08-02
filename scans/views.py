@@ -248,8 +248,13 @@ def upload_scan(request):
             # Create a temporary request.FILES with a dummy cbct file to pass form validation
             from django.core.files.uploadedfile import SimpleUploadedFile
             dummy_file = SimpleUploadedFile("dummy.dcm", b"dummy", content_type="application/dicom")
-            request.FILES = request.FILES.copy()
-            request.FILES['cbct'] = dummy_file
+            # Create a mutable copy of FILES
+            mutable_files = request.FILES.copy()
+            mutable_files['cbct'] = dummy_file
+            # Create a new form with modified files
+            scan_form = ScanPairForm(request.POST, mutable_files)
+        else:
+            scan_form = ScanPairForm(request.POST, request.FILES)
         
         if scan_form.is_valid():
             # Create patient first (no form data needed)

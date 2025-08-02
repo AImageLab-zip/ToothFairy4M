@@ -100,11 +100,7 @@ def validate_cbct_folder(files):
             dicom_files.append(file.name)
             valid_files.append(file)
     
-    # Debug: print what we found
-    print(f"DEBUG: Found {len(files)} total files")
-    print(f"DEBUG: Found {len(dicom_files)} DICOM files: {dicom_files[:5]}...")  # Show first 5
-    print(f"DEBUG: Found DICOMDIR: {has_dicomdir}")
-    print(f"DEBUG: Valid files count: {len(valid_files)}")
+
     
     if not valid_files:
         # Provide more detailed error message
