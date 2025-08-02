@@ -587,18 +587,36 @@ def scan_cbct_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
-    # Get CBCT file path from FileRegistry first, fallback to old field
+    # Get CBCT file path - prioritize converted .nii.gz from processed files
     file_path = None
     
+    # First, check for processed CBCT (converted .nii.gz)
     try:
-        # Check FileRegistry for raw CBCT first (prioritize raw file)
-        raw_cbct = scan_pair.get_cbct_raw_file()
-        if raw_cbct and os.path.exists(raw_cbct.file_path):
-            file_path = raw_cbct.file_path
+        processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+        if processed_entry:
+            if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
+                # New structure: look for converted volume in metadata
+                files_data = processed_entry.metadata.get('files', {})
+                volume_data = files_data.get('volume_nifti', {})
+                volume_path = volume_data.get('path')
+                if volume_path and os.path.exists(volume_path):
+                    file_path = volume_path
     except:
         pass
     
-    # Fallback to old file field
+    # Fallback to raw CBCT if no processed version available
+    if not file_path:
+        try:
+            # Check FileRegistry for raw CBCT
+            raw_cbct = scan_pair.get_cbct_raw_file()
+            if raw_cbct and os.path.exists(raw_cbct.file_path):
+                # Only use raw file if it's already in .nii.gz format
+                if raw_cbct.file_path.endswith('.nii.gz'):
+                    file_path = raw_cbct.file_path
+        except:
+            pass
+    
+    # Final fallback to old file field
     if not file_path and scan_pair.cbct:
         try:
             file_path = scan_pair.cbct.path
@@ -738,24 +756,32 @@ def scan_panoramic_data(request, scanpair_id):
     
     # Look for panoramic file in FileRegistry (CBCT Processed files)
     try:
-        # Find all CBCT processed files for this scan pair
-        processed_files = scan_pair.files.filter(file_type='cbct_processed')
+        # Find the CBCT processed file entry for this scan pair
+        processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
         
-        # Look for panoramic file (ends with _pano.png)
-        panoramic_file = None
-        for file_obj in processed_files:
-            if file_obj.file_path.endswith('_pano.png'):
-                panoramic_file = file_obj
-                break
+        if not processed_entry:
+            return JsonResponse({'error': 'Processed CBCT files not found'}, status=404)
         
-        if not panoramic_file:
+        # Check if using new multi-file structure
+        panoramic_path = None
+        if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
+            # New structure: multiple files in metadata
+            files_data = processed_entry.metadata.get('files', {})
+            pano_data = files_data.get('pano', {})
+            panoramic_path = pano_data.get('path')
+        else:
+            # Legacy structure: single file path (backward compatibility)
+            if processed_entry.file_path.endswith('_pano.png'):
+                panoramic_path = processed_entry.file_path
+        
+        if not panoramic_path:
             return JsonResponse({'error': 'Panoramic image not found in processed files'}, status=404)
         
-        if not os.path.exists(panoramic_file.file_path):
+        if not os.path.exists(panoramic_path):
             return JsonResponse({'error': 'Panoramic image file not found on disk'}, status=404)
         
         # Serve the panoramic image
-        with open(panoramic_file.file_path, 'rb') as f:
+        with open(panoramic_path, 'rb') as f:
             data = f.read()
             response = HttpResponse(data, content_type='image/png')
             response['Content-Disposition'] = f'inline; filename="panoramic_{scanpair_id}.png"'

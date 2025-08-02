@@ -1,8 +1,73 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
 import os
 from django.utils import timezone
+import zipfile
+import tarfile
+
+
+def validate_cbct_file(value):
+    """
+    Validator for CBCT files that supports multiple formats:
+    - DICOM: .dcm files, zip/tar archives containing .dcm files, or DICOMDIR
+    - NIfTI: .nii, .nii.gz
+    - MetaImage: .mha, .mhd
+    - NRRD: .nrrd, .nhdr
+    """
+    if hasattr(value, 'temporary_file_path'):
+        file_path = value.temporary_file_path()
+    else:
+        file_path = value.name
+    
+    filename = value.name.lower()
+    valid_extensions = [
+        '.dcm', '.dicom',  # DICOM
+        '.nii', '.nii.gz', '.gz',  # NIfTI
+        '.mha', '.mhd',  # MetaImage
+        '.nrrd', '.nhdr',  # NRRD
+        '.zip', '.tar', '.tar.gz', '.tgz'  # Archives that might contain DICOM
+    ]
+    
+    # Check if file has a valid extension
+    has_valid_extension = any(filename.endswith(ext) for ext in valid_extensions)
+    
+    # Special case for DICOMDIR files (no extension)
+    if filename == 'dicomdir' or filename.endswith('/dicomdir'):
+        return
+    
+    if not has_valid_extension:
+        raise ValidationError(
+            f'Unsupported file format. Supported formats: DICOM (.dcm, .zip, .tar), '
+            f'NIfTI (.nii, .nii.gz), MetaImage (.mha, .mhd), NRRD (.nrrd, .nhdr)'
+        )
+    
+    # For archives, check if they contain DICOM files
+    if filename.endswith(('.zip', '.tar', '.tar.gz', '.tgz')):
+        try:
+            # Check if archive contains DICOM files
+            if filename.endswith('.zip'):
+                with zipfile.ZipFile(value, 'r') as zf:
+                    file_list = zf.namelist()
+                    has_dicom = any(f.lower().endswith('.dcm') or f.lower() == 'dicomdir' 
+                                   for f in file_list)
+                    if not has_dicom:
+                        raise ValidationError(
+                            'Archive must contain DICOM files (.dcm) or DICOMDIR file'
+                        )
+            elif filename.endswith(('.tar', '.tar.gz', '.tgz')):
+                mode = 'r:gz' if filename.endswith(('.tar.gz', '.tgz')) else 'r'
+                with tarfile.open(fileobj=value, mode=mode) as tf:
+                    file_list = tf.getnames()
+                    has_dicom = any(f.lower().endswith('.dcm') or f.lower().endswith('/dicomdir') 
+                                   for f in file_list)
+                    if not has_dicom:
+                        raise ValidationError(
+                            'Archive must contain DICOM files (.dcm) or DICOMDIR file'
+                        )
+        except Exception as e:
+            raise ValidationError(f'Error reading archive file: {str(e)}')
 
 
 class UserProfile(models.Model):
@@ -129,7 +194,7 @@ class ScanPair(models.Model):
     
     cbct = models.FileField(
         upload_to=cbct_upload_path,
-        validators=[FileExtensionValidator(allowed_extensions=['nii', 'gz'])],
+        validators=[validate_cbct_file],
         blank=True,
         null=True
     )

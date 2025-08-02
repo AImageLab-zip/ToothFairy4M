@@ -8,6 +8,8 @@ from django.conf import settings
 from django.utils import timezone
 from .models import FileRegistry, ProcessingJob, VoiceCaption
 import json
+import zipfile
+import tarfile
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ def calculate_file_hash(file_path):
 def save_cbct_to_dataset(scanpair, cbct_file):
     """
     Save CBCT file to /dataset/raw/cbct/ and create processing job
+    Supports multiple formats: DICOM, NIfTI, MetaImage, NRRD
     
     Args:
         scanpair: ScanPair instance
@@ -59,11 +62,59 @@ def save_cbct_to_dataset(scanpair, cbct_file):
     """
     ensure_directories()
     
-    # Generate filename: cbct_scanpair_{id}_{patient_id}.nii.gz
+    # Determine file format and extension
     original_name = cbct_file.name
-    extension = '.nii.gz' if original_name.endswith('.nii.gz') else '.nii'
-    filename = f"cbct_scanpair_{scanpair.scanpair_id}_patient_{scanpair.patient.patient_id}{extension}"
-    file_path = os.path.join(DATASET_DIRS['cbct'], filename)
+    filename_lower = original_name.lower()
+    
+    # Determine the file format and appropriate extension
+    if filename_lower.endswith('.nii.gz'):
+        extension = '.nii.gz'
+        file_format = 'nifti_compressed'
+    elif filename_lower.endswith('.nii'):
+        extension = '.nii'
+        file_format = 'nifti'
+    elif filename_lower.endswith(('.dcm', '.dicom')):
+        extension = '.dcm'
+        file_format = 'dicom_single'
+    elif filename_lower == 'dicomdir' or filename_lower.endswith('/dicomdir'):
+        extension = ''  # DICOMDIR has no extension
+        file_format = 'dicomdir'
+    elif filename_lower.endswith('.mha'):
+        extension = '.mha'
+        file_format = 'metaimage'
+    elif filename_lower.endswith('.mhd'):
+        extension = '.mhd'
+        file_format = 'metaimage_header'
+    elif filename_lower.endswith('.nrrd'):
+        extension = '.nrrd'
+        file_format = 'nrrd'
+    elif filename_lower.endswith('.nhdr'):
+        extension = '.nhdr'
+        file_format = 'nrrd_header'
+    elif filename_lower.endswith('.zip'):
+        extension = '.zip'
+        file_format = 'dicom_archive_zip'
+    elif filename_lower.endswith(('.tar', '.tar.gz', '.tgz')):
+        if filename_lower.endswith('.tar.gz'):
+            extension = '.tar.gz'
+        elif filename_lower.endswith('.tgz'):
+            extension = '.tgz'
+        else:
+            extension = '.tar'
+        file_format = 'dicom_archive_tar'
+    else:
+        # Fallback - treat as raw DICOM
+        extension = os.path.splitext(original_name)[1] or '.dcm'
+        file_format = 'unknown'
+    
+    # Generate filename preserving original extension
+    base_filename = f"cbct_scanpair_{scanpair.scanpair_id}_patient_{scanpair.patient.patient_id}"
+    if extension == '':  # Special case for DICOMDIR
+        filename = 'DICOMDIR'
+        file_path = os.path.join(DATASET_DIRS['cbct'], f"{base_filename}_DICOMDIR")
+    else:
+        filename = f"{base_filename}{extension}"
+        file_path = os.path.join(DATASET_DIRS['cbct'], filename)
     
     # Save file to dataset directory
     with open(file_path, 'wb+') as destination:
@@ -74,7 +125,7 @@ def save_cbct_to_dataset(scanpair, cbct_file):
     file_hash = calculate_file_hash(file_path)
     file_size = os.path.getsize(file_path)
     
-    # Create file registry entry
+    # Create file registry entry with format metadata
     file_registry = FileRegistry.objects.create(
         file_type='cbct_raw',
         file_path=file_path,
@@ -84,10 +135,12 @@ def save_cbct_to_dataset(scanpair, cbct_file):
         metadata={
             'original_filename': original_name,
             'uploaded_at': timezone.now().isoformat(),
+            'file_format': file_format,
+            'needs_conversion': file_format != 'nifti_compressed',  # Only .nii.gz doesn't need conversion
         }
     )
     
-    # Create processing job
+    # Create processing job with conversion parameters
     processing_job = ProcessingJob.objects.create(
         job_type='cbct',
         scanpair=scanpair,
@@ -97,8 +150,18 @@ def save_cbct_to_dataset(scanpair, cbct_file):
             '--scanpair-id', str(scanpair.scanpair_id),
             '--patient-id', str(scanpair.patient.patient_id),
             '--input-file', file_path,
-            '--output-dir', PROCESSED_DIRS['cbct']
-        ]
+            '--input-format', file_format,  # Pass format to processing job
+            '--output-dir', PROCESSED_DIRS['cbct'],
+            '--convert-to-nifti',  # Flag to indicate conversion needed
+        ],
+        metadata={
+            'input_format': file_format,
+            'expected_outputs': [
+                'volume_nifti',  # Converted .nii.gz volume
+                'panoramic_view',  # Pano image  
+                'structures_mesh',  # STL meshes
+            ]
+        }
     )
     
     return file_path, processing_job
@@ -300,38 +363,85 @@ def mark_job_completed(job_id, output_files, logs=None):
         logger.info(f"Job marked as completed successfully")
         
         # Register output files
-        logger.info(f"Registering {len(output_files)} output files")
-        for file_type, file_path in output_files.items():
-            logger.info(f"Processing output file: type={file_type}, path={file_path}")
-            if os.path.exists(file_path):
-                logger.info(f"File exists, calculating hash and size")
-                file_hash = calculate_file_hash(file_path)
-                file_size = os.path.getsize(file_path)
-                
-                # Determine file registry type based on job type
-                registry_type_map = {
-                    'cbct': 'cbct_processed',
-                    'ios': f'ios_processed_{file_type}',  # file_type could be 'upper' or 'lower'
-                    'audio': 'audio_processed'
-                }
-                
-                registry_type = registry_type_map.get(job.job_type)
-                logger.info(f"Creating FileRegistry entry with type={registry_type}")
+        logger.info(f"Registering output files for job type: {job.job_type}")
+        
+        if job.job_type == 'cbct':
+            # For CBCT, we expect multiple output files
+            # output_files should contain: pano, volume_nifti, structures_mesh_*, etc.
+            processed_files = {}
+            total_size = 0
+            
+            for file_type, file_path in output_files.items():
+                logger.info(f"Processing CBCT output: type={file_type}, path={file_path}")
+                if os.path.exists(file_path):
+                    file_hash = calculate_file_hash(file_path)
+                    file_size = os.path.getsize(file_path)
+                    total_size += file_size
+                    
+                    processed_files[file_type] = {
+                        'path': file_path,
+                        'size': file_size,
+                        'hash': file_hash,
+                        'type': file_type
+                    }
+                else:
+                    logger.warning(f"Output file not found: {file_path}")
+            
+            # Create single FileRegistry entry for CBCT with all outputs in metadata
+            if processed_files:
+                # Use pano path as primary file path (for backward compatibility)
+                primary_path = processed_files.get('pano', {}).get('path', '')
+                if not primary_path and processed_files:
+                    # Fallback to first available file
+                    primary_path = list(processed_files.values())[0]['path']
                 
                 FileRegistry.objects.create(
-                    file_type=registry_type,
-                    file_path=file_path,
-                    file_size=file_size,
-                    file_hash=file_hash,
+                    file_type='cbct_processed',
+                    file_path=primary_path,  # Primary file path (e.g., pano)
+                    file_size=total_size,  # Total size of all files
+                    file_hash='multi-file',  # Indicator that this contains multiple files
                     scanpair=job.scanpair,
-                    voice_caption=job.voice_caption,
                     processing_job=job,
                     metadata={
                         'processed_at': timezone.now().isoformat(),
+                        'files': processed_files,  # All output files stored here
                         'logs': logs if logs else ''
                     }
                 )
-                logger.info(f"FileRegistry entry created successfully")
+                logger.info(f"CBCT FileRegistry entry created with {len(processed_files)} output files")
+        
+        else:
+            # For IOS and audio, use the original single-file approach
+            for file_type, file_path in output_files.items():
+                logger.info(f"Processing output file: type={file_type}, path={file_path}")
+                if os.path.exists(file_path):
+                    logger.info(f"File exists, calculating hash and size")
+                    file_hash = calculate_file_hash(file_path)
+                    file_size = os.path.getsize(file_path)
+                    
+                    # Determine file registry type based on job type
+                    registry_type_map = {
+                        'ios': f'ios_processed_{file_type}',  # file_type could be 'upper' or 'lower'
+                        'audio': 'audio_processed'
+                    }
+                    
+                    registry_type = registry_type_map.get(job.job_type)
+                    logger.info(f"Creating FileRegistry entry with type={registry_type}")
+                    
+                    FileRegistry.objects.create(
+                        file_type=registry_type,
+                        file_path=file_path,
+                        file_size=file_size,
+                        file_hash=file_hash,
+                        scanpair=job.scanpair,
+                        voice_caption=job.voice_caption,
+                        processing_job=job,
+                        metadata={
+                            'processed_at': timezone.now().isoformat(),
+                            'logs': logs if logs else ''
+                        }
+                    )
+                    logger.info(f"FileRegistry entry created successfully")
         
         # Update related model status
         logger.info(f"Updating related model status for job type: {job.job_type}")

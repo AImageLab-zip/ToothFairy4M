@@ -23,14 +23,17 @@ class ScanPairForm(forms.ModelForm):
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Patient X'}),
             'upper_scan_raw': forms.FileInput(attrs={'class': 'form-control', 'accept': '.stl'}),
             'lower_scan_raw': forms.FileInput(attrs={'class': 'form-control', 'accept': '.stl'}),
-            'cbct': forms.FileInput(attrs={'class': 'form-control', 'accept': '.nii,.gz'}),
+            'cbct': forms.FileInput(attrs={
+                'class': 'form-control', 
+                'accept': '.dcm,.dicom,.nii,.nii.gz,.gz,.mha,.mhd,.nrrd,.nhdr,.zip,.tar,.tar.gz,.tgz,application/dicom'
+            }),
             'visibility': forms.Select(attrs={'class': 'form-control'}),
         }
         labels = {
             'name': 'Scan Name',
             'upper_scan_raw': 'Upper Jaw Scan (STL)',
             'lower_scan_raw': 'Lower Jaw Scan (STL)',
-            'cbct': 'CBCT Scan (NII/GZ)',
+            'cbct': 'CBCT Scan (DICOM/NIfTI/MetaImage/NRRD)',
             'visibility': 'Visibility',
         }
     
