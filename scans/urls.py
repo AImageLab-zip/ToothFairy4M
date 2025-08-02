@@ -12,10 +12,17 @@ urlpatterns = [
     path('scan/<int:scanpair_id>/voice-caption/', views.upload_voice_caption, name='upload_voice_caption'),
     path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/delete/', views.delete_voice_caption, name='delete_voice_caption'),
     
+    # Admin endpoints
+    path('scan/<int:scanpair_id>/delete/', views.delete_scan, name='delete_scan'),
+    path('scan/<int:scanpair_id>/rerun-processing/', views.rerun_processing, name='rerun_processing'),
+    path('admin/control-panel/', views.admin_control_panel, name='admin_control_panel'),
+    
     # API endpoints
     path('api/scan/<int:scanpair_id>/data/', views.scan_viewer_data, name='scan_viewer_data'),
     path('api/scan/<int:scanpair_id>/cbct/', views.scan_cbct_data, name='scan_cbct_data'),
     path('api/scan/<int:scanpair_id>/panoramic/', views.scan_panoramic_data, name='scan_panoramic_data'),
+    path('api/scan/<int:scanpair_id>/nifti-metadata/', views.get_nifti_metadata, name='get_nifti_metadata'),
+    path('api/scan/<int:scanpair_id>/nifti-metadata/update/', views.update_nifti_metadata, name='update_nifti_metadata'),
     
     # Processing API endpoints for Docker containers
     path('api/processing/health/', api_views.health_check, name='api_health_check'),

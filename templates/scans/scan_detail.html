@@ -236,6 +236,8 @@
             
             {% include 'scans/sections/scan_settings_section.html' %}
             
+            {% include 'scans/sections/nifti_metadata_section.html' %}
+            
             {% include 'scans/sections/file_management_section.html' %}
         </div>
     </div>
@@ -269,6 +271,7 @@
 <script src="{% static 'js/volume_renderer.js' %}"></script>
 <script src="{% static 'js/cbct_viewer.js' %}"></script>
 <script src="{% static 'js/vocal_caption.js' %}"></script>
+<script src="{% static 'js/nifti_metadata.js' %}"></script>
 <script src="{% static 'js/collapse_sections.js' %}"></script>
 <script src="{% static 'js/cbct_upload.js' %}"></script>
 {% endblock %} 

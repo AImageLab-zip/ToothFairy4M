@@ -12,9 +12,12 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import json
 import os
+import shutil
+import logging
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.conf import settings
 import uuid
 
 from .models import (
@@ -24,6 +27,9 @@ from .forms import (
     PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm, InvitationForm, InvitedUserCreationForm
 )
 from .processing import execute_ios_processing_command, execute_cbct_processing_command
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 
 def home(request):
@@ -922,3 +928,432 @@ def scan_panoramic_data(request, scanpair_id):
     except Exception as e:
         print(f"Error serving panoramic data: {e}")
         return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+@require_POST
+def delete_scan(request, scanpair_id):
+    """Delete a scan and all associated files (admin only)"""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        patient = scan_pair.patient
+        
+        # Delete all associated files from filesystem
+        # Delete IOS files
+        if scan_pair.upper_scan_raw:
+            try:
+                os.remove(scan_pair.upper_scan_raw.path)
+            except:
+                pass
+        if scan_pair.lower_scan_raw:
+            try:
+                os.remove(scan_pair.lower_scan_raw.path)
+            except:
+                pass
+        if scan_pair.upper_scan_norm:
+            try:
+                os.remove(scan_pair.upper_scan_norm.path)
+            except:
+                pass
+        if scan_pair.lower_scan_norm:
+            try:
+                os.remove(scan_pair.lower_scan_norm.path)
+            except:
+                pass
+                
+        # Delete CBCT files
+        if scan_pair.cbct:
+            try:
+                os.remove(scan_pair.cbct.path)
+            except:
+                pass
+                
+        # Delete from FileRegistry
+        from .models import FileRegistry
+        file_entries = FileRegistry.objects.filter(scanpair=scan_pair)
+        for entry in file_entries:
+            try:
+                if os.path.exists(entry.file_path):
+                    os.remove(entry.file_path)
+            except:
+                pass
+        file_entries.delete()
+        
+        # Delete voice captions and their files
+        for voice_caption in scan_pair.voice_captions.all():
+            # Delete associated files
+            voice_files = FileRegistry.objects.filter(voice_caption=voice_caption)
+            for file_entry in voice_files:
+                try:
+                    if os.path.exists(file_entry.file_path):
+                        os.remove(file_entry.file_path)
+                except:
+                    pass
+            voice_files.delete()
+            
+        # Delete the scan pair (this will cascade delete classifications, voice captions, etc.)
+        scan_pair.delete()
+        
+        # Check if patient has any other scans
+        if not patient.scan_pairs.exists():
+            # Delete patient directory
+            patient_dir = os.path.join(settings.MEDIA_ROOT, 'scans', f'patient_{patient.patient_id}')
+            if os.path.exists(patient_dir):
+                shutil.rmtree(patient_dir, ignore_errors=True)
+            # Delete patient
+            patient.delete()
+            
+        messages.success(request, f'Scan {scanpair_id} and all associated data deleted successfully.')
+        return JsonResponse({'success': True, 'message': 'Scan deleted successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error deleting scan {scanpair_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+@require_POST
+def rerun_processing(request, scanpair_id):
+    """Rerun all processing for a scan (admin only)"""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        
+        # Reset processing statuses
+        if scan_pair.has_ios_scans():
+            scan_pair.ios_processing_status = 'processing'
+            
+        if scan_pair.has_cbct_scan():
+            scan_pair.cbct_processing_status = 'processing'
+            
+        scan_pair.save()
+        
+        # Create new processing jobs
+        from .models import ProcessingJob
+        from .processing import execute_ios_processing_command, execute_cbct_processing_command
+        
+        jobs_created = []
+        
+        # Create IOS processing job
+        if scan_pair.has_ios_scans():
+            ios_job = ProcessingJob.objects.create(
+                scanpair=scan_pair,
+                job_type='ios_processing',
+                status='pending',
+                priority=1
+            )
+            jobs_created.append('IOS processing')
+            # Execute processing in background
+            from threading import Thread
+            Thread(target=execute_ios_processing_command, args=(scan_pair,)).start()
+            
+        # Create CBCT processing job
+        if scan_pair.has_cbct_scan():
+            cbct_job = ProcessingJob.objects.create(
+                scanpair=scan_pair,
+                job_type='cbct_processing',
+                status='pending',
+                priority=1
+            )
+            jobs_created.append('CBCT processing')
+            # Execute processing in background
+            from threading import Thread
+            Thread(target=execute_cbct_processing_command, args=(scan_pair,)).start()
+            
+        # Reprocess voice captions
+        from .processing import execute_speech_to_text_command
+        for voice_caption in scan_pair.voice_captions.all():
+            voice_caption.processing_status = 'pending'
+            voice_caption.save()
+            
+            voice_job = ProcessingJob.objects.create(
+                scanpair=scan_pair,
+                voice_caption=voice_caption,
+                job_type='speech_to_text',
+                status='pending',
+                priority=2
+            )
+            jobs_created.append(f'Voice caption {voice_caption.id}')
+            # Execute processing in background
+            Thread(target=execute_speech_to_text_command, args=(voice_caption,)).start()
+            
+        message = f'Reprocessing initiated for scan {scanpair_id}. Jobs created: {", ".join(jobs_created)}'
+        messages.success(request, message)
+        return JsonResponse({'success': True, 'message': message, 'jobs': jobs_created})
+        
+    except Exception as e:
+        logger.error(f"Error rerunning processing for scan {scanpair_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+def admin_control_panel(request):
+    """Admin control panel showing job stats and disk usage"""
+    from .models import ProcessingJob, FileRegistry
+    from django.db.models import Count, Sum, Q
+    import shutil
+    
+    # Get job statistics
+    job_stats = ProcessingJob.objects.aggregate(
+        total_jobs=Count('id'),
+        pending_jobs=Count('id', filter=Q(status='pending')),
+        processing_jobs=Count('id', filter=Q(status='processing')),
+        completed_jobs=Count('id', filter=Q(status='completed')),
+        failed_jobs=Count('id', filter=Q(status='failed'))
+    )
+    
+    # Get job breakdown by type
+    job_type_stats = ProcessingJob.objects.values('job_type').annotate(
+        total=Count('id'),
+        pending=Count('id', filter=Q(status='pending')),
+        processing=Count('id', filter=Q(status='processing')),
+        completed=Count('id', filter=Q(status='completed')),
+        failed=Count('id', filter=Q(status='failed'))
+    ).order_by('job_type')
+    
+    # Get recent failed jobs
+    recent_failed_jobs = ProcessingJob.objects.filter(
+        status='failed'
+    ).select_related('scanpair', 'voice_caption').order_by('-updated_at')[:10]
+    
+    # Get disk usage statistics
+    disk_usage = {}
+    
+    # Check dataset directory
+    dataset_path = '/dataset'
+    if os.path.exists(dataset_path):
+        total, used, free = shutil.disk_usage(dataset_path)
+        disk_usage['dataset'] = {
+            'total': total,
+            'used': used,
+            'free': free,
+            'percent': (used / total * 100) if total > 0 else 0
+        }
+        
+        # Get breakdown by file type
+        file_type_usage = FileRegistry.objects.values('file_type').annotate(
+            total_size=Sum('file_size'),
+            file_count=Count('id')
+        ).order_by('-total_size')
+        
+        disk_usage['by_type'] = file_type_usage
+    
+    # Check media/storage directory
+    storage_path = settings.MEDIA_ROOT
+    if os.path.exists(storage_path):
+        total, used, free = shutil.disk_usage(storage_path)
+        disk_usage['storage'] = {
+            'total': total,
+            'used': used,
+            'free': free,
+            'percent': (used / total * 100) if total > 0 else 0
+        }
+    
+    # Get processing queue info
+    processing_queue = {
+        'ios': ProcessingJob.objects.filter(job_type='ios_processing', status='pending').count(),
+        'cbct': ProcessingJob.objects.filter(job_type='cbct_processing', status='pending').count(),
+        'speech': ProcessingJob.objects.filter(job_type='speech_to_text', status='pending').count(),
+    }
+    
+    context = {
+        'job_stats': job_stats,
+        'job_type_stats': job_type_stats,
+        'recent_failed_jobs': recent_failed_jobs,
+        'disk_usage': disk_usage,
+        'processing_queue': processing_queue,
+    }
+    
+    return render(request, 'scans/admin_control_panel.html', context)
+
+
+@login_required
+def get_nifti_metadata(request, scanpair_id):
+    """Get NIFTI metadata including origin, affine matrix, and orientation"""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        user_profile = request.user.profile
+        
+        # Check permissions
+        if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Check if CBCT exists
+        if not scan_pair.has_cbct_scan():
+            return JsonResponse({'error': 'No CBCT scan available'}, status=404)
+        
+        # Get CBCT file path
+        cbct_path = None
+        try:
+            # Try to get from FileRegistry first
+            cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+            if cbct_entry and os.path.exists(cbct_entry.file_path):
+                cbct_path = cbct_entry.file_path
+            elif scan_pair.cbct:  # Fallback to old field
+                cbct_path = scan_pair.cbct.path
+        except:
+            pass
+            
+        if not cbct_path or not os.path.exists(cbct_path):
+            return JsonResponse({'error': 'CBCT file not found'}, status=404)
+        
+        # Load NIFTI file and extract metadata
+        import nibabel as nib
+        import numpy as np
+        
+        try:
+            nifti_img = nib.load(cbct_path)
+            
+            # Get header information
+            header = nifti_img.header
+            
+            # Get affine matrix
+            affine = nifti_img.affine.tolist()
+            
+            # Get origin (translation from affine)
+            origin = [affine[i][3] for i in range(3)]
+            
+            # Get voxel dimensions
+            voxel_dims = header.get_zooms()[:3]
+            
+            # Get data shape
+            shape = nifti_img.shape[:3] if len(nifti_img.shape) >= 3 else nifti_img.shape
+            
+            # Get orientation
+            from nibabel.orientations import aff2axcodes
+            orientation = ''.join(aff2axcodes(nifti_img.affine))
+            
+            # Additional metadata
+            metadata = {
+                'origin': origin,
+                'affine': affine,
+                'orientation': orientation,
+                'voxel_dimensions': list(voxel_dims),
+                'shape': list(shape),
+                'data_type': str(header.get_data_dtype()),
+                'units': {
+                    'spatial': header.get_xyzt_units()[0],
+                    'temporal': header.get_xyzt_units()[1]
+                },
+                'description': str(header.get('descrip', '')),
+                'can_edit': user_profile.is_admin  # Only admins can edit
+            }
+            
+            return JsonResponse(metadata)
+            
+        except Exception as e:
+            logger.error(f"Error loading NIFTI metadata: {e}")
+            return JsonResponse({'error': f'Error loading NIFTI file: {str(e)}'}, status=500)
+            
+    except Exception as e:
+        logger.error(f"Error getting NIFTI metadata: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(lambda u: u.profile.is_admin)
+@require_POST
+def update_nifti_metadata(request, scanpair_id):
+    """Update NIFTI metadata (admin only)"""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        
+        # Check if CBCT exists
+        if not scan_pair.has_cbct_scan():
+            return JsonResponse({'error': 'No CBCT scan available'}, status=404)
+        
+        # Get CBCT file path
+        cbct_path = None
+        try:
+            cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+            if cbct_entry and os.path.exists(cbct_entry.file_path):
+                cbct_path = cbct_entry.file_path
+            elif scan_pair.cbct:
+                cbct_path = scan_pair.cbct.path
+        except:
+            pass
+            
+        if not cbct_path or not os.path.exists(cbct_path):
+            return JsonResponse({'error': 'CBCT file not found'}, status=404)
+        
+        # Parse request data
+        data = json.loads(request.body)
+        new_origin = data.get('origin')
+        new_affine = data.get('affine')
+        
+        if not new_origin and not new_affine:
+            return JsonResponse({'error': 'No metadata to update'}, status=400)
+        
+        # Load NIFTI file
+        import nibabel as nib
+        import numpy as np
+        
+        try:
+            # Create backup first
+            backup_path = cbct_path + '.backup'
+            shutil.copy2(cbct_path, backup_path)
+            
+            # Load the NIFTI file
+            nifti_img = nib.load(cbct_path)
+            
+            # Get current affine
+            current_affine = nifti_img.affine.copy()
+            
+            # Update affine matrix if provided
+            if new_affine:
+                try:
+                    new_affine_array = np.array(new_affine, dtype=np.float64)
+                    if new_affine_array.shape != (4, 4):
+                        raise ValueError("Affine matrix must be 4x4")
+                    current_affine = new_affine_array
+                except Exception as e:
+                    return JsonResponse({'error': f'Invalid affine matrix: {str(e)}'}, status=400)
+            
+            # Update origin if provided (modifies translation in affine)
+            elif new_origin:
+                try:
+                    if len(new_origin) != 3:
+                        raise ValueError("Origin must have 3 coordinates")
+                    current_affine[0:3, 3] = new_origin
+                except Exception as e:
+                    return JsonResponse({'error': f'Invalid origin: {str(e)}'}, status=400)
+            
+            # Create new NIFTI image with updated affine
+            new_nifti = nib.Nifti1Image(nifti_img.get_fdata(), current_affine, nifti_img.header)
+            
+            # Save the updated file
+            nib.save(new_nifti, cbct_path)
+            
+            # Remove backup if successful
+            os.remove(backup_path)
+            
+            # Log the change
+            from .models import ProcessingJob
+            ProcessingJob.objects.create(
+                scanpair=scan_pair,
+                job_type='metadata_update',
+                status='completed',
+                metadata={
+                    'updated_by': request.user.username,
+                    'changes': {
+                        'origin': new_origin,
+                        'affine': new_affine is not None
+                    }
+                }
+            )
+            
+            # Return updated metadata
+            return get_nifti_metadata(request, scanpair_id)
+            
+        except Exception as e:
+            # Restore backup if exists
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, cbct_path)
+            logger.error(f"Error updating NIFTI metadata: {e}")
+            return JsonResponse({'error': f'Error updating NIFTI file: {str(e)}'}, status=500)
+            
+    except Exception as e:
+        logger.error(f"Error in update_nifti_metadata: {e}")
+        return JsonResponse({'error': str(e)}, status=500)

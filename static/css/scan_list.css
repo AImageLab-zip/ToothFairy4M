@@ -194,6 +194,29 @@
     transform: scale(1.1);
 }
 
+/* Admin action buttons */
+.btn-rerun-processing,
+.btn-delete-scan {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.2s ease;
+}
+
+.btn-rerun-processing:hover {
+    transform: scale(1.1);
+}
+
+.btn-delete-scan:hover {
+    transform: scale(1.1);
+    background-color: #c82333 !important;
+    border-color: #bd2130 !important;
+}
+
 /* Status Indicators */
 .processing-status {
     display: flex;
