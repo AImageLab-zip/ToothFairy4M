@@ -870,6 +870,8 @@ def scan_panoramic_data(request, scanpair_id):
         }, status=500)
     
     # Check if CBCT processing is complete (panoramic is only available after processing)
+    print(f"DEBUG: CBCT processing status: {scan_pair.cbct_processing_status}")
+    print(f"DEBUG: is_cbct_processed(): {scan_pair.is_cbct_processed()}")
     if not scan_pair.is_cbct_processed():
         return JsonResponse({
             'error': 'CBCT processing not complete',
@@ -890,18 +892,25 @@ def scan_panoramic_data(request, scanpair_id):
         if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
             # New structure: multiple files in metadata
             files_data = processed_entry.metadata.get('files', {})
-            pano_data = files_data.get('pano', {})
+            print(f"DEBUG: files_data keys: {list(files_data.keys())}")
+            pano_data = files_data.get('panoramic_view', {})
+            print(f"DEBUG: pano_data: {pano_data}")
             panoramic_path = pano_data.get('path')
+            print(f"DEBUG: panoramic_path: {panoramic_path}")
         else:
             # Legacy structure: single file path (backward compatibility)
             if processed_entry.file_path.endswith('_pano.png'):
                 panoramic_path = processed_entry.file_path
         
         if not panoramic_path:
+            print(f"DEBUG: panoramic_path ({panoramic_path=}) is None or empty")
             return JsonResponse({'error': 'Panoramic image not found in processed files'}, status=404)
         
+        print(f"DEBUG: Checking if file exists: {panoramic_path}")
         if not os.path.exists(panoramic_path):
+            print(f"DEBUG: File does not exist on disk: {panoramic_path}")
             return JsonResponse({'error': 'Panoramic image file not found on disk'}, status=404)
+        print(f"DEBUG: File exists on disk: {panoramic_path}")
         
         # Serve the panoramic image
         with open(panoramic_path, 'rb') as f:
