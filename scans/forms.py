@@ -16,6 +16,9 @@ class PatientForm(forms.ModelForm):
 
 
 class ScanPairForm(forms.ModelForm):
+    # Hidden field to track upload type
+    cbct_upload_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    
     class Meta:
         model = ScanPair
         fields = ['name', 'upper_scan_raw', 'lower_scan_raw', 'cbct', 'visibility']
@@ -42,11 +45,14 @@ class ScanPairForm(forms.ModelForm):
         upper_scan = cleaned_data.get('upper_scan_raw')
         lower_scan = cleaned_data.get('lower_scan_raw')
         cbct = cleaned_data.get('cbct')
+        cbct_upload_type = cleaned_data.get('cbct_upload_type')
         
         # Check if both IOS scans are provided (if any IOS is provided)
         has_any_ios = upper_scan or lower_scan
         has_both_ios = upper_scan and lower_scan
-        has_cbct = bool(cbct)
+        
+        # Check for CBCT upload (file or folder)
+        has_cbct = bool(cbct) or cbct_upload_type == 'folder'
         
         # Validation rules:
         # 1. Cannot have none

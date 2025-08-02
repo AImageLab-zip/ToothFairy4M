@@ -239,6 +239,18 @@ def upload_scan(request):
         patient_form = PatientForm(request.POST)
         scan_form = ScanPairForm(request.POST, request.FILES)
         
+        # Check for folder upload before form validation
+        cbct_folder_files = request.FILES.getlist('cbct_folder_files')
+        cbct_upload_type = request.POST.get('cbct_upload_type', 'file')
+        
+        # If folder upload is selected, temporarily set a dummy value to pass validation
+        if cbct_upload_type == 'folder' and cbct_folder_files:
+            # Create a temporary request.FILES with a dummy cbct file to pass form validation
+            from django.core.files.uploadedfile import SimpleUploadedFile
+            dummy_file = SimpleUploadedFile("dummy.dcm", b"dummy", content_type="application/dicom")
+            request.FILES = request.FILES.copy()
+            request.FILES['cbct'] = dummy_file
+        
         if scan_form.is_valid():
             # Create patient first (no form data needed)
             patient = Patient.objects.create()
@@ -248,8 +260,12 @@ def upload_scan(request):
             lower_scan_file = scan_form.cleaned_data.get('lower_scan_raw')
             cbct_file = scan_form.cleaned_data.get('cbct')
             
-            # Check for folder upload
+            # Check for folder upload (re-get from request.FILES since we modified it)
             cbct_folder_files = request.FILES.getlist('cbct_folder_files')
+            
+            # If we used a dummy file for validation, clear it
+            if cbct_upload_type == 'folder' and cbct_folder_files:
+                cbct_file = None
             
             # Save scan pair without file fields (they'll be stored in /dataset)
             scan_pair = scan_form.save(commit=False)

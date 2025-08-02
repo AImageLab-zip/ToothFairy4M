@@ -11,6 +11,7 @@
             <form method="post" enctype="multipart/form-data" class="file-upload-form">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="update_files">
+                <input type="hidden" name="cbct_upload_type" value="file">
                 
                 <div class="row g-2">
                     <div class="col-6">

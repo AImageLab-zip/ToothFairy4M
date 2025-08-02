@@ -14,6 +14,7 @@
                 <div class="card-body">
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
+                        <input type="hidden" name="cbct_upload_type" value="file">
                         
                         <!-- Scan Information -->
                         <h5 class="mb-3"><i class="fas fa-info-circle me-2"></i>Scan Information</h5>
@@ -86,7 +87,7 @@
                                 <input type="file" name="cbct_folder_files" id="cbct_folder" class="form-control" 
                                        webkitdirectory directory multiple 
                                        accept=".dcm,.dicom,application/dicom">
-                                <div class="form-text">Select a folder containing DICOM files (.dcm) and optionally a DICOMDIR file. Maximum 1000 files, 500MB total.</div>
+                                <div class="form-text">Select a folder containing DICOM files (.dcm) and/or a DICOMDIR file. Maximum 1000 files, 500MB total.</div>
                             </div>
                         </div>
 

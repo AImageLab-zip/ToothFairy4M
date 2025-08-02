@@ -30,6 +30,11 @@ function initUploadToggle() {
             if (folderInput) {
                 folderInput.value = '';
             }
+            // Set upload type to file
+            const hiddenField = document.querySelector('input[name="cbct_upload_type"]');
+            if (hiddenField) {
+                hiddenField.value = 'file';
+            }
         } else if (folderRadio.checked) {
             fileSection.style.display = 'none';
             folderSection.style.display = 'block';
@@ -37,6 +42,11 @@ function initUploadToggle() {
             const fileInput = fileSection.querySelector('input[type="file"]');
             if (fileInput) {
                 fileInput.value = '';
+            }
+            // Set upload type to folder
+            const hiddenField = document.querySelector('input[name="cbct_upload_type"]');
+            if (hiddenField) {
+                hiddenField.value = 'folder';
             }
         }
     }
@@ -67,6 +77,11 @@ function initDetailToggle() {
             if (folderInput) {
                 folderInput.value = '';
             }
+            // Set upload type to file
+            const hiddenField = document.querySelector('input[name="cbct_upload_type"]');
+            if (hiddenField) {
+                hiddenField.value = 'file';
+            }
         } else if (folderRadio.checked) {
             fileSection.style.display = 'none';
             folderSection.style.display = 'block';
@@ -74,6 +89,11 @@ function initDetailToggle() {
             const fileInput = fileSection.querySelector('input[type="file"]');
             if (fileInput) {
                 fileInput.value = '';
+            }
+            // Set upload type to folder
+            const hiddenField = document.querySelector('input[name="cbct_upload_type"]');
+            if (hiddenField) {
+                hiddenField.value = 'folder';
             }
         }
     }

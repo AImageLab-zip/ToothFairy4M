@@ -86,22 +86,41 @@ def validate_cbct_folder(files):
     # Check if any files have DICOM extensions or are DICOMDIR
     valid_files = []
     has_dicomdir = False
+    dicom_files = []
     
     for file in files:
         filename = file.name.lower()
         
-        # Check for DICOMDIR
-        if filename.endswith('dicomdir') or filename == 'dicomdir':
+        # Check for DICOMDIR (handle both root and nested paths)
+        if filename.endswith('dicomdir') or filename == 'dicomdir' or '/dicomdir' in filename:
             has_dicomdir = True
             valid_files.append(file)
-        # Check for DICOM files
-        elif filename.endswith(('.dcm', '.dicom')):
+        # Check for DICOM files (handle both root and nested paths)
+        elif filename.endswith(('.dcm', '.dicom')) or '.dcm' in filename or '.dicom' in filename:
+            dicom_files.append(file.name)
             valid_files.append(file)
     
+    # Debug: print what we found
+    print(f"DEBUG: Found {len(files)} total files")
+    print(f"DEBUG: Found {len(dicom_files)} DICOM files: {dicom_files[:5]}...")  # Show first 5
+    print(f"DEBUG: Found DICOMDIR: {has_dicomdir}")
+    print(f"DEBUG: Valid files count: {len(valid_files)}")
+    
     if not valid_files:
-        raise ValidationError(
-            'Folder must contain DICOM files (.dcm) or a DICOMDIR file'
-        )
+        # Provide more detailed error message
+        file_extensions = set()
+        for file in files[:10]:  # Check first 10 files for debugging
+            if hasattr(file, 'name'):
+                ext = os.path.splitext(file.name.lower())[1]
+                file_extensions.add(ext)
+        
+        error_msg = f'Folder must contain DICOM files (.dcm) and/or a DICOMDIR file. '
+        if file_extensions:
+            error_msg += f'Found file types: {", ".join(sorted(file_extensions))}'
+        else:
+            error_msg += 'No valid files found.'
+        
+        raise ValidationError(error_msg)
     
     # Validate individual DICOM files (basic check)
     for file in valid_files[:5]:  # Check first 5 files to avoid overwhelming validation
