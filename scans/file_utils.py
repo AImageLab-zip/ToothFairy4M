@@ -151,7 +151,7 @@ def save_cbct_to_dataset(scanpair, cbct_file):
             '--output-dir', PROCESSED_DIRS['cbct'],
             '--convert-to-nifti',  # Flag to indicate conversion needed
         ],
-        metadata={
+        output_files={
             'input_format': file_format,
             'expected_outputs': [
                 'volume_nifti',
@@ -250,7 +250,7 @@ def save_cbct_folder_to_dataset(scanpair, folder_files):
             '--output-dir', PROCESSED_DIRS['cbct'],
             '--convert-to-nifti',
         ],
-        metadata={
+        output_files={
             'input_format': 'dicom_folder',
             'input_type': 'folder',
             'file_count': len(saved_files),
