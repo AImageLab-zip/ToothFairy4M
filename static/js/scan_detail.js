@@ -692,9 +692,25 @@ function loadScanDataAndInitViewer() {
     console.log('Loading scan data for ID:', window.scanId);
     
     fetch(`/api/scan/${window.scanId}/data/`)
-        .then(response => {
+        .then(async response => {
             console.log('Response status:', response.status);
+            if (response.status === 202) {
+                // Processing in progress
+                const data = await response.json();
+                throw new Error(`processing:${data.message || 'IOS scans are being processed'}`);
+            }
             if (!response.ok) {
+                // Try to get error details
+                try {
+                    const errorData = await response.json();
+                    if (errorData.status === 'processing') {
+                        throw new Error(`processing:${errorData.message}`);
+                    } else if (errorData.status === 'failed') {
+                        throw new Error(`failed:${errorData.message}`);
+                    }
+                } catch (e) {
+                    // If JSON parsing fails, use generic error
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             return response.json();
@@ -714,6 +730,31 @@ function loadScanDataAndInitViewer() {
         })
         .catch(error => {
             console.error('Error fetching scan data:', error);
+            
+            // Show appropriate message in the viewer
+            const viewerContainer = document.getElementById('iosViewerContainer');
+            if (viewerContainer) {
+                let message = 'Failed to load scan data';
+                let iconClass = 'fa-exclamation-triangle text-warning';
+                let textClass = 'text-muted';
+                
+                if (error.message.startsWith('processing:')) {
+                    message = error.message.substring('processing:'.length);
+                    iconClass = 'fa-spinner fa-spin text-info';
+                    textClass = 'text-info';
+                } else if (error.message.startsWith('failed:')) {
+                    message = error.message.substring('failed:'.length);
+                    iconClass = 'fa-times-circle text-danger';
+                    textClass = 'text-danger';
+                }
+                
+                viewerContainer.innerHTML = `
+                    <div class="text-center py-5">
+                        <i class="fas ${iconClass} mb-3" style="font-size: 3rem;"></i>
+                        <p class="${textClass}">${message}</p>
+                    </div>
+                `;
+            }
         });
 }
 

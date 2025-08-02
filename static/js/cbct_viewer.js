@@ -146,8 +146,24 @@ window.CBCTViewer = {
         
         // Fetch CBCT data
         fetch(`/api/scan/${window.scanId}/cbct/`)
-            .then(response => {
+            .then(async response => {
+                if (response.status === 202) {
+                    // Processing in progress
+                    const data = await response.json();
+                    throw new Error(`processing:${data.message || 'CBCT is being processed'}`);
+                }
                 if (!response.ok) {
+                    // Try to get error details
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.status === 'processing') {
+                            throw new Error(`processing:${errorData.message}`);
+                        } else if (errorData.status === 'failed') {
+                            throw new Error(`failed:${errorData.message}`);
+                        }
+                    } catch (e) {
+                        // If JSON parsing fails, use generic error
+                    }
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.arrayBuffer();
@@ -178,7 +194,17 @@ window.CBCTViewer = {
             .catch(error => {
                 console.error('Error loading CBCT data:', error);
                 this.loading = false;
-                this.showError('Failed to load CBCT data');
+                
+                // Check if it's a processing or failed status
+                if (error.message.startsWith('processing:')) {
+                    const message = error.message.substring('processing:'.length);
+                    this.showError(message || 'CBCT is being processed. Please check back later.', 'info');
+                } else if (error.message.startsWith('failed:')) {
+                    const message = error.message.substring('failed:'.length);
+                    this.showError(message || 'CBCT processing failed.', 'danger');
+                } else {
+                    this.showError('Failed to load CBCT data');
+                }
             });
     },
     
@@ -1129,12 +1155,23 @@ window.CBCTViewer = {
         }
     },
     
-    showError: function(message) {
+    showError: function(message, type = 'warning') {
         const loadingDiv = document.getElementById('cbctLoading');
+        let iconClass = 'fa-exclamation-triangle text-warning';
+        let textClass = 'text-muted';
+        
+        if (type === 'info') {
+            iconClass = 'fa-info-circle text-info';
+            textClass = 'text-info';
+        } else if (type === 'danger') {
+            iconClass = 'fa-times-circle text-danger';
+            textClass = 'text-danger';
+        }
+        
         loadingDiv.innerHTML = `
             <div class="text-center py-4">
-                <i class="fas fa-exclamation-triangle text-warning mb-2" style="font-size: 2rem;"></i>
-                <p class="text-muted">${message}</p>
+                <i class="fas ${iconClass} mb-2" style="font-size: 2rem;"></i>
+                <p class="${textClass}">${message}</p>
             </div>
         `;
     }

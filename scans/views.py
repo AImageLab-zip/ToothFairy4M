@@ -594,6 +594,22 @@ def scan_viewer_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
+    # Check if IOS exists but is still processing
+    if scan_pair.has_ios_scans() and scan_pair.ios_processing_status == 'processing':
+        return JsonResponse({
+            'error': 'IOS scans are still being processed',
+            'status': 'processing',
+            'message': 'The intra-oral scans are being processed. This may take a few minutes.'
+        }, status=202)
+    
+    # Check if processing failed
+    if scan_pair.has_ios_scans() and scan_pair.ios_processing_status == 'failed':
+        return JsonResponse({
+            'error': 'IOS processing failed',
+            'status': 'failed',
+            'message': 'The intra-oral scan processing failed. Please try uploading again or contact support.'
+        }, status=500)
+    
     # Try to get scan URLs from FileRegistry first, fallback to old fields
     upper_scan_url = None
     lower_scan_url = None
@@ -627,7 +643,10 @@ def scan_viewer_data(request, scanpair_id):
             pass
     
     if not upper_scan_url or not lower_scan_url:
-        return JsonResponse({'error': 'No IOS scan data available'}, status=404)
+        return JsonResponse({
+            'error': 'No IOS scan data available',
+            'status': 'not_found'
+        }, status=404)
     
     data = {
         'upper_scan_url': request.build_absolute_uri(upper_scan_url),
@@ -651,6 +670,22 @@ def scan_cbct_data(request, scanpair_id):
     # Check permissions
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    # Check if CBCT exists but is still processing
+    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'processing':
+        return JsonResponse({
+            'error': 'CBCT is still being processed',
+            'status': 'processing',
+            'message': 'The CBCT volume is being converted to NIfTI format. This may take a few minutes.'
+        }, status=202)  # 202 Accepted - processing
+    
+    # Check if processing failed
+    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'failed':
+        return JsonResponse({
+            'error': 'CBCT processing failed',
+            'status': 'failed',
+            'message': 'The CBCT volume processing failed. Please try uploading again or contact support.'
+        }, status=500)
     
     # Get CBCT file path - prioritize converted .nii.gz from processed files
     file_path = None
@@ -689,7 +724,10 @@ def scan_cbct_data(request, scanpair_id):
             pass
     
     if not file_path or not os.path.exists(file_path):
-        return JsonResponse({'error': 'No CBCT data available'}, status=404)
+        return JsonResponse({
+            'error': 'No CBCT data available',
+            'status': 'not_found'
+        }, status=404)
     
     try:
         # Just read and send the file as-is, whether it's compressed or not
@@ -815,9 +853,29 @@ def scan_panoramic_data(request, scanpair_id):
     if not user_profile.is_annotator() and scan_pair.visibility == 'private':
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
+    # Check if CBCT exists but is still processing
+    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'processing':
+        return JsonResponse({
+            'error': 'CBCT is still being processed',
+            'status': 'processing',
+            'message': 'The panoramic view will be available once CBCT processing is complete.'
+        }, status=202)
+    
+    # Check if processing failed
+    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'failed':
+        return JsonResponse({
+            'error': 'CBCT processing failed',
+            'status': 'failed',
+            'message': 'The CBCT processing failed. Panoramic view is not available.'
+        }, status=500)
+    
     # Check if CBCT processing is complete (panoramic is only available after processing)
     if not scan_pair.is_cbct_processed():
-        return JsonResponse({'error': 'CBCT processing not complete - panoramic not available yet'}, status=404)
+        return JsonResponse({
+            'error': 'CBCT processing not complete',
+            'status': 'not_processed',
+            'message': 'Panoramic view not available yet'
+        }, status=404)
     
     # Look for panoramic file in FileRegistry (CBCT Processed files)
     try:
