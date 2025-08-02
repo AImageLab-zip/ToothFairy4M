@@ -86,7 +86,7 @@
                                 <input type="file" name="cbct_folder_files" id="cbct_folder" class="form-control" 
                                        webkitdirectory directory multiple 
                                        accept=".dcm,.dicom,application/dicom">
-                                <div class="form-text">Select a folder containing DICOM files (.dcm) and optionally a DICOMDIR file</div>
+                                <div class="form-text">Select a folder containing DICOM files (.dcm) and optionally a DICOMDIR file. Maximum 1000 files, 500MB total.</div>
                             </div>
                         </div>
 
@@ -117,7 +117,7 @@
                             <ul class="mb-2">
                                 <li><strong>IOS files:</strong> Only STL files are accepted</li>
                                 <li><strong>CBCT files:</strong> Supported formats: DICOM files/folders (.dcm, .zip, .tar archives), NIfTI (.nii, .nii.gz), MetaImage (.mha, .mhd), NRRD (.nrrd, .nhdr)</li>
-                                <li><strong>Maximum file size:</strong> 50MB per file</li>
+                                <li><strong>Maximum file size:</strong> 500MB total for folder uploads, 50MB per individual file</li>
                                 <li><strong>A new patient record will be created automatically</strong></li>
                             </ul>
                             <div class="mt-2">
