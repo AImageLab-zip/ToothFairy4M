@@ -634,7 +634,6 @@
 
 /* CBCT Viewer Styles */
 .viewer-container {
-    height: 650px;
     border: 1px solid #dee2e6;
     border-radius: 0.375rem;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
