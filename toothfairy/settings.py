@@ -26,16 +26,26 @@ SECRET_KEY = config('SECRET_KEY', default="django-insecure-(u0z24i85=2ae7*q@fcii
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=str).split(',')
 
-# HTTPS settings - enforce HTTPS everywhere
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# Environment-aware SSL settings
+ENABLE_SSL = config('ENABLE_SSL', default=False, cast=bool)
+ENABLE_HTTPS_REDIRECT = config('ENABLE_HTTPS_REDIRECT', default=False, cast=bool)
+
+if ENABLE_SSL:
+    # HTTPS settings - enforce HTTPS everywhere (production only)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = ENABLE_HTTPS_REDIRECT
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    # Development settings - no SSL enforcement
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
 
 # Application definition
 
@@ -91,7 +101,7 @@ DATABASES = {
         "USER": config('DB_USER', default='django'),
         "PASSWORD": config('DB_PASSWORD', default='django123'),
         "HOST": config('DB_HOST', default='localhost'),
-        "PORT": "3306",
+        "PORT": config('DB_PORT', default='3306'),
         "OPTIONS": {
             "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
         },
@@ -141,22 +151,22 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "storage"
 
 # File Upload Settings
-DATA_UPLOAD_MAX_MEMORY_SIZE = 524288000  # 500MB for large DICOM folders
-FILE_UPLOAD_MAX_MEMORY_SIZE = 524288000  # 500MB for large DICOM folders
+DATA_UPLOAD_MAX_MEMORY_SIZE = 1048576000  # 1GB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1048576000  # 1GB
 DATA_UPLOAD_MAX_NUMBER_FILES = 1000  # Allow up to 1000 files for DICOM folder uploads
 
-# CORS settings for frontend
-CORS_ALLOWED_ORIGINS = [
-    "https://toothfairy4m.ing.unimore.it",
-    "https://localhost:8000",
-    "https://127.0.0.1:8000",
-]
+
+if ENABLE_SSL:
+    CORS_ALLOWED_ORIGINS = [
+        "https://toothfairy4m.ing.unimore.it",
+        "https://localhost:8000",
+        "https://127.0.0.1:8000",
+    ]
+else:
+    CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', 
+                                 default='http://localhost:8000,http://127.0.0.1:8000', cast=str).split(',')
 
 CORS_ALLOW_CREDENTIALS = True
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Login URLs
@@ -164,7 +174,12 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
+# Dataset path configuration
+DATASET_PATH = config('DATASET_PATH', default='/dataset')
+
 # Logging Configuration
+LOG_LEVEL = config('LOG_LEVEL', default='DEBUG' if DEBUG else 'INFO')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -186,13 +201,13 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'detailed',
-            'level': 'DEBUG',
+            'level': LOG_LEVEL,
         },
         'file': {
             'class': 'logging.FileHandler',
             'filename': BASE_DIR / 'logs' / 'django.log',
             'formatter': 'detailed',
-            'level': 'DEBUG',
+            'level': LOG_LEVEL,
         },
     },
     'loggers': {

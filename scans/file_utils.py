@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 # Base directories
-DATASET_ROOT = "/dataset"
+from django.conf import settings
+DATASET_ROOT = settings.DATASET_PATH
 
 # Directory structure
 DATASET_DIRS = {

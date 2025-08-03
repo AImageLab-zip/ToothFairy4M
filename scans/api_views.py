@@ -250,9 +250,9 @@ def health_check(request):
             'status': 'healthy',
             'pending_jobs': pending_count,
             'processing_jobs': processing_count,
-            'dataset_dir_exists': os.path.exists('/dataset'),
-            'dataset_raw_dir_exists': os.path.exists('/dataset/raw'),
-            'dataset_processed_dir_exists': os.path.exists('/dataset/processed')
+                    'dataset_dir_exists': os.path.exists(settings.DATASET_PATH),
+        'dataset_raw_dir_exists': os.path.exists(os.path.join(settings.DATASET_PATH, 'raw')),
+        'dataset_processed_dir_exists': os.path.exists(os.path.join(settings.DATASET_PATH, 'processed'))
         })
         
     except Exception as e:

@@ -1122,7 +1122,7 @@ def admin_control_panel(request):
     disk_usage = {}
     
     # Check dataset directory
-    dataset_path = '/dataset'
+    dataset_path = settings.DATASET_PATH
     if os.path.exists(dataset_path):
         total, used, free = shutil.disk_usage(dataset_path)
         disk_usage['dataset'] = {
