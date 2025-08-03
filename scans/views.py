@@ -1184,17 +1184,46 @@ def get_nifti_metadata(request, scanpair_id):
         if not scan_pair.has_cbct_scan():
             return JsonResponse({'error': 'No CBCT scan available'}, status=404)
         
-        # Get CBCT file path
+        # Get CBCT file path - prioritize processed NIFTI files
         cbct_path = None
+        
+        # First, try to get processed CBCT (converted .nii.gz)
         try:
-            # Try to get from FileRegistry first
-            cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
-            if cbct_entry and os.path.exists(cbct_entry.file_path):
-                cbct_path = cbct_entry.file_path
-            elif scan_pair.cbct:  # Fallback to old field
-                cbct_path = scan_pair.cbct.path
+            processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+            if processed_entry:
+                if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
+                    # New structure: look for converted volume in metadata
+                    files_data = processed_entry.metadata.get('files', {})
+                    volume_data = files_data.get('volume_nifti', {})
+                    volume_path = volume_data.get('path')
+                    if volume_path and os.path.exists(volume_path):
+                        cbct_path = volume_path
         except:
             pass
+        
+        # Fallback to raw CBCT if no processed version available
+        if not cbct_path:
+            try:
+                # Try to get from FileRegistry first
+                cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+                if cbct_entry and os.path.exists(cbct_entry.file_path):
+                    # Only use raw file if it's already in .nii.gz format
+                    if cbct_entry.file_path.endswith('.nii.gz'):
+                        cbct_path = cbct_entry.file_path
+                    else:
+                        # Raw file is a directory or non-NIFTI file, check if processing is needed
+                        if os.path.isdir(cbct_entry.file_path):
+                            return JsonResponse({
+                                'error': 'CBCT needs to be processed first',
+                                'status': 'needs_processing',
+                                'message': 'The CBCT volume is in DICOM format and needs to be converted to NIFTI. Please wait for processing to complete.'
+                            }, status=202)
+                        else:
+                            return JsonResponse({'error': 'CBCT file is not in NIFTI format'}, status=400)
+                elif scan_pair.cbct:  # Fallback to old field
+                    cbct_path = scan_pair.cbct.path
+            except:
+                pass
             
         if not cbct_path or not os.path.exists(cbct_path):
             return JsonResponse({'error': 'CBCT file not found'}, status=404)
@@ -1209,39 +1238,103 @@ def get_nifti_metadata(request, scanpair_id):
             # Get header information
             header = nifti_img.header
             
-            # Get affine matrix
-            affine = nifti_img.affine.tolist()
+            # Get affine matrix safely
+            try:
+                affine = nifti_img.affine.tolist()
+                # Validate affine matrix structure
+                if not affine or not isinstance(affine, list) or len(affine) != 4:
+                    raise ValueError("Invalid affine matrix structure")
+                for row in affine:
+                    if not isinstance(row, list) or len(row) != 4:
+                        raise ValueError("Invalid affine matrix row structure")
+            except Exception as affine_error:
+                logger.error(f"Error processing affine matrix: {affine_error}")
+                # Create a default identity matrix as fallback
+                affine = [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0]
+                ]
             
-            # Get origin (translation from affine)
-            origin = [affine[i][3] for i in range(3)]
+            # Get voxel dimensions safely
+            try:
+                voxel_dims = header.get_zooms()[:3]
+                if not voxel_dims or len(voxel_dims) < 3:
+                    voxel_dims = [1.0, 1.0, 1.0]  # Default voxel size
+            except:
+                voxel_dims = [1.0, 1.0, 1.0]  # Default voxel size
             
-            # Get voxel dimensions
-            voxel_dims = header.get_zooms()[:3]
+            # Get data shape safely
+            try:
+                shape = nifti_img.shape[:3] if len(nifti_img.shape) >= 3 else nifti_img.shape
+                if not shape or len(shape) < 3:
+                    shape = [1, 1, 1]  # Default shape
+            except:
+                shape = [1, 1, 1]  # Default shape
             
-            # Get data shape
-            shape = nifti_img.shape[:3] if len(nifti_img.shape) >= 3 else nifti_img.shape
+            # Get orientation safely
+            try:
+                from nibabel.orientations import aff2axcodes
+                orientation_codes = aff2axcodes(nifti_img.affine)
+                orientation = ''.join(orientation_codes) if orientation_codes else 'unknown'
+            except:
+                orientation = 'unknown'
             
-            # Get orientation
-            from nibabel.orientations import aff2axcodes
-            orientation = ''.join(aff2axcodes(nifti_img.affine))
+            # Get units safely
+            try:
+                xyzt_units = header.get_xyzt_units()
+                spatial_unit = str(xyzt_units[0]) if xyzt_units and len(xyzt_units) > 0 and xyzt_units[0] else 'unknown'
+                temporal_unit = str(xyzt_units[1]) if xyzt_units and len(xyzt_units) > 1 and xyzt_units[1] else 'unknown'
+            except:
+                spatial_unit = 'unknown'
+                temporal_unit = 'unknown'
             
-            # Additional metadata
-            metadata = {
-                'origin': origin,
-                'affine': affine,
-                'orientation': orientation,
-                'voxel_dimensions': list(voxel_dims),
-                'shape': list(shape),
-                'data_type': str(header.get_data_dtype()),
-                'units': {
-                    'spatial': header.get_xyzt_units()[0],
-                    'temporal': header.get_xyzt_units()[1]
-                },
-                'description': str(header.get('descrip', '')),
-                'can_edit': user_profile.is_admin  # Only admins can edit
-            }
+            # Get description safely
+            try:
+                description = str(header.get('descrip', '')) if header.get('descrip') else ''
+            except:
+                description = ''
             
-            return JsonResponse(metadata)
+            # Additional metadata with explicit type conversion
+            try:
+                # Ensure all values are JSON-serializable
+                data_type_str = str(header.get_data_dtype())
+                can_edit_bool = bool(user_profile.is_admin)
+                
+                metadata = {
+                    'affine': affine,  # Already converted to list by .tolist()
+                    'orientation': str(orientation),  # Ensure it's a string
+                    'voxel_dimensions': [float(x) for x in voxel_dims],  # Convert to native Python floats
+                    'shape': [int(x) for x in shape],  # Convert to native Python ints
+                    'data_type': data_type_str,
+                    'units': {
+                        'spatial': str(spatial_unit),
+                        'temporal': str(temporal_unit)
+                    },
+                    'description': str(description),
+                    'can_edit': can_edit_bool
+                }
+                
+                return JsonResponse(metadata)
+            except Exception as metadata_error:
+                logger.error(f"Error creating metadata dictionary: {metadata_error}")
+                # Return a simplified metadata structure as fallback
+                try:
+                    fallback_metadata = {
+                        'affine': affine,
+                        'orientation': 'unknown',
+                        'voxel_dimensions': [float(x) for x in voxel_dims],
+                        'shape': [int(x) for x in shape],
+                        'data_type': 'unknown',
+                        'units': {'spatial': 'unknown', 'temporal': 'unknown'},
+                        'description': '',
+                        'can_edit': bool(user_profile.is_admin)
+                    }
+                    return JsonResponse(fallback_metadata)
+                except Exception as fallback_error:
+                    logger.error(f"Error creating fallback metadata: {fallback_error}")
+                    return JsonResponse({'error': 'Failed to create metadata'}, status=500)
             
         except Exception as e:
             logger.error(f"Error loading NIFTI metadata: {e}")
@@ -1264,16 +1357,45 @@ def update_nifti_metadata(request, scanpair_id):
         if not scan_pair.has_cbct_scan():
             return JsonResponse({'error': 'No CBCT scan available'}, status=404)
         
-        # Get CBCT file path
+        # Get CBCT file path - prioritize processed NIFTI files
         cbct_path = None
+        
+        # First, try to get processed CBCT (converted .nii.gz)
         try:
-            cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
-            if cbct_entry and os.path.exists(cbct_entry.file_path):
-                cbct_path = cbct_entry.file_path
-            elif scan_pair.cbct:
-                cbct_path = scan_pair.cbct.path
+            processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+            if processed_entry:
+                if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
+                    # New structure: look for converted volume in metadata
+                    files_data = processed_entry.metadata.get('files', {})
+                    volume_data = files_data.get('volume_nifti', {})
+                    volume_path = volume_data.get('path')
+                    if volume_path and os.path.exists(volume_path):
+                        cbct_path = volume_path
         except:
             pass
+        
+        # Fallback to raw CBCT if no processed version available
+        if not cbct_path:
+            try:
+                cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+                if cbct_entry and os.path.exists(cbct_entry.file_path):
+                    # Only use raw file if it's already in .nii.gz format
+                    if cbct_entry.file_path.endswith('.nii.gz'):
+                        cbct_path = cbct_entry.file_path
+                    else:
+                        # Raw file is a directory or non-NIFTI file
+                        if os.path.isdir(cbct_entry.file_path):
+                            return JsonResponse({
+                                'error': 'CBCT needs to be processed first',
+                                'status': 'needs_processing',
+                                'message': 'The CBCT volume is in DICOM format and needs to be converted to NIFTI before metadata can be updated.'
+                            }, status=202)
+                        else:
+                            return JsonResponse({'error': 'CBCT file is not in NIFTI format'}, status=400)
+                elif scan_pair.cbct:
+                    cbct_path = scan_pair.cbct.path
+            except:
+                pass
             
         if not cbct_path or not os.path.exists(cbct_path):
             return JsonResponse({'error': 'CBCT file not found'}, status=404)

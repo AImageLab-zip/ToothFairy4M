@@ -25,8 +25,16 @@ function loadNiftiMetadata() {
     fetch(`/api/scan/${scanId}/nifti-metadata/`)
         .then(response => response.json())
         .then(data => {
+            console.log('NIFTI metadata response:', data); // Debug logging
+            
             if (data.error) {
                 showNiftiError(data.error);
+                return;
+            }
+            
+            // Validate data structure
+            if (!data || typeof data !== 'object') {
+                showNiftiError('Invalid metadata response format');
                 return;
             }
             
@@ -38,31 +46,87 @@ function loadNiftiMetadata() {
             displayDiv.style.display = 'block';
         })
         .catch(error => {
+            console.error('NIFTI metadata fetch error:', error); // Debug logging
             showNiftiError('Failed to load NIFTI metadata: ' + error.message);
         });
 }
 
 function displayMetadata(metadata) {
-    // Basic info
-    document.getElementById('niftiOrientation').textContent = metadata.orientation;
-    document.getElementById('niftiDataType').textContent = metadata.data_type;
-    document.getElementById('niftiShape').textContent = metadata.shape.join(' × ');
-    document.getElementById('niftiVoxelDims').textContent = 
-        metadata.voxel_dimensions.map(d => d.toFixed(3)).join(' × ') + ' mm';
+    // Basic info with defensive programming
+    document.getElementById('niftiOrientation').textContent = metadata.orientation || 'Unknown';
+    document.getElementById('niftiDataType').textContent = metadata.data_type || 'Unknown';
     
-    // Origin
-    document.getElementById('originX').textContent = metadata.origin[0].toFixed(3);
-    document.getElementById('originY').textContent = metadata.origin[1].toFixed(3);
-    document.getElementById('originZ').textContent = metadata.origin[2].toFixed(3);
+    // Handle shape array safely
+    if (metadata.shape && Array.isArray(metadata.shape)) {
+        document.getElementById('niftiShape').textContent = metadata.shape.join(' × ');
+    } else {
+        document.getElementById('niftiShape').textContent = 'Unknown';
+    }
     
-    // Affine matrix
+    // Handle voxel dimensions safely
+    if (metadata.voxel_dimensions && Array.isArray(metadata.voxel_dimensions)) {
+        document.getElementById('niftiVoxelDims').textContent = 
+            metadata.voxel_dimensions.map(d => d.toFixed(3)).join(' × ') + ' mm';
+    } else {
+        document.getElementById('niftiVoxelDims').textContent = 'Unknown';
+    }
+    
+    // Affine matrix with improved formatting and defensive programming
     const affineTable = document.getElementById('affineTable');
     affineTable.innerHTML = '';
+    
+    const rowLabels = ['X-axis', 'Y-axis', 'Z-axis', 'Origin'];
+    
+    // Check if affine matrix exists and is valid
+    if (!metadata.affine || !Array.isArray(metadata.affine) || metadata.affine.length !== 4) {
+        // Show error in table
+        const row = affineTable.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 5;
+        cell.textContent = 'Affine matrix data not available';
+        cell.className = 'text-center text-muted';
+        return;
+    }
+    
     for (let i = 0; i < 4; i++) {
         const row = affineTable.insertRow();
+        
+        // Add row label
+        const labelCell = row.insertCell();
+        labelCell.textContent = rowLabels[i];
+        labelCell.className = 'fw-bold';
+        
+        // Add matrix values with defensive programming
         for (let j = 0; j < 4; j++) {
             const cell = row.insertCell();
-            cell.textContent = metadata.affine[i][j].toFixed(6);
+            
+            // Check if the row and value exist
+            if (!metadata.affine[i] || !Array.isArray(metadata.affine[i]) || metadata.affine[i].length <= j) {
+                cell.textContent = 'N/A';
+                cell.className = 'text-muted';
+                continue;
+            }
+            
+            const value = metadata.affine[i][j];
+            
+            // Check if value is valid
+            if (typeof value !== 'number' || isNaN(value)) {
+                cell.textContent = 'N/A';
+                cell.className = 'text-muted';
+                continue;
+            }
+            
+            // Format the value
+            if (Math.abs(value) < 0.000001) {
+                cell.textContent = '0.000000';
+            } else {
+                cell.textContent = value.toFixed(6);
+            }
+            
+            // Highlight translation column (last column)
+            if (j === 3) {
+                cell.className = 'translation-column';
+            }
         }
     }
 }
@@ -77,75 +141,6 @@ function showNiftiError(message) {
     errorDiv.style.display = 'block';
 }
 
-// Origin editing functions
-function editOrigin() {
-    if (!currentMetadata) return;
-    
-    document.getElementById('originDisplay').style.display = 'none';
-    document.getElementById('originEdit').style.display = 'block';
-    
-    document.getElementById('originXInput').value = currentMetadata.origin[0];
-    document.getElementById('originYInput').value = currentMetadata.origin[1];
-    document.getElementById('originZInput').value = currentMetadata.origin[2];
-}
-
-function cancelOriginEdit() {
-    document.getElementById('originDisplay').style.display = 'block';
-    document.getElementById('originEdit').style.display = 'none';
-}
-
-function saveOrigin() {
-    const scanId = JSON.parse(document.getElementById('django-data').textContent).scanId;
-    const newOrigin = [
-        parseFloat(document.getElementById('originXInput').value),
-        parseFloat(document.getElementById('originYInput').value),
-        parseFloat(document.getElementById('originZInput').value)
-    ];
-    
-    // Validate
-    if (newOrigin.some(isNaN)) {
-        alert('Please enter valid numeric values for all coordinates');
-        return;
-    }
-    
-    // Show saving state
-    const saveBtn = event.target;
-    const originalText = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-    
-    fetch(`/api/scan/${scanId}/nifti-metadata/update/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify({ origin: newOrigin })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            alert('Error updating origin: ' + data.error);
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = originalText;
-            return;
-        }
-        
-        // Update display with new data
-        currentMetadata = data;
-        displayMetadata(data);
-        cancelOriginEdit();
-        
-        // Show success message
-        showSuccessMessage('Origin updated successfully');
-    })
-    .catch(error => {
-        alert('Failed to update origin: ' + error.message);
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalText;
-    });
-}
-
 // Affine matrix editing functions
 function editAffine() {
     if (!currentMetadata) return;
@@ -153,24 +148,55 @@ function editAffine() {
     document.getElementById('affineDisplay').style.display = 'none';
     document.getElementById('affineEdit').style.display = 'block';
     
-    // Create editable table
     const editTable = document.getElementById('affineEditTable');
-    editTable.innerHTML = '<table class="table table-sm table-bordered"><tbody></tbody></table>';
-    const tbody = editTable.querySelector('tbody');
+    editTable.innerHTML = '';
     
+    const rowLabels = ['X-axis', 'Y-axis', 'Z-axis', 'Origin'];
+    
+    // Create edit table
+    const table = document.createElement('table');
+    table.className = 'affine-matrix-table';
+    
+    // Create header
+    const thead = document.createElement('thead');
+    const headerRow = thead.insertRow();
+    headerRow.insertCell().textContent = '';
+    headerRow.insertCell().textContent = 'X';
+    headerRow.insertCell().textContent = 'Y';
+    headerRow.insertCell().textContent = 'Z';
+    headerRow.insertCell().textContent = 'Translation';
+    table.appendChild(thead);
+    
+    // Create body
+    const tbody = document.createElement('tbody');
     for (let i = 0; i < 4; i++) {
         const row = tbody.insertRow();
+        
+        // Add row label
+        const labelCell = row.insertCell();
+        labelCell.textContent = rowLabels[i];
+        labelCell.className = 'fw-bold';
+        
+        // Add input cells
         for (let j = 0; j < 4; j++) {
             const cell = row.insertCell();
             const input = document.createElement('input');
             input.type = 'number';
-            input.className = 'form-control form-control-sm affine-input';
+            input.className = 'affine-input';
             input.step = '0.000001';
             input.value = currentMetadata.affine[i][j];
-            input.id = `affine_${i}_${j}`;
+            input.dataset.row = i;
+            input.dataset.col = j;
+            
+            if (j === 3) {
+                cell.className = 'translation-column';
+            }
+            
             cell.appendChild(input);
         }
     }
+    table.appendChild(tbody);
+    editTable.appendChild(table);
 }
 
 function cancelAffineEdit() {
@@ -182,65 +208,80 @@ function saveAffine() {
     const scanId = JSON.parse(document.getElementById('django-data').textContent).scanId;
     const newAffine = [];
     
-    // Collect values
+    // Collect values from input fields
     for (let i = 0; i < 4; i++) {
         newAffine[i] = [];
         for (let j = 0; j < 4; j++) {
-            const value = parseFloat(document.getElementById(`affine_${i}_${j}`).value);
-            if (isNaN(value)) {
-                alert(`Invalid value at position [${i+1}, ${j+1}]`);
-                return;
-            }
-            newAffine[i][j] = value;
+            const input = document.querySelector(`input[data-row="${i}"][data-col="${j}"]`);
+            newAffine[i][j] = parseFloat(input.value);
         }
     }
     
-    // Confirm action
-    if (!confirm('Are you sure you want to update the affine matrix? This will change the spatial orientation of the CBCT scan.')) {
+    // Validate affine matrix
+    if (!isValidAffineMatrix(newAffine)) {
+        showNiftiError('Invalid affine matrix. Please check your values.');
         return;
     }
     
-    // Show saving state
-    const saveBtn = event.target;
-    const originalText = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-    
-    fetch(`/api/scan/${scanId}/nifti-metadata/update/`, {
+    // Send update request
+    fetch(`/api/scan/${scanId}/nifti-metadata/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCookie('csrftoken')
         },
-        body: JSON.stringify({ affine: newAffine })
+        body: JSON.stringify({
+            affine: newAffine
+        })
     })
     .then(response => response.json())
     .then(data => {
         if (data.error) {
-            alert('Error updating affine matrix: ' + data.error);
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = originalText;
+            showNiftiError(data.error);
             return;
         }
         
-        // Update display with new data
-        currentMetadata = data;
-        displayMetadata(data);
+        // Update current metadata
+        currentMetadata.affine = newAffine;
+        
+        // Refresh display
+        displayMetadata(currentMetadata);
+        
+        // Switch back to display mode
         cancelAffineEdit();
         
         // Show success message
         showSuccessMessage('Affine matrix updated successfully');
-        
-        // Reload CBCT viewer if it's active
-        if (document.getElementById('cbctViewer').checked) {
-            alert('CBCT metadata has been updated. Please reload the viewer to see changes.');
-        }
     })
     .catch(error => {
-        alert('Failed to update affine matrix: ' + error.message);
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalText;
+        showNiftiError('Failed to update affine matrix: ' + error.message);
     });
+}
+
+function isValidAffineMatrix(matrix) {
+    // Basic validation: check if it's a 4x4 matrix with numeric values
+    if (!Array.isArray(matrix) || matrix.length !== 4) {
+        return false;
+    }
+    
+    for (let i = 0; i < 4; i++) {
+        if (!Array.isArray(matrix[i]) || matrix[i].length !== 4) {
+            return false;
+        }
+        
+        for (let j = 0; j < 4; j++) {
+            if (typeof matrix[i][j] !== 'number' || isNaN(matrix[i][j])) {
+                return false;
+            }
+        }
+    }
+    
+    // Check if the 3x3 rotation/scale part is invertible (determinant != 0)
+    const det = matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1]) -
+                matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0]) +
+                matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
+    
+    return Math.abs(det) > 1e-10; // Small threshold for floating point precision
 }
 
 // Utility functions
@@ -260,19 +301,23 @@ function getCookie(name) {
 }
 
 function showSuccessMessage(message) {
-    const alert = document.createElement('div');
-    alert.className = 'alert alert-success alert-dismissible fade show mt-2';
-    alert.innerHTML = `
-        <i class="fas fa-check-circle"></i> ${message}
+    // Create a temporary success message
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success alert-dismissible fade show';
+    successDiv.innerHTML = `
+        <i class="fas fa-check-circle me-1"></i>
+        ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     
-    const container = document.getElementById('niftiMetadataContent').parentElement;
-    container.insertBefore(alert, container.firstChild);
+    // Insert at the top of the metadata box
+    const metadataBox = document.querySelector('.nifti-metadata-box');
+    metadataBox.insertBefore(successDiv, metadataBox.firstChild);
     
-    // Auto-dismiss after 3 seconds
+    // Auto-remove after 5 seconds
     setTimeout(() => {
-        alert.classList.remove('show');
-        setTimeout(() => alert.remove(), 150);
-    }, 3000);
+        if (successDiv.parentNode) {
+            successDiv.remove();
+        }
+    }, 5000);
 }
