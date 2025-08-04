@@ -72,25 +72,8 @@ window.CBCTViewer = {
         const panoramicLoading = document.getElementById('panoramicLoading');
         const panoramicError = document.getElementById('panoramicError');
         
-        // Check if CBCT processing is complete
-        if (!window.isCBCTProcessed) {
-            console.log('CBCT processing not complete - panoramic not available yet');
-            panoramicLoading.style.display = 'none';
-            panoramicImg.style.display = 'none';
-            panoramicError.style.display = 'block';
-            
-            // Update error message to be more specific
-            const errorElement = panoramicError.querySelector('p');
-            if (errorElement) {
-                errorElement.textContent = 'Panoramic available after CBCT processing';
-            }
-            
-            this.panoramicLoaded = false;
-            
-            // Still proceed with CBCT data loading (raw CBCT can be loaded)
-            this.loadVolumeData();
-            return;
-        }
+        // Always attempt to load panoramic image, regardless of CBCT processing status
+        // Panoramic might be available even if full CBCT processing isn't complete
         
         // Show loading state
         panoramicLoading.style.display = 'block';
@@ -120,6 +103,17 @@ window.CBCTViewer = {
             panoramicLoading.style.display = 'none';
             panoramicImg.style.display = 'none';
             panoramicError.style.display = 'block';
+            
+            // Update error message based on CBCT processing status
+            const errorElement = panoramicError.querySelector('p');
+            if (errorElement) {
+                if (!window.isCBCTProcessed) {
+                    errorElement.textContent = 'Panoramic available after CBCT processing';
+                } else {
+                    errorElement.textContent = 'Panoramic view not available';
+                }
+            }
+            
             this.panoramicLoaded = false;
             
             // Still proceed with CBCT data loading
@@ -1064,6 +1058,12 @@ window.CBCTViewer = {
                     console.log(`Volume view refreshed: ${width}x${height}`);
                 }
             }
+            
+            // Refresh panoramic image if it wasn't loaded initially
+            if (!this.panoramicLoaded) {
+                console.log('Refreshing panoramic image...');
+                this.loadPanoramicImage();
+            }
         }, 50); // Small delay to ensure containers are visible
     },
     
@@ -1075,6 +1075,8 @@ window.CBCTViewer = {
                 this.resetAllViews();
             });
         }
+        
+
         
         // Window resize for 2D views
         window.addEventListener('resize', () => {
@@ -1174,7 +1176,9 @@ window.CBCTViewer = {
                 <p class="${textClass}">${message}</p>
             </div>
         `;
-    }
+    },
+    
+
 };
 
 // Auto-start CBCT loading when IOS viewer is ready (if CBCT data exists)

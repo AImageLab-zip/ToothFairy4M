@@ -841,9 +841,16 @@ function initViewerToggle() {
                         console.log('Initializing CBCT viewer after view switch...');
                         window.CBCTViewer.init();
                     } else if (window.CBCTViewer.initialized) {
-                        // Already initialized - refresh views
+                        // Already initialized - refresh views and reload panoramic
                         console.log('Refreshing CBCT viewer after view switch...');
                         window.CBCTViewer.refreshAllViews();
+                        
+                        // Always reload panoramic when switching to CBCT tab
+                        if (window.CBCTViewer.panoramicLoaded !== undefined) {
+                            console.log('Reloading panoramic image after tab switch...');
+                            window.CBCTViewer.panoramicLoaded = false; // Reset panoramic state
+                            window.CBCTViewer.loadPanoramicImage();
+                        }
                     }
                     // If loading is in progress, do nothing - let it complete naturally
                 }
