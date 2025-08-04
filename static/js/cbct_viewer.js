@@ -14,43 +14,36 @@ window.CBCTViewer = {
     dimensions: null,
     spacing: null,
     
-    // Three.js components for each view
     scenes: {},
     cameras: {},
     renderers: {},
     controls: {},
     
-    // Current slice positions
     slicePositions: {
         axial: 0,
         sagittal: 0,
         coronal: 0
     },
     
-    // Zoom levels for 2D views
     zoomLevels: {
         axial: 1.0,
         sagittal: 1.0,
         coronal: 1.0
     },
     
-    // Pan offsets for 2D views (when zoomed)
     panOffsets: {
         axial: { x: 0, y: 0 },
         sagittal: { x: 0, y: 0 },
         coronal: { x: 0, y: 0 }
     },
     
-    // Panoramic view zoom and pan
     panoramicZoom: 1.0,
     panoramicPan: { x: 0, y: 0 },
     
-    // Volume rendering settings
     renderMode: 'mip', // 'mip', 'translucent', 'attenuated'
     windowLevel: 0.5,
     windowWidth: 1.0,
     
-    // Loading state
     loading: false,
     panoramicLoaded: false,
     
@@ -61,8 +54,8 @@ window.CBCTViewer = {
         }
         
         console.log('Initializing CBCT Viewer...');
-        // Load panoramic first, then CBCT data
         this.loadPanoramicImage();
+        this.loadVolumeData();
     },
     
     loadPanoramicImage: function() {
@@ -72,15 +65,10 @@ window.CBCTViewer = {
         const panoramicLoading = document.getElementById('panoramicLoading');
         const panoramicError = document.getElementById('panoramicError');
         
-        // Always attempt to load panoramic image, regardless of CBCT processing status
-        // Panoramic might be available even if full CBCT processing isn't complete
-        
-        // Show loading state
         panoramicLoading.style.display = 'block';
         panoramicImg.style.display = 'none';
         panoramicError.style.display = 'none';
         
-        // Create a new image to test if panoramic exists
         const testImg = new Image();
         
         testImg.onload = () => {
@@ -91,11 +79,7 @@ window.CBCTViewer = {
             panoramicError.style.display = 'none';
             this.panoramicLoaded = true;
             
-            // Initialize panoramic zoom and pan
             this.initPanoramicInteraction();
-            
-            // Now load CBCT data
-            this.loadVolumeData();
         };
         
         testImg.onerror = () => {
@@ -104,7 +88,6 @@ window.CBCTViewer = {
             panoramicImg.style.display = 'none';
             panoramicError.style.display = 'block';
             
-            // Update error message based on CBCT processing status
             const errorElement = panoramicError.querySelector('p');
             if (errorElement) {
                 if (!window.isCBCTProcessed) {
@@ -115,17 +98,12 @@ window.CBCTViewer = {
             }
             
             this.panoramicLoaded = false;
-            
-            // Still proceed with CBCT data loading
-            this.loadVolumeData();
         };
         
-        // Try to load the panoramic image
         testImg.src = `/api/scan/${window.scanId}/panoramic/`;
     },
     
     loadVolumeData: function() {
-        // Prevent duplicate loading
         if (this.loading || this.initialized) {
             console.log('CBCT data already loading or loaded');
             return;
@@ -147,7 +125,6 @@ window.CBCTViewer = {
                     throw new Error(`processing:${data.message || 'CBCT is being processed'}`);
                 }
                 if (!response.ok) {
-                    // Try to get error details
                     try {
                         const errorData = await response.json();
                         if (errorData.status === 'processing') {
@@ -155,9 +132,7 @@ window.CBCTViewer = {
                         } else if (errorData.status === 'failed') {
                             throw new Error(`failed:${errorData.message}`);
                         }
-                    } catch (e) {
-                        // If JSON parsing fails, use generic error
-                    }
+                    } catch (e) {}
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.arrayBuffer();
@@ -166,16 +141,13 @@ window.CBCTViewer = {
                 console.log('Compressed CBCT data loaded, size:', compressedData.byteLength);
                 
                 try {
-                    // Check for gzip magic number (0x1f, 0x8b)
                     const header = new Uint8Array(compressedData.slice(0, 2));
                     if (header[0] === 0x1f && header[1] === 0x8b) {
                         console.log('Decompressing gzipped NIFTI data...');
-                        // Use pako or fflate for decompression
                         const decompressedData = pako.inflate(new Uint8Array(compressedData));
                         console.log('Decompressed size:', decompressedData.length);
                         this.parseNiftiData(decompressedData.buffer);
                     } else {
-                        // Data is not compressed, use as-is
                         console.log('NIFTI data is not compressed, using as-is');
                         this.parseNiftiData(compressedData);
                     }
@@ -189,7 +161,6 @@ window.CBCTViewer = {
                 console.error('Error loading CBCT data:', error);
                 this.loading = false;
                 
-                // Check if it's a processing or failed status
                 if (error.message.startsWith('processing:')) {
                     const message = error.message.substring('processing:'.length);
                     this.showError(message || 'CBCT is being processed. Please check back later.', 'info');
@@ -206,7 +177,6 @@ window.CBCTViewer = {
         console.log('Parsing NIfTI data...');
         
         try {
-            // Check if this is a gzipped file (starts with 0x1f8b)
             const dataView = new DataView(arrayBuffer);
             const magic1 = dataView.getUint8(0);
             const magic2 = dataView.getUint8(1);
@@ -222,40 +192,30 @@ window.CBCTViewer = {
                 console.log('NIfTI file is not gzipped, proceeding with raw data');
             }
             
-            // Parse NIfTI header (simplified - first 348 bytes)
             const niftiView = new DataView(niftiBuffer);
             
-            // Read NIfTI header more carefully
-            // First check the header size and magic
             const headerSize = niftiView.getInt32(0, true);
             console.log('Header size:', headerSize);
             
-            // Read number of dimensions (at offset 40)
             const ndim = niftiView.getInt16(40, true);
             console.log('Number of dimensions:', ndim);
             
-            // Read dimensions from NIfTI header
-            // dim[1] = x, dim[2] = y, dim[3] = z (at offset 42, 44, 46)
             const dimX = niftiView.getInt16(42, true); // little endian
             const dimY = niftiView.getInt16(44, true);
             const dimZ = niftiView.getInt16(46, true);
             
-            // Read voxel spacing (pixdim at offset 80, 84, 88)
             const spacingX = niftiView.getFloat32(80, true);
             const spacingY = niftiView.getFloat32(84, true);
             const spacingZ = niftiView.getFloat32(88, true);
             
-            // Read datatype (at offset 70)
             const datatype = niftiView.getInt16(70, true);
             
-            // Read bits per pixel (at offset 72)
             const bitpix = niftiView.getInt16(72, true);
             
             console.log(`NIfTI dimensions: ${dimX}x${dimY}x${dimZ}`);
             console.log(`NIfTI spacing: ${spacingX}x${spacingY}x${spacingZ}`);
             console.log(`NIfTI datatype: ${datatype}, bitpix: ${bitpix}`);
             
-            // Validate dimensions - they should be reasonable for medical imaging
             if (dimX < 10 || dimY < 10 || dimZ < 10 || dimX > 2048 || dimY > 2048 || dimZ > 2048) {
                 console.warn('Suspicious dimensions detected, may indicate parsing error');
                 console.log('Raw dimension data:');
@@ -267,10 +227,8 @@ window.CBCTViewer = {
             this.dimensions = { x: dimX, y: dimY, z: dimZ };
             this.spacing = { x: spacingX, y: spacingY, z: spacingZ };
             
-            // Determine bytes per voxel based on datatype and bitpix
-            let bytesPerVoxel = Math.max(1, bitpix / 8); // Use bitpix as primary indicator
+            let bytesPerVoxel = Math.max(1, bitpix / 8);
             
-            // Common NIfTI datatypes
             if (datatype === 2) bytesPerVoxel = 1;      // DT_UNSIGNED_CHAR
             else if (datatype === 4) bytesPerVoxel = 2;  // DT_SIGNED_SHORT
             else if (datatype === 8) bytesPerVoxel = 4;  // DT_SIGNED_INT
@@ -282,8 +240,6 @@ window.CBCTViewer = {
             
             console.log(`Using ${bytesPerVoxel} bytes per voxel for datatype ${datatype}`);
             
-            // Extract volume data (starts after header)
-            // For NIfTI-1, data usually starts at offset 352
             const dataOffset = Math.max(headerSize, 352);
             const volumeSize = dimX * dimY * dimZ;
             
@@ -326,7 +282,6 @@ window.CBCTViewer = {
                 this.volumeData[i] = Math.floor(value);
             }
             
-            // Debug: Check volume data statistics
             let minVal = 65535, maxVal = 0, nonZeroCount = 0;
             for (let i = 0; i < Math.min(1000, this.volumeData.length); i++) {
                 const val = this.volumeData[i];
@@ -337,40 +292,31 @@ window.CBCTViewer = {
             console.log(`Volume data sample (first 1000): min=${minVal}, max=${maxVal}, non-zero=${nonZeroCount}/1000`);
             console.log('NIfTI data parsed successfully');
             
-            // Initialize viewers
             this.initializeViewers();
             this.initialized = true;
             this.loading = false;
             
-            // Hide loading, show views
             document.getElementById('cbctLoading').style.display = 'none';
             document.getElementById('cbctViews').style.display = 'block';
             
         } catch (error) {
             console.error('Error parsing NIfTI data:', error);
-            this.loading = false; // Reset loading state on error
+            this.loading = false;
             this.showError('Failed to parse CBCT data');
         }
     },
     
-    decompressGzip: function(gzipBuffer) {
-        console.log('Attempting client-side gzip decompression...');
-        
-        // Use pako library for gzip decompression
+    decompressGzip: function(gzipBuffer) {       
         if (typeof pako !== 'undefined') {
             try {
-                console.log('Using pako for decompression');
                 const uint8Array = new Uint8Array(gzipBuffer);
                 const decompressed = pako.inflate(uint8Array);
-                console.log('Pako decompression successful, size:', decompressed.length);
                 return decompressed.buffer;
             } catch (error) {
                 console.error('Pako decompression failed:', error);
                 throw new Error(`Failed to decompress gzip data with pako: ${error.message}`);
             }
         }
-        
-        // If pako is not available, the server should have handled decompression
         throw new Error('Client-side gzip decompression not available. Server should handle decompression.');
     },
     
@@ -380,7 +326,6 @@ window.CBCTViewer = {
         this.initSliceViewer('axialView', 'axial');
         this.initSliceViewer('sagittalView', 'sagittal');
         this.initSliceViewer('coronalView', 'coronal');
-        // Initialize volume viewer using dedicated renderer
         this.initVolumeViewer('volumeView');
         this.setupEventListeners();
     },
@@ -436,7 +381,6 @@ window.CBCTViewer = {
             bottom: -1
         };
         
-        // Initialize slice position based on orientation
         if (orientation === 'axial') {
             this.slicePositions[orientation] = Math.floor(this.dimensions.z / 2);
         } else if (orientation === 'sagittal') {
@@ -445,31 +389,26 @@ window.CBCTViewer = {
             this.slicePositions[orientation] = Math.floor(this.dimensions.y / 2);
         }
         
-        // Create initial slice
         this.updateSlice(orientation);
         this.updateSliceLabel(orientation);
         
-        // Add mouse wheel event for slice navigation and zoom
         renderer.domElement.addEventListener('wheel', (event) => {
             event.preventDefault();
             event.stopPropagation();
             
             if (event.ctrlKey) {
-                // CTRL+wheel = zoom
                 this.handleSliceZoom(orientation, event.deltaY > 0 ? -0.1 : 0.1);
             } else {
-                // Regular wheel = slice navigation
                 this.handleSliceScroll(orientation, event.deltaY > 0 ? 1 : -1);
             }
         });
         
-        // Add mouse drag events for panning
         let isDragging = false;
         let lastMouseX = 0;
         let lastMouseY = 0;
         
         renderer.domElement.addEventListener('mousedown', (event) => {
-            if (event.button === 2) { // Right mouse button
+            if (event.button === 2) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = true;
@@ -480,7 +419,7 @@ window.CBCTViewer = {
         });
         
         renderer.domElement.addEventListener('mousemove', (event) => {
-            if (isDragging && event.buttons === 2) { // Right button held
+            if (isDragging && event.buttons === 2) {
                 event.preventDefault();
                 event.stopPropagation();
                 
@@ -495,7 +434,7 @@ window.CBCTViewer = {
         });
         
         renderer.domElement.addEventListener('mouseup', (event) => {
-            if (event.button === 2) { // Right mouse button
+            if (event.button === 2) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = false;
@@ -503,21 +442,17 @@ window.CBCTViewer = {
             }
         });
         
-        // Handle mouse leave to stop dragging
         renderer.domElement.addEventListener('mouseleave', () => {
             isDragging = false;
             renderer.domElement.style.cursor = 'crosshair';
         });
         
-        // Prevent context menu
         renderer.domElement.addEventListener('contextmenu', (event) => {
             event.preventDefault();
         });
         
-        // Render initially
         renderer.render(scene, camera);
         
-        // Store render function for updates
         this.renderFunctions = this.renderFunctions || {};
         this.renderFunctions[orientation] = () => {
             renderer.render(scene, camera);
@@ -525,12 +460,9 @@ window.CBCTViewer = {
     },
     
     initVolumeViewer: function(containerId) {
-        // Create volume texture for the dedicated renderer
         const volumeTexture = this.createVolumeTexture();
         
-        // Initialize the dedicated volume renderer with correct dimensions
         if (typeof window.VolumeRenderer !== 'undefined') {
-            // Pass the downsampled dimensions, not the original ones
             window.VolumeRenderer.init(containerId, volumeTexture, this.volumeAtlas, this.volumeAtlas.sliceDims);
             console.log('Volume viewer initialized with dedicated renderer');
         } else {
@@ -538,10 +470,7 @@ window.CBCTViewer = {
         }
     },
     
-    // Volume rendering cube creation is now handled by VolumeRenderer
-    
     createVolumeTexture: function() {
-        // Downsample volume data for performance
         const factor = VOLUME_DOWNSAMPLE_FACTOR;
         const newDims = {
             x: Math.floor(this.dimensions.x / factor),
@@ -549,13 +478,10 @@ window.CBCTViewer = {
             z: Math.floor(this.dimensions.z / factor)
         };
         
-        // For Three.js r128 compatibility, we'll create a 2D texture atlas
-        // that contains all slices arranged in a grid
         const atlasSize = Math.ceil(Math.sqrt(newDims.z));
         const textureSize = atlasSize * newDims.x;
         const textureData = new Uint8Array(textureSize * textureSize);
         
-        // Arrange slices in atlas
         for (let z = 0; z < newDims.z; z++) {
             const atlasX = (z % atlasSize) * newDims.x;
             const atlasY = Math.floor(z / atlasSize) * newDims.y;
@@ -587,14 +513,12 @@ window.CBCTViewer = {
         texture.wrapT = THREE.ClampToEdgeWrapping;
         texture.needsUpdate = true;
         
-        // Store atlas info for shader
         this.volumeAtlas = {
             atlasSize: atlasSize,
             textureSize: textureSize,
             sliceDims: newDims
         };
         
-        // Debug: Check if texture data has any non-zero values
         let nonZeroCount = 0;
         let maxValue = 0;
         for (let i = 0; i < textureData.length; i++) {
@@ -605,8 +529,6 @@ window.CBCTViewer = {
         
         return texture;
     },
-    
-    // Volume shaders are now handled by VolumeRenderer
     
     updateSlice: function(orientation) {
         const scene = this.scenes[orientation];
@@ -649,7 +571,6 @@ window.CBCTViewer = {
     createSliceTexture: function(orientation, sliceIndex) {
         let sliceWidth, sliceHeight, sliceData;
         
-        // Get original slice dimensions
         if (orientation === 'axial') {
             sliceWidth = this.dimensions.x;
             sliceHeight = this.dimensions.y;
@@ -661,7 +582,6 @@ window.CBCTViewer = {
             sliceHeight = this.dimensions.z;
         }
         
-        // Create slice data with natural dimensions
         sliceData = new Uint8Array(sliceWidth * sliceHeight);
         
         if (orientation === 'axial') {
@@ -1178,18 +1098,34 @@ window.CBCTViewer = {
         `;
     },
     
+    // Method to force refresh panoramic image
+    forceRefreshPanoramic: function() {
+        console.log('Force refreshing panoramic image...');
+        this.panoramicLoaded = false; // Reset loaded state
+        
+        // Clear any existing image
+        const panoramicImg = document.getElementById('panoramicImage');
+        const panoramicLoading = document.getElementById('panoramicLoading');
+        const panoramicError = document.getElementById('panoramicError');
+        
+        if (panoramicImg) panoramicImg.style.display = 'none';
+        if (panoramicError) panoramicError.style.display = 'none';
+        if (panoramicLoading) panoramicLoading.style.display = 'block';
+        
+        // Reload the panoramic image
+        this.loadPanoramicImage();
+    }
+    
 
 };
 
-// Auto-start CBCT loading when IOS viewer is ready (if CBCT data exists)
 document.addEventListener('DOMContentLoaded', function() {
     if (window.hasCBCT) {
         // Start loading CBCT data in background
         setTimeout(() => {
             if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
-                console.log('Pre-loading CBCT data...');
                 window.CBCTViewer.loadVolumeData();
             }
-        }, 2000); // Wait 2 seconds after IOS viewer loads
+        }, 500);
     }
 }); 

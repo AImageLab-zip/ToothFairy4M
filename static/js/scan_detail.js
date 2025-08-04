@@ -846,11 +846,9 @@ function initViewerToggle() {
                         window.CBCTViewer.refreshAllViews();
                         
                         // Always reload panoramic when switching to CBCT tab
-                        if (window.CBCTViewer.panoramicLoaded !== undefined) {
-                            console.log('Reloading panoramic image after tab switch...');
-                            window.CBCTViewer.panoramicLoaded = false; // Reset panoramic state
-                            window.CBCTViewer.loadPanoramicImage();
-                        }
+                        console.log('Reloading panoramic image after tab switch...');
+                        window.CBCTViewer.panoramicLoaded = false; // Reset panoramic state
+                        window.CBCTViewer.loadPanoramicImage();
                     }
                     // If loading is in progress, do nothing - let it complete naturally
                 }
