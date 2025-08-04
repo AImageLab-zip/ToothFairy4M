@@ -654,9 +654,20 @@ def scan_viewer_data(request, scanpair_id):
             'status': 'not_found'
         }, status=404)
     
+    # Ensure URLs use HTTPS if the request came over HTTPS
+    def build_secure_uri(request, url):
+        if request.is_secure():
+            # If request is HTTPS, ensure the URL uses HTTPS
+            if url.startswith('http://'):
+                return url.replace('http://', 'https://', 1)
+            elif url.startswith('/'):
+                # Relative URL - build absolute URL with HTTPS
+                return f'https://{request.get_host()}{url}'
+        return request.build_absolute_uri(url)
+    
     data = {
-        'upper_scan_url': request.build_absolute_uri(upper_scan_url),
-        'lower_scan_url': request.build_absolute_uri(lower_scan_url),
+        'upper_scan_url': build_secure_uri(request, upper_scan_url),
+        'lower_scan_url': build_secure_uri(request, lower_scan_url),
         'patient_info': {
             'patient_id': scan_pair.patient.patient_id,
         }
@@ -801,6 +812,9 @@ def upload_voice_caption(request, scanpair_id):
         audio_url = None
         if audio_file and os.path.exists(audio_file.file_path):
             audio_url = f'/api/processing/files/serve/{audio_file.id}/'
+            # Ensure HTTPS for audio URLs too
+            if request.is_secure():
+                audio_url = f'https://{request.get_host()}{audio_url}'
         
         return JsonResponse({
             'success': True,
