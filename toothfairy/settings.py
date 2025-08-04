@@ -49,6 +49,10 @@ else:
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
+# Force HTTPS detection for proxy environments
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = False  # Don't redirect, just detect
+
 # Application definition
 
 INSTALLED_APPS = [

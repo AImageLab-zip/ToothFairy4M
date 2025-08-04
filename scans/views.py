@@ -656,18 +656,40 @@ def scan_viewer_data(request, scanpair_id):
     
     # Ensure URLs use HTTPS if the request came over HTTPS
     def build_secure_uri(request, url):
-        if request.is_secure():
-            # If request is HTTPS, ensure the URL uses HTTPS
-            if url.startswith('http://'):
-                return url.replace('http://', 'https://', 1)
-            elif url.startswith('/'):
+        # Check if request is secure (either direct HTTPS or behind proxy)
+        is_secure = request.is_secure() or request.META.get('HTTP_X_FORWARDED_PROTO') == 'https'
+        
+        # Always use HTTPS if the request is secure, regardless of the original URL
+        if is_secure:
+            if url.startswith('/'):
                 # Relative URL - build absolute URL with HTTPS
                 return f'https://{request.get_host()}{url}'
-        return request.build_absolute_uri(url)
+            elif url.startswith('http://'):
+                # HTTP URL - convert to HTTPS
+                return url.replace('http://', 'https://', 1)
+            elif url.startswith('https://'):
+                # Already HTTPS - return as-is
+                return url
+            else:
+                # Any other case - assume it's a relative URL and make it HTTPS
+                return f'https://{request.get_host()}/{url.lstrip("/")}'
+        else:
+            # For non-secure requests, use standard build_absolute_uri
+            return request.build_absolute_uri(url)
+    
+    # Debug: Print request info and generated URLs
+    is_secure = request.is_secure() or request.META.get('HTTP_X_FORWARDED_PROTO') == 'https'
+    print(f"DEBUG: Request secure: {request.is_secure()}, X-Forwarded-Proto: {request.META.get('HTTP_X_FORWARDED_PROTO')}, is_secure: {is_secure}")
+    print(f"DEBUG: Original URLs - upper: {upper_scan_url}, lower: {lower_scan_url}")
+    
+    upper_url = build_secure_uri(request, upper_scan_url)
+    lower_url = build_secure_uri(request, lower_scan_url)
+    
+    print(f"DEBUG: Final URLs - upper: {upper_url}, lower: {lower_url}")
     
     data = {
-        'upper_scan_url': build_secure_uri(request, upper_scan_url),
-        'lower_scan_url': build_secure_uri(request, lower_scan_url),
+        'upper_scan_url': upper_url,
+        'lower_scan_url': lower_url,
         'patient_info': {
             'patient_id': scan_pair.patient.patient_id,
         }
