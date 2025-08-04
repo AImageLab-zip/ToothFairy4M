@@ -42,10 +42,12 @@ if ENABLE_SSL:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 else:
-    # Development settings - no SSL enforcement
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
 # Application definition
 
@@ -167,6 +169,13 @@ else:
                                  default='http://localhost:8000,http://127.0.0.1:8000', cast=str).split(',')
 
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', 
+                              default='https://toothfairy4m.ing.unimore.it,http://localhost:8000,http://127.0.0.1:8000', 
+                              cast=str).split(',')
+
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_HTTPONLY = False
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Login URLs
