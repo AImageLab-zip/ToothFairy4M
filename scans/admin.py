@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserProfile, Dataset, Patient, ScanPair, Classification, VoiceCaption, ProcessingJob, FileRegistry
+from .models import UserProfile, Dataset, Patient, ScanPair, Classification, VoiceCaption, ProcessingJob, FileRegistry, Invitation
 
 
 @admin.register(UserProfile)
