@@ -5,11 +5,9 @@ class VocalCaptionRecorder {
         this.stream = null;
         this.currentAudio = null;
         
-        // Simple state tracking
         this.isRecording = false;
         this.isPaused = false;
         
-        // Simple timing - just track total duration
         this.recordingStartTime = null;
         this.totalPausedDuration = 0;
         this.currentPauseStart = null;
@@ -27,7 +25,7 @@ class VocalCaptionRecorder {
         this.discardBtn = document.getElementById('discardRecording');
         this.recordingInfo = document.querySelector('.recording-info');
         this.recordingTimer = document.getElementById('recordingTimer');
-        this.progressBar = document.querySelector('.recording-progress .progress-bar');
+        this.progressBar = document.querySelector('.progress .progress-bar');
         this.audioPlayback = document.querySelector('.audio-playback');
         this.modalityIndicator = document.getElementById('modalityIndicator');
         
@@ -45,7 +43,7 @@ class VocalCaptionRecorder {
             console.warn('Voice recording not supported in this browser');
             if (this.startBtn) {
                 this.startBtn.disabled = true;
-                this.startBtn.title = 'Voice recording not supported';
+                this.startBtn.title = 'Voice recording not supported, try to change browser.';
             }
         }
     }
@@ -64,11 +62,10 @@ class VocalCaptionRecorder {
             this.discardBtn?.addEventListener('click', () => this.discardRecording());
         } else {
             this.startBtn.addEventListener('click', () => {
-                alert('Voice recording is not supported. Please use HTTPS and a modern browser.');
+                alert('Voice recording is not supported. Please use a modern browser.');
             });
         }
         
-        // Audio playback and delete controls
         document.addEventListener('click', (e) => {
             if (e.target.closest('.btn-play-audio')) {
                 const audioUrl = e.target.closest('.btn-play-audio').dataset.audioUrl;
@@ -80,7 +77,6 @@ class VocalCaptionRecorder {
                 this.deleteCaption(captionId);
             }
             
-            // Caption toggle functionality
             if (e.target.closest('.caption-toggle-btn')) {
                 const captionId = e.target.closest('.caption-toggle-btn').dataset.captionId;
                 this.toggleCaption(captionId);
@@ -103,14 +99,11 @@ class VocalCaptionRecorder {
     
     async startRecording() {
         try {
-            // Get microphone access
             this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
-            // Configure MediaRecorder
             const options = this.getRecorderOptions();
             this.mediaRecorder = new MediaRecorder(this.stream, options);
             
-            // Setup data collection
             this.audioChunks = [];
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -118,17 +111,14 @@ class VocalCaptionRecorder {
                 }
             };
             
-            // Start recording
-            this.mediaRecorder.start(1000); // Collect data every second
+            this.mediaRecorder.start(1000);
             
-            // Set state
             this.isRecording = true;
             this.isPaused = false;
             this.recordingStartTime = Date.now();
             this.totalPausedDuration = 0;
             this.currentPauseStart = null;
             
-            // Update UI and start timer
             this.updateUI();
             this.startTimer();
             
@@ -179,7 +169,7 @@ class VocalCaptionRecorder {
             }
             this.mediaRecorder.stop();
             this.isRecording = false;
-            this.isPaused = false;
+            this.isPaused = true;
             this.stopTimer();
         }
         
@@ -187,23 +177,9 @@ class VocalCaptionRecorder {
     }
     
     async saveRecording() {
-        // Always stop recording first if it's running
+        // Stop recording if active
         if (this.isRecording) {
-            // Get final data chunk before stopping
-            this.mediaRecorder.requestData();
-            
-            // Wait for final data and stop
-            await new Promise(resolve => {
-                const handleFinalData = (event) => {
-                    if (event.data.size > 0) {
-                        this.audioChunks.push(event.data);
-                    }
-                    this.mediaRecorder.removeEventListener('dataavailable', handleFinalData);
-                    resolve();
-                };
-                this.mediaRecorder.addEventListener('dataavailable', handleFinalData);
-                this.stopRecording();
-            });
+            this.stopRecording();
         }
         
         if (this.audioChunks.length === 0) {
@@ -254,15 +230,13 @@ class VocalCaptionRecorder {
         
         const now = Date.now();
         const totalElapsed = now - this.recordingStartTime;
+        let totalPaused = this.totalPausedDuration;
         
-        // Calculate current pause duration if paused
-        let currentPauseDuration = 0;
         if (this.isPaused && this.currentPauseStart) {
-            currentPauseDuration = now - this.currentPauseStart;
+            totalPaused += now - this.currentPauseStart;
         }
         
-        const totalPaused = this.totalPausedDuration + currentPauseDuration;
-        return (totalElapsed - totalPaused) / 1000; // Convert to seconds
+        return (totalElapsed - totalPaused) / 1000;
     }
     
     startTimer() {
@@ -288,7 +262,8 @@ class VocalCaptionRecorder {
         }
         
         if (this.progressBar) {
-            const progress = Math.min((seconds / 300) * 100, 100); // Max 5 minutes
+            let progress = Math.min((seconds / 120) * 100, 100); // Max 2 minutes
+            progress = Math.min(progress, 100);
             this.progressBar.style.width = `${progress}%`;
             
             // Update color based on duration
@@ -300,6 +275,8 @@ class VocalCaptionRecorder {
             } else {
                 this.progressBar.classList.add('duration-good');
             }
+        } else {
+            console.log('No progress bar found');
         }
         
         // Auto-save at 5 minutes
@@ -564,7 +541,6 @@ class VocalCaptionRecorder {
     }
 }
 
-// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.recorder = new VocalCaptionRecorder();
 }); 
