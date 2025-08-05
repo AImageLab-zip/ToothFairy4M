@@ -165,7 +165,6 @@ def scan_list(request):
         }
         scans_with_status.append(scan_data)
     
-    # Apply new filters (after data preparation)
     if has_ios_filter:
         if has_ios_filter == 'yes':
             scans_with_status = [s for s in scans_with_status if s['scan'].is_ios_processed()]
