@@ -529,15 +529,58 @@ class VocalCaptionRecorder {
     }
     
     playAudio(audioUrl) {
+        const playButton = event.target.closest('.btn-play-audio');
+        
+        if (this.currentAudio && !this.currentAudio.paused) {
+            // Stop current audio
+            this.currentAudio.pause();
+            this.currentAudio = null;
+            this.updatePlayButton(playButton, false);
+            return;
+        }
+        
         if (this.currentAudio) {
             this.currentAudio.pause();
         }
         
         this.currentAudio = new Audio(audioUrl);
+        
+        // Update button to show it's playing
+        this.updatePlayButton(playButton, true);
+        
+        // Add event listeners to reset button when audio ends
+        this.currentAudio.addEventListener('ended', () => {
+            this.updatePlayButton(playButton, false);
+        });
+        
+        this.currentAudio.addEventListener('error', () => {
+            this.updatePlayButton(playButton, false);
+        });
+        
         this.currentAudio.play().catch(error => {
             console.error('Error playing audio:', error);
             alert('Unable to play audio file.');
+            this.updatePlayButton(playButton, false);
         });
+    }
+    
+    updatePlayButton(button, isPlaying) {
+        if (!button) return;
+        
+        const icon = button.querySelector('i');
+        if (isPlaying) {
+            button.classList.remove('btn-outline-primary');
+            button.classList.add('btn-danger');
+            button.title = 'Stop';
+            icon.className = 'fas fa-stop';
+            icon.style.fontSize = '0.75rem';
+        } else {
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-outline-primary');
+            button.title = 'Play';
+            icon.className = 'fas fa-play';
+            icon.style.fontSize = '0.75rem';
+        }
     }
 }
 
