@@ -9,7 +9,7 @@
         <div class="col-lg-8">
             <div class="card">
                 <div class="card-header">
-                    <h3><i class="fas fa-upload me-2"></i>Upload New Scan Pair</h3>
+                    <h3><i class="fas fa-upload me-2"></i>Upload New IOS/CBCT Scan</h3>
                 </div>
                 <div class="card-body">
                     <form method="post" enctype="multipart/form-data">
@@ -24,7 +24,7 @@
                             {% if scan_form.name.errors %}
                                 <div class="text-danger">{{ scan_form.name.errors }}</div>
                             {% endif %}
-                            <div class="form-text">Enter a descriptive name for this scan (e.g., "Patient 123 - Initial Consultation")</div>
+                            <div class="form-text">(Optional) Enter name for this scan</div>
                         </div>
 
                         <!-- Scan Files -->
@@ -39,7 +39,7 @@
                                 {% if scan_form.upper_scan_raw.errors %}
                                     <div class="text-danger">{{ scan_form.upper_scan_raw.errors }}</div>
                                 {% endif %}
-                                <div class="form-text">Upload STL file for upper jaw scan (optional if CBCT is provided)</div>
+                                <div class="form-text">Upload STL file for upper jaw scan</div>
                             </div>
 
                             <div class="mb-3">
@@ -48,7 +48,7 @@
                                 {% if scan_form.lower_scan_raw.errors %}
                                     <div class="text-danger">{{ scan_form.lower_scan_raw.errors }}</div>
                                 {% endif %}
-                                <div class="form-text">Upload STL file for lower jaw scan (optional if CBCT is provided)</div>
+                                <div class="form-text">Upload STL file for lower jaw scan</div>
                             </div>
                         </div>
                         
@@ -111,24 +111,6 @@
                                 {% endfor %}
                             </div>
                         {% endif %}
-
-                        <!-- File Requirements -->
-                        <div class="alert alert-info">
-                            <h6><i class="fas fa-info-circle me-2"></i>File Requirements & Upload Options</h6>
-                            <ul class="mb-2">
-                                <li><strong>IOS files:</strong> Only STL files are accepted</li>
-                                <li><strong>CBCT files:</strong> Supported formats: DICOM files/folders (.dcm, .zip, .tar archives), NIfTI (.nii, .nii.gz), MetaImage (.mha, .mhd), NRRD (.nrrd, .nhdr)</li>
-                                <li><strong>Maximum file size:</strong> 500MB total for folder uploads, 50MB per individual file</li>
-                                <li><strong>A new patient record will be created automatically</strong></li>
-                            </ul>
-                            <div class="mt-2">
-                                <strong>Upload Options (choose one):</strong>
-                                <ul class="mb-0">
-                                    <li>Both intra-oral scans (upper + lower STL files)</li>
-                                    <li>CBCT scan only (DICOM, NIfTI, MetaImage, or NRRD file)</li>
-                                    <li>All three files (both IOS + CBCT)</li>
-                                </ul>
-                            </div>
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
