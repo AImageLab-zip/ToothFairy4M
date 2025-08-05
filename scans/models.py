@@ -433,6 +433,7 @@ class Classification(models.Model):
     ]
     
     SAGITTAL_CHOICES = [
+        ('Unknown', 'Unknown'),
         ('I', 'Class I'),
         ('II_edge', 'Class II Edge'),
         ('II_full', 'Class II Full'),
@@ -440,6 +441,7 @@ class Classification(models.Model):
     ]
     
     VERTICAL_CHOICES = [
+        ('Unknown', 'Unknown'),
         ('normal', 'Normal'),
         ('deep', 'Deep Bite'),
         ('reverse', 'Reverse Bite'),
@@ -447,12 +449,14 @@ class Classification(models.Model):
     ]
     
     TRANSVERSE_CHOICES = [
+        ('Unknown', 'Unknown'),
         ('normal', 'Normal'),
         ('cross', 'Cross Bite'),
         ('scissor', 'Scissor Bite'),
     ]
     
     MIDLINE_CHOICES = [
+        ('Unknown', 'Unknown'),
         ('centered', 'Centered'),
         ('deviated', 'Deviated'),
     ]
