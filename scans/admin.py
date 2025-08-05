@@ -132,3 +132,20 @@ class FileRegistryAdmin(admin.ModelAdmin):
         if obj:  # Editing existing object
             return self.readonly_fields + ['file_type', 'file_path', 'scanpair', 'voice_caption', 'processing_job']
         return self.readonly_fields
+
+
+
+@admin.register(Invitation)
+class InvitationAdmin(admin.ModelAdmin):
+    list_display = ['code', 'email', 'role', 'created_by', 'created_at', 'expires_at', 'used_at', 'used_by']
+    list_filter = ['role', 'created_at', 'expires_at']
+    search_fields = ['code', 'email', 'created_by__username', 'used_by__username']
+    readonly_fields = ['code', 'created_at', 'used_at', 'used_by']
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:  # Editing existing object
+            return self.readonly_fields + ['created_by']
+        return self.readonly_fields
+
+
+
