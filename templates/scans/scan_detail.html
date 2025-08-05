@@ -79,6 +79,20 @@
                 </div>
             </div>
             
+            <!-- Mouse Interaction Guide -->
+            <div class="alert alert-info alert-sm mb-3" role="alert">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong><i class="fas fa-mouse me-1"></i>IOS Viewer:</strong>
+                        <small>Mouse = rotate/zoom, U/L buttons = toggle jaws</small>
+                    </div>
+                    <div class="col-md-6">
+                        <strong><i class="fas fa-mouse me-1"></i>CBCT Viewer:</strong>
+                        <small>Wheel = scroll slices, Ctrl+wheel = zoom, Right-drag = pan/move</small>
+                    </div>
+                </div>
+            </div>
+            
             <div class="position-relative">
                 <!-- IOS Viewer -->
                 <div id="ios-viewer" class="viewer-container" {% if not scan_pair.has_ios_scans and scan_pair.has_cbct_scan %}style="display: none;"{% endif %}>
