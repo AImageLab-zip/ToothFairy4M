@@ -126,15 +126,15 @@
 }
 
 .value-button.ai-prediction {
-    background: linear-gradient(135deg, #e3f2fd, #f1f8ff);
-    border-color: #2196f3;
-    color: #1976d2;
+    background: linear-gradient(135deg, #f1f8e9, #f8faf5);
+    border-color: #8e24aa;
+    color: #6a1b9a;
 }
 
 .value-button.manual-verified {
-    background: linear-gradient(135deg, #f3e5f5, #fce4ec);
-    border-color: #9c27b0;
-    color: #7b1fa2;
+    background: linear-gradient(135deg, #f1f8e9, #f8faf5);
+    border-color: #689f38;
+    color: #558b2f;
 }
 
 .value-dropdown {
@@ -185,12 +185,12 @@
 }
 
 .ai-pending {
-    background: #2196f3;
+    background: #6a1b9a;
     color: white;
 }
 
 .manual-verified {
-    background: #9c27b0;
+    background-color: #689f38;
     color: white;
 }
 
@@ -575,11 +575,11 @@
 }
 
 .legend-color.ai-prediction {
-    background-color: #007bff;
+    background-color: #6a1b9a;
 }
 
 .legend-color.manual-verified {
-    background-color: #6f42c1;
+    background-color: #558b2f;
 }
 
 /* IOS Status Display Styles */

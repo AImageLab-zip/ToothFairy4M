@@ -313,12 +313,23 @@
         {% if page_obj.paginator.num_pages > 1 %}
             <nav aria-label="Scan pagination" class="mt-4">
                 <ul class="pagination justify-content-center">
+                    <!-- First page -->
+                    {% if page_obj.number > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1" title="First page">
+                                <i class="fas fa-angle-double-left"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+                    
+                    <!-- Previous page -->
                     {% if page_obj.has_previous %}
                         <li class="page-item">
                             <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a>
                         </li>
                     {% endif %}
                     
+                    <!-- Page numbers -->
                     {% for num in page_obj.paginator.page_range %}
                         {% if page_obj.number == num %}
                             <li class="page-item active">
@@ -331,9 +342,19 @@
                         {% endif %}
                     {% endfor %}
                     
+                    <!-- Next page -->
                     {% if page_obj.has_next %}
                         <li class="page-item">
                             <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a>
+                        </li>
+                    {% endif %}
+                    
+                    <!-- Last page -->
+                    {% if page_obj.number < page_obj.paginator.num_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}" title="Last page">
+                                <i class="fas fa-angle-double-right"></i>
+                            </a>
                         </li>
                     {% endif %}
                 </ul>
