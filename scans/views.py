@@ -112,12 +112,10 @@ def scan_list(request):
     
     # Get filter parameters
     search_query = request.GET.get('search', '').strip()
-    status_filter = request.GET.get('status', '')
-    visibility_filter = request.GET.get('visibility', '')
-    uploader_filter = request.GET.get('uploader', '')
-    annotator_filter = request.GET.get('annotator', '')
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
+    has_ios_filter = request.GET.get('has_ios', '')
+    has_cbct_filter = request.GET.get('has_cbct', '')
+    has_annotated_filter = request.GET.get('has_annotated', '')
+    per_page = int(request.GET.get('per_page', 20))
     
     # Apply basic filters
     if search_query:
@@ -126,28 +124,6 @@ def scan_list(request):
             Q(patient__patient_id__icontains=search_query) |
             Q(scanpair_id__icontains=search_query)
         )
-    
-    if visibility_filter:
-        scans = scans.filter(visibility=visibility_filter)
-    
-    if uploader_filter:
-        scans = scans.filter(uploaded_by__id=uploader_filter)
-    
-    if date_from:
-        try:
-            from datetime import datetime
-            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-            scans = scans.filter(uploaded_at__date__gte=date_from_parsed)
-        except ValueError:
-            pass
-    
-    if date_to:
-        try:
-            from datetime import datetime
-            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-            scans = scans.filter(uploaded_at__date__lte=date_to_parsed)
-        except ValueError:
-            pass
     
     # Prefetch classifications and prepare data
     scans = scans.prefetch_related(
@@ -189,46 +165,38 @@ def scan_list(request):
         }
         scans_with_status.append(scan_data)
     
-    # Apply status filter (after data preparation)
-    if status_filter:
-        if status_filter == 'verified':
+    # Apply new filters (after data preparation)
+    if has_ios_filter:
+        if has_ios_filter == 'yes':
+            scans_with_status = [s for s in scans_with_status if s['scan'].is_ios_processed()]
+        elif has_ios_filter == 'no':
+            scans_with_status = [s for s in scans_with_status if not s['scan'].is_ios_processed()]
+    
+    if has_cbct_filter:
+        if has_cbct_filter == 'yes':
+            scans_with_status = [s for s in scans_with_status if s['scan'].is_cbct_processed()]
+        elif has_cbct_filter == 'no':
+            scans_with_status = [s for s in scans_with_status if not s['scan'].is_cbct_processed()]
+    
+    if has_annotated_filter:
+        if has_annotated_filter == 'yes':
             scans_with_status = [s for s in scans_with_status if s['has_manual']]
-        elif status_filter == 'needs_review':
-            scans_with_status = [s for s in scans_with_status if s['has_ai_only']]
-        elif status_filter == 'processing':
-            scans_with_status = [s for s in scans_with_status if s['needs_processing']]
-    
-    # Apply annotator filter (after data preparation)
-    if annotator_filter:
-        scans_with_status = [
-            s for s in scans_with_status 
-            if s['manual_classification'] and str(s['manual_classification'].annotator.id) == annotator_filter
-        ]
-    
-    # Get filter options for dropdowns
-    uploaders = User.objects.filter(scanpair__isnull=False).distinct().order_by('username')
-    annotators = User.objects.filter(
-        profile__role__in=['annotator', 'admin'],
-        classification__classifier='manual'
-    ).distinct().order_by('username')
+        elif has_annotated_filter == 'no':
+            scans_with_status = [s for s in scans_with_status if not s['has_manual']]
     
     # Pagination
-    paginator = Paginator(scans_with_status, 20)  # More items per page for list view
+    paginator = Paginator(scans_with_status, per_page)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
     context = {
         'page_obj': page_obj,
         'search_query': search_query,
-        'status_filter': status_filter,
-        'visibility_filter': visibility_filter,
-        'uploader_filter': uploader_filter,
-        'annotator_filter': annotator_filter,
-        'date_from': date_from,
-        'date_to': date_to,
+        'has_ios_filter': has_ios_filter,
+        'has_cbct_filter': has_cbct_filter,
+        'has_annotated_filter': has_annotated_filter,
+        'per_page': per_page,
         'user_profile': user_profile,
-        'uploaders': uploaders,
-        'annotators': annotators,
     }
     return render(request, 'scans/scan_list.html', context)
 

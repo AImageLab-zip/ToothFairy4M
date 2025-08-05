@@ -41,37 +41,25 @@
             {% if search_query %}
                 <span class="filter-badge">
                     Search: "{{ search_query }}"
-                    <span class="remove" onclick="removeFilter('search')">&times;</span>
+                    <span class="remove" data-filter="search">&times;</span>
                 </span>
             {% endif %}
-            {% if status_filter %}
+            {% if has_ios_filter %}
                 <span class="filter-badge">
-                    Status: {{ status_filter|title }}
-                    <span class="remove" onclick="removeFilter('status')">&times;</span>
+                    Has IOS: {{ has_ios_filter|title }}
+                    <span class="remove" data-filter="has_ios">&times;</span>
                 </span>
             {% endif %}
-            {% if visibility_filter %}
+            {% if has_cbct_filter %}
                 <span class="filter-badge">
-                    Visibility: {{ visibility_filter|title }}
-                    <span class="remove" onclick="removeFilter('visibility')">&times;</span>
+                    Has CBCT: {{ has_cbct_filter|title }}
+                    <span class="remove" data-filter="has_cbct">&times;</span>
                 </span>
             {% endif %}
-            {% if uploader_filter %}
+            {% if has_annotated_filter %}
                 <span class="filter-badge">
-                    Uploader: {% for u in uploaders %}{% if u.id|stringformat:"s" == uploader_filter %}{{ u.username }}{% endif %}{% endfor %}
-                    <span class="remove" onclick="removeFilter('uploader')">&times;</span>
-                </span>
-            {% endif %}
-            {% if annotator_filter %}
-                <span class="filter-badge">
-                    Annotator: {% for a in annotators %}{% if a.id|stringformat:"s" == annotator_filter %}{{ a.username }}{% endif %}{% endfor %}
-                    <span class="remove" onclick="removeFilter('annotator')">&times;</span>
-                </span>
-            {% endif %}
-            {% if date_from or date_to %}
-                <span class="filter-badge">
-                    Date: {% if date_from %}{{ date_from }}{% else %}*{% endif %} - {% if date_to %}{{ date_to }}{% else %}*{% endif %}
-                    <span class="remove" onclick="removeFilter('date')">&times;</span>
+                    Annotated: {{ has_annotated_filter|title }}
+                    <span class="remove" data-filter="has_annotated">&times;</span>
                 </span>
             {% endif %}
         </div>
@@ -80,69 +68,51 @@
         <div class="filter-content" id="filterContent">
             <form method="get" id="filterForm">
                 <div class="row g-3">
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label">Search</label>
                         <input type="text" class="form-control" name="search" 
                                placeholder="Name, Patient ID, Scan ID..." 
                                value="{{ search_query }}">
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label">Status</label>
-                        <select class="form-select" name="status">
-                            <option value="">All Statuses</option>
-                            <option value="verified" {% if status_filter == 'verified' %}selected{% endif %}>Verified</option>
-                            <option value="needs_review" {% if status_filter == 'needs_review' %}selected{% endif %}>Needs Review</option>
-                            <option value="processing" {% if status_filter == 'processing' %}selected{% endif %}>Processing</option>
-                        </select>
-                    </div>
-                    {% if user_profile.is_annotator %}
-                    <div class="col-md-2">
-                        <label class="form-label">Visibility</label>
-                        <select class="form-select" name="visibility">
+                        <label class="form-label">Has IOS (Processed)</label>
+                        <select class="form-select" name="has_ios">
                             <option value="">All</option>
-                            <option value="public" {% if visibility_filter == 'public' %}selected{% endif %}>Public</option>
-                            <option value="private" {% if visibility_filter == 'private' %}selected{% endif %}>Private</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    <div class="col-md-2">
-                        <label class="form-label">Uploader</label>
-                        <select class="form-select" name="uploader">
-                            <option value="">All Uploaders</option>
-                            {% for uploader in uploaders %}
-                                <option value="{{ uploader.id }}" {% if uploader.id|stringformat:"s" == uploader_filter %}selected{% endif %}>
-                                    {{ uploader.username }}
-                                </option>
-                            {% endfor %}
+                            <option value="yes" {% if has_ios_filter == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if has_ios_filter == 'no' %}selected{% endif %}>No</option>
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label">Annotator</label>
-                        <select class="form-select" name="annotator">
-                            <option value="">All Annotators</option>
-                            {% for annotator in annotators %}
-                                <option value="{{ annotator.id }}" {% if annotator.id|stringformat:"s" == annotator_filter %}selected{% endif %}>
-                                    {{ annotator.username }}
-                                </option>
-                            {% endfor %}
+                        <label class="form-label">Has CBCT (Processed)</label>
+                        <select class="form-select" name="has_cbct">
+                            <option value="">All</option>
+                            <option value="yes" {% if has_cbct_filter == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if has_cbct_filter == 'no' %}selected{% endif %}>No</option>
                         </select>
                     </div>
-                </div>
-                <div class="row g-3 mt-2">
                     <div class="col-md-2">
-                        <label class="form-label">Date From</label>
-                        <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+                        <label class="form-label">Annotated</label>
+                        <select class="form-select" name="has_annotated">
+                            <option value="">All</option>
+                            <option value="yes" {% if has_annotated_filter == 'yes' %}selected{% endif %}>Yes</option>
+                            <option value="no" {% if has_annotated_filter == 'no' %}selected{% endif %}>No</option>
+                        </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Date To</label>
-                        <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+                    <div class="col-md-1">
+                        <label class="form-label">Per Page</label>
+                        <select class="form-select" name="per_page">
+                            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                        </select>
                     </div>
-                    <div class="col-md-8 d-flex align-items-end gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search me-1"></i>Apply Filters
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-1"></i>Apply
                         </button>
                         <button type="button" class="btn btn-outline-secondary" onclick="clearAllFilters()">
-                            <i class="fas fa-times me-1"></i>Clear All
+                            <i class="fas fa-times me-1"></i>Clear
                         </button>
                     </div>
                 </div>
@@ -374,7 +344,7 @@
             <i class="fas fa-search"></i>
             <h4>No scans found</h4>
             <p>
-                {% if search_query or status_filter or visibility_filter or uploader_filter or annotator_filter or date_from or date_to %}
+                {% if search_query or has_ios_filter or has_cbct_filter or has_annotated_filter %}
                     No scans match your current filters. Try adjusting your search criteria.
                 {% else %}
                     No scans available yet.

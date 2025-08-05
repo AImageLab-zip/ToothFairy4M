@@ -13,20 +13,16 @@ function removeFilter(filterType) {
     
     if (filterType === 'search') {
         url.searchParams.delete('search');
-    } else if (filterType === 'status') {
-        url.searchParams.delete('status');
-    } else if (filterType === 'visibility') {
-        url.searchParams.delete('visibility');
-    } else if (filterType === 'uploader') {
-        url.searchParams.delete('uploader');
-    } else if (filterType === 'annotator') {
-        url.searchParams.delete('annotator');
-    } else if (filterType === 'date') {
-        url.searchParams.delete('date_from');
-        url.searchParams.delete('date_to');
+    } else if (filterType === 'has_ios') {
+        url.searchParams.delete('has_ios');
+    } else if (filterType === 'has_cbct') {
+        url.searchParams.delete('has_cbct');
+    } else if (filterType === 'has_annotated') {
+        url.searchParams.delete('has_annotated');
     }
     
     url.searchParams.delete('page'); // Reset to first page
+    // Keep the per_page parameter when removing filters
     window.location.href = url.toString();
 }
 
@@ -286,9 +282,22 @@ function showNotification(type, message) {
     }, 5000);
 }
 
+// Initialize filter remove buttons
+function initFilterRemoveButtons() {
+    document.querySelectorAll('.remove[data-filter]').forEach(removeBtn => {
+        removeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const filterType = this.dataset.filter;
+            removeFilter(filterType);
+        });
+    });
+}
+
 // Initialize everything
 document.addEventListener('DOMContentLoaded', function() {
     autoExpandFilters();
     initListNameEditing();
     initAdminActions();
+    initFilterRemoveButtons();
 }); 
