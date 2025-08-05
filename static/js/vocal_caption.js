@@ -494,7 +494,8 @@ class VocalCaptionRecorder {
             const response = await fetch(`${window.location.pathname}voice-caption/${captionId}/delete/`, {
                 method: 'DELETE',
                 headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json'
                 }
             });
             
@@ -520,7 +521,56 @@ class VocalCaptionRecorder {
                     captionListContainer.innerHTML = noCaptionsHtml;
                 }
             } else {
-                throw new Error('Delete failed');
+                const errorData = await response.json().catch(() => ({}));
+                
+                if (response.status === 403) {
+                    if (errorData.code === 'not_owner') {
+                        alert('You cannot delete voice captions created by other users.');
+                    } else if (errorData.code === 'admin_confirmation_required') {
+                        // Admin confirmation required
+                        if (confirm(errorData.message + '\n\nClick OK to confirm deletion.')) {
+                            // Retry with admin confirmation
+                            const confirmResponse = await fetch(`${window.location.pathname}voice-caption/${captionId}/delete/`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ admin_confirmed: true })
+                            });
+                            
+                            if (confirmResponse.ok) {
+                                // Remove the caption element
+                                const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
+                                if (captionElement) {
+                                    captionElement.remove();
+                                }
+                                
+                                // Show no captions message if list is empty
+                                const captionList = document.querySelector('.caption-list-compact');
+                                if (captionList && captionList.children.length === 0) {
+                                    const captionListContainer = document.querySelector('.voice-captions-list');
+                                    captionList.remove();
+                                    const noCaptionsHtml = `
+                                        <div class="no-captions">
+                                            <p class="text-muted mb-0 text-center">
+                                                <i class="fas fa-microphone me-1"></i>
+                                                No voice captions yet. Click the record button to start!
+                                            </p>
+                                        </div>
+                                    `;
+                                    captionListContainer.innerHTML = noCaptionsHtml;
+                                }
+                            } else {
+                                alert('Failed to delete caption after confirmation.');
+                            }
+                        }
+                    } else {
+                        alert('Permission denied: ' + (errorData.error || 'You do not have permission to delete this caption.'));
+                    }
+                } else {
+                    throw new Error('Delete failed');
+                }
             }
         } catch (error) {
             console.error('Error deleting caption:', error);

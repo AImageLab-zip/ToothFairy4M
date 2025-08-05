@@ -831,10 +831,28 @@ def delete_voice_caption(request, scanpair_id, caption_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, scanpair=scan_pair)
     
-    # Check permissions - only allow the user who created it or annotators to delete
+    # Check permissions
     user_profile = getattr(request.user, 'userprofile', None)
-    if voice_caption.user != request.user and (not user_profile or not user_profile.is_annotator):
-        return JsonResponse({'error': 'Permission denied'}, status=403)
+    is_owner = voice_caption.user == request.user
+    is_admin = user_profile and user_profile.is_admin
+    
+    # If not owner and not admin, deny access
+    if not is_owner and not is_admin:
+        return JsonResponse({
+            'error': 'You cannot delete voice captions created by other users.',
+            'code': 'not_owner'
+        }, status=403)
+    
+    # If admin is deleting someone else's caption, require confirmation
+    if is_admin and not is_owner:
+        # Check if this is a confirmation request
+        data = json.loads(request.body) if request.body else {}
+        if not data.get('admin_confirmed'):
+            return JsonResponse({
+                'error': 'Admin confirmation required',
+                'code': 'admin_confirmation_required',
+                'message': f'You are about to delete a voice caption created by {voice_caption.user.username}. Please confirm this action.'
+            }, status=403)
     
     try:
         # Delete the audio file from FileRegistry if it exists
