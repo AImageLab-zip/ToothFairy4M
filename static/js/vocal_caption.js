@@ -492,7 +492,7 @@ class VocalCaptionRecorder {
         
         try {
             const response = await fetch(`${window.location.pathname}voice-caption/${captionId}/delete/`, {
-                method: 'POST',
+                method: 'DELETE',
                 headers: {
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                 }
