@@ -123,9 +123,9 @@ class VocalCaptionRecorder {
             this.startTimer();
             
             // Update modality indicator
-            const modality = this.getCurrentModality();
+            this.modality = this.getCurrentModality();
             if (this.modalityIndicator) {
-                this.modalityIndicator.textContent = modality.display;
+                this.modalityIndicator.textContent = this.modality.display;
             }
             
         } catch (error) {
@@ -190,7 +190,7 @@ class VocalCaptionRecorder {
         try {
             const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
             const duration = this.getTotalDuration();
-            const modality = this.getCurrentModality();
+            const modality = this.modality;
             
             const formData = new FormData();
             formData.append('audio_file', audioBlob, 'recording.webm');
