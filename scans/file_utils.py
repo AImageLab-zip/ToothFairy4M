@@ -114,6 +114,36 @@ def save_cbct_to_dataset(scanpair, cbct_file):
         filename = f"{base_filename}{extension}"
         file_path = os.path.join(DATASET_DIRS['cbct'], filename)
     
+    # Clean up existing CBCT files and registry entries for this scanpair
+    existing_raw_files = FileRegistry.objects.filter(
+        scanpair=scanpair,
+        file_type='cbct_raw'
+    )
+    for existing_file in existing_raw_files:
+        # Delete the physical file if it exists
+        if os.path.exists(existing_file.file_path):
+            try:
+                os.remove(existing_file.file_path)
+            except OSError as e:
+                logger.warning(f"Could not delete existing CBCT file {existing_file.file_path}: {e}")
+        # Delete the registry entry
+        existing_file.delete()
+    
+    # Also clean up any existing processed CBCT files
+    existing_processed_files = FileRegistry.objects.filter(
+        scanpair=scanpair,
+        file_type='cbct_processed'
+    )
+    for existing_file in existing_processed_files:
+        # Delete the physical file if it exists
+        if os.path.exists(existing_file.file_path):
+            try:
+                os.remove(existing_file.file_path)
+            except OSError as e:
+                logger.warning(f"Could not delete existing processed CBCT file {existing_file.file_path}: {e}")
+        # Delete the registry entry
+        existing_file.delete()
+    
     # Save file to dataset directory
     with open(file_path, 'wb+') as destination:
         for chunk in cbct_file.chunks():
@@ -186,6 +216,41 @@ def save_cbct_folder_to_dataset(scanpair, folder_files):
     # Create a folder for this CBCT dataset
     base_filename = f"cbct_scanpair_{scanpair.scanpair_id}_patient_{scanpair.patient.patient_id}_folder"
     folder_path = os.path.join(DATASET_DIRS['cbct'], base_filename)
+    
+    # Clean up existing CBCT files and registry entries for this scanpair
+    existing_raw_files = FileRegistry.objects.filter(
+        scanpair=scanpair,
+        file_type='cbct_raw'
+    )
+    for existing_file in existing_raw_files:
+        # Delete the physical file/folder if it exists
+        if os.path.exists(existing_file.file_path):
+            try:
+                if os.path.isdir(existing_file.file_path):
+                    shutil.rmtree(existing_file.file_path)
+                else:
+                    os.remove(existing_file.file_path)
+            except OSError as e:
+                logger.warning(f"Could not delete existing CBCT file/folder {existing_file.file_path}: {e}")
+        # Delete the registry entry
+        existing_file.delete()
+    
+    # Also clean up any existing processed CBCT files
+    existing_processed_files = FileRegistry.objects.filter(
+        scanpair=scanpair,
+        file_type='cbct_processed'
+    )
+    for existing_file in existing_processed_files:
+        # Delete the physical file if it exists
+        if os.path.exists(existing_file.file_path):
+            try:
+                os.remove(existing_file.file_path)
+            except OSError as e:
+                logger.warning(f"Could not delete existing processed CBCT file {existing_file.file_path}: {e}")
+        # Delete the registry entry
+        existing_file.delete()
+    
+    # Create the new folder
     os.makedirs(folder_path, exist_ok=True)
     
     # Save all valid files to the folder
@@ -279,6 +344,21 @@ def save_ios_to_dataset(scanpair, upper_file=None, lower_file=None):
         dict: {'files': [...], 'processing_job': job}
     """
     ensure_directories()
+    
+    # Clean up existing IOS files and registry entries for this scanpair
+    existing_ios_files = FileRegistry.objects.filter(
+        scanpair=scanpair,
+        file_type__in=['ios_raw_upper', 'ios_raw_lower', 'ios_processed_upper', 'ios_processed_lower']
+    )
+    for existing_file in existing_ios_files:
+        # Delete the physical file if it exists
+        if os.path.exists(existing_file.file_path):
+            try:
+                os.remove(existing_file.file_path)
+            except OSError as e:
+                logger.warning(f"Could not delete existing IOS file {existing_file.file_path}: {e}")
+        # Delete the registry entry
+        existing_file.delete()
     
     saved_files = []
     file_registries = []
@@ -469,6 +549,21 @@ def mark_job_completed(job_id, output_files, logs=None):
             # output_files should contain: pano, volume_nifti, structures_mesh_*, etc.
             processed_files = {}
             total_size = 0
+            
+            # Clean up any existing processed CBCT files for this scanpair
+            existing_processed_files = FileRegistry.objects.filter(
+                scanpair=job.scanpair,
+                file_type='cbct_processed'
+            )
+            for existing_file in existing_processed_files:
+                # Delete the physical file if it exists
+                if os.path.exists(existing_file.file_path):
+                    try:
+                        os.remove(existing_file.file_path)
+                    except OSError as e:
+                        logger.warning(f"Could not delete existing processed CBCT file {existing_file.file_path}: {e}")
+                # Delete the registry entry
+                existing_file.delete()
             
             for file_type, file_path in output_files.items():
                 logger.info(f"Processing CBCT output: type={file_type}, path={file_path}")
