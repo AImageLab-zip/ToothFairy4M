@@ -296,14 +296,8 @@ window.CBCTViewer = {
                 } else if (bytesPerVoxel === 8) { // DT_DOUBLE
                     value = dataView.getFloat64(offset, true);
                 }
-                
-                // Normalize to 0-65535 range
-                if (isNaN(value) || !isFinite(value)) {
-                    this.volumeData[i] = 0;
-                } else {
-                    const normalizedValue = range > 0 ? ((value - minValue) / range) * 65535 : 0;
-                    this.volumeData[i] = Math.max(0, Math.min(65535, Math.floor(normalizedValue)));
-                }
+
+                this.volumeData[i] = Math.max(0, Math.min(5000, Math.floor(value))) / Math.min(5000, maxValue) * 5000;
             }
             
             this.initializeViewers();
