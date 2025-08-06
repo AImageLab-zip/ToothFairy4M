@@ -85,16 +85,16 @@ class VocalCaptionRecorder {
     }
     
     getCurrentModality() {
-        const cbctTab = document.querySelector('#cbct-tab');
-        const iosTab = document.querySelector('#ios-tab');
+        const cbctTab = document.querySelector('#cbctViewer');
+        const iosTab = document.querySelector('#iosViewer');
         
-        if (cbctTab && cbctTab.classList.contains('active')) {
+        if (cbctTab && cbctTab.checked) {
             return { value: 'cbct', display: 'CBCT' };
-        } else if (iosTab && iosTab.classList.contains('active')) {
+        } else if (iosTab && iosTab.checked) {
             return { value: 'ios', display: 'Intra-Oral Scans' };
         }
         
-        return { value: 'cbct', display: 'CBCT' };
+        return { value: 'undefined', display: 'Undefined' };
     }
     
     async startRecording() {
