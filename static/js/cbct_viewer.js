@@ -399,7 +399,8 @@ window.CBCTViewer = {
             if (event.ctrlKey) {
                 this.handleSliceZoom(orientation, event.deltaY > 0 ? -0.1 : 0.1);
             } else {
-                this.handleSliceScroll(orientation, event.deltaY > 0 ? 1 : -1);
+                let offset = event.shiftKey ? 10 : 1;
+                this.handleSliceScroll(orientation, event.deltaY > 0 ? offset : -offset);
             }
         });
         
@@ -408,7 +409,7 @@ window.CBCTViewer = {
         let lastMouseY = 0;
         
         renderer.domElement.addEventListener('mousedown', (event) => {
-            if (event.button === 2) {
+            if (event.button === 1) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = true;
@@ -419,7 +420,7 @@ window.CBCTViewer = {
         });
         
         renderer.domElement.addEventListener('mousemove', (event) => {
-            if (isDragging && event.buttons === 2) {
+            if (isDragging && event.buttons === 1) {
                 event.preventDefault();
                 event.stopPropagation();
                 
@@ -434,7 +435,7 @@ window.CBCTViewer = {
         });
         
         renderer.domElement.addEventListener('mouseup', (event) => {
-            if (event.button === 2) {
+            if (event.button === 1) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = false;

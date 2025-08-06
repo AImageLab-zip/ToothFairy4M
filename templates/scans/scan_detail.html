@@ -79,18 +79,11 @@
                 </div>
             </div>
             
-            <!-- Mouse Interaction Guide -->
-            <div class="alert alert-info alert-sm mb-3" role="alert">
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong><i class="fas fa-mouse me-1"></i>IOS Viewer:</strong>
-                        <small>Mouse = rotate/zoom, U/L buttons = toggle jaws</small>
-                    </div>
-                    <div class="col-md-6">
-                        <strong><i class="fas fa-mouse me-1"></i>CBCT Viewer:</strong>
-                        <small>Wheel = scroll slices, Ctrl+wheel = zoom, Right-drag = pan/move</small>
-                    </div>
-                </div>
+            <!-- Viewer Help Button -->
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-outline-info btn-sm" id="viewerHelpBtn" data-bs-toggle="modal" data-bs-target="#viewerHelpModal">
+                    <i class="fas fa-question-circle me-1"></i>How to use the IOS/CBCT Viewer
+                </button>
             </div>
             
             <div class="position-relative">
@@ -269,6 +262,101 @@
 <!-- Saving Indicator -->
 <div class="saving-indicator" id="savingIndicator">
     <i class="fas fa-check me-1"></i>Saved!
+</div>
+
+<!-- Viewer Help Modal -->
+<div class="modal fade" id="viewerHelpModal" tabindex="-1" aria-labelledby="viewerHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewerHelpModalLabel">
+                    <i class="fas fa-cube me-2"></i>3D Viewer Instructions
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- IOS Viewer Instructions -->
+                    <div class="col-md-6">
+                        <div class="viewer-instructions-card">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-mobile-alt me-2"></i>IOS Scanner Viewer
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-mouse me-1"></i>Mouse Controls
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Left-click + drag:</strong> Rotate the view</li>
+                                        <li><strong>Scroll wheel:</strong> Zoom in/out</li>
+                                        <li><strong>Right-click + drag:</strong> Pan the view</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-eye me-1"></i>Jaw Visibility
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>U button:</strong> Toggle upper jaw visibility</li>
+                                        <li><strong>L button:</strong> Toggle lower jaw visibility</li>
+                                        <li><strong>Reset button:</strong> Return to default view</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-project-diagram me-1"></i>Display Options
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Wireframe:</strong> Toggle wireframe mode for better detail</li>
+                                        <li><strong>Solid:</strong> Default shaded view</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CBCT Viewer Instructions -->
+                    <div class="col-md-6">
+                        <div class="viewer-instructions-card">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-cube me-2"></i>CBCT Volume Viewer
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="instruction-group">
+                                    <h6 class="text-success mb-2">
+                                        <i class="fas fa-mouse me-1"></i>Mouse Controls
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Left-click + drag:</strong> Pan/move the view</li>
+                                        <li><strong>Scroll wheel:</strong> Scroll through slices</li>
+                                        <li><strong>Shift + scroll:</strong> Faster scrolling</li>
+                                        <li><strong>Ctrl + scroll:</strong> Zoom in/out</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-success mb-2">
+                                        <i class="fas fa-palette me-1"></i>Rendering Options
+                                    </h6>
+                                    This is still a work in progress and the rendering options are not yet implemented.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
