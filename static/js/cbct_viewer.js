@@ -4,7 +4,7 @@
  */
 
 // Constants for volume rendering
-const VOLUME_DOWNSAMPLE_FACTOR = 2; // Can be adjusted for performance (2 or 4)
+const VOLUME_DOWNSAMPLE_FACTOR = 1;
 const RAY_MARCHING_STEPS = 128;
 const VOLUME_OPACITY = 0.8;
 
@@ -192,8 +192,14 @@ window.CBCTViewer = {
             const spacingY = header.pixDims[2];
             const spacingZ = header.pixDims[3];
             
+            // Get scaling parameters for HU conversion
+            const sclSlope = header.scl_slope || 1.0;
+            const sclInter = header.scl_inter || 0.0;
+            
             const datatype = header.datatypeCode;
             const bitpix = header.numBitsPerVoxel;
+            
+            console.log(`NIFTI scaling: slope=${sclSlope}, intercept=${sclInter}`);
             
             console.log(`NIfTI dimensions: ${dimX}x${dimY}x${dimZ}`);
             console.log(`NIfTI spacing: ${spacingX}x${spacingY}x${spacingZ}`);
@@ -215,91 +221,98 @@ window.CBCTViewer = {
             console.log(`Volume size: ${volumeSize}`);
             console.log(`Image data size: ${imageData.byteLength}`);
             
-            this.volumeData = new Uint16Array(volumeSize);
+            this.volumeData = new Float32Array(volumeSize); // Store as float for HU values
+            this.histogram = { min: Infinity, max: -Infinity }; // Track HU range
             
             const dataView = new DataView(imageData);
             let bytesPerVoxel = Math.max(1, bitpix / 8);
+                       
+            const volumeData = this.volumeData;
             
-            // First pass: find min and max values for proper normalization
-            let minValue = Infinity;
-            let maxValue = -Infinity;
-            
-            for (let i = 0; i < volumeSize; i++) {
-                const offset = i * bytesPerVoxel;
-                let value = 0;
-                
-                if (bytesPerVoxel === 1) {
-                    if (datatype === 2) { // DT_UNSIGNED_CHAR
-                        value = dataView.getUint8(offset);
-                    } else { // DT_INT8
-                        value = dataView.getInt8(offset);
+            if (bytesPerVoxel === 1) {
+                if (datatype === 2) { // DT_UNSIGNED_CHAR
+                    const dataViewU8 = new Uint8Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewU8[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
                     }
-                } else if (bytesPerVoxel === 2) {
-                    if (datatype === 512) { // DT_UINT16
-                        value = dataView.getUint16(offset, true);
-                    } else { // DT_SIGNED_SHORT
-                        value = dataView.getInt16(offset, true);
+                } else { // DT_INT8
+                    const dataViewI8 = new Int8Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewI8[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
                     }
-                } else if (bytesPerVoxel === 4) {
-                    if (datatype === 768) { // DT_UINT32
-                        value = dataView.getUint32(offset, true);
-                    } else if (datatype === 16) { // DT_FLOAT
-                        value = dataView.getFloat32(offset, true);
-                    } else { // DT_SIGNED_INT
-                        value = dataView.getInt32(offset, true);
-                    }
-                } else if (bytesPerVoxel === 8) { // DT_DOUBLE
-                    value = dataView.getFloat64(offset, true);
                 }
-                
-                if (!isNaN(value) && isFinite(value)) {
-                    minValue = Math.min(minValue, value);
-                    maxValue = Math.max(maxValue, value);
+            } else if (bytesPerVoxel === 2) {
+                if (datatype === 512) { // DT_UINT16
+                    const dataViewU16 = new Uint16Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewU16[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
+                    }
+                } else { // DT_SIGNED_SHORT
+                    const dataViewI16 = new Int16Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewI16[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
+                    }
+                }
+            } else if (bytesPerVoxel === 4) {
+                if (datatype === 768) { // DT_UINT32
+                    const dataViewU32 = new Uint32Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewU32[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
+                    }
+                } else if (datatype === 16) { // DT_FLOAT
+                    const dataViewF32 = new Float32Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const value = dataViewF32[i];
+                        if (isNaN(value) || !isFinite(value)) {
+                            volumeData[i] = 0;
+                        } else {
+                            const huValue = value * sclSlope + sclInter;
+                            volumeData[i] = huValue;
+                            this.histogram.min = Math.min(this.histogram.min, huValue);
+                            this.histogram.max = Math.max(this.histogram.max, huValue);
+                        }
+                    }
+                } else { // DT_SIGNED_INT
+                    const dataViewI32 = new Int32Array(imageData);
+                    for (let i = 0; i < volumeSize; i++) {
+                        const huValue = dataViewI32[i] * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
+                    }
+                }
+            } else if (bytesPerVoxel === 8) { // DT_DOUBLE
+                const dataViewF64 = new Float64Array(imageData);
+                for (let i = 0; i < volumeSize; i++) {
+                    const value = dataViewF64[i];
+                    if (isNaN(value) || !isFinite(value)) {
+                        volumeData[i] = 0;
+                    } else {
+                        const huValue = value * sclSlope + sclInter;
+                        volumeData[i] = huValue;
+                        this.histogram.min = Math.min(this.histogram.min, huValue);
+                        this.histogram.max = Math.max(this.histogram.max, huValue);
+                    }
                 }
             }
             
-            console.log('Data range - Min:', minValue, 'Max:', maxValue, 'Datatype:', datatype);
-            
-            // Handle edge cases
-            if (minValue === maxValue) {
-                minValue = 0;
-                maxValue = 1;
-            }
-            
-            const range = maxValue - minValue;
-            
-            // Second pass: convert to 16-bit with proper normalization
-            for (let i = 0; i < volumeSize; i++) {
-                const offset = i * bytesPerVoxel;
-                let value = 0;
-                
-                if (bytesPerVoxel === 1) {
-                    if (datatype === 2) { // DT_UNSIGNED_CHAR
-                        value = dataView.getUint8(offset);
-                    } else { // DT_INT8
-                        value = dataView.getInt8(offset);
-                    }
-                } else if (bytesPerVoxel === 2) {
-                    if (datatype === 512) { // DT_UINT16
-                        value = dataView.getUint16(offset, true);
-                    } else { // DT_SIGNED_SHORT
-                        value = dataView.getInt16(offset, true);
-                    }
-                } else if (bytesPerVoxel === 4) {
-                    if (datatype === 768) { // DT_UINT32
-                        value = dataView.getUint32(offset, true);
-                    } else if (datatype === 16) { // DT_FLOAT
-                        value = dataView.getFloat32(offset, true);
-                    } else { // DT_SIGNED_INT
-                        value = dataView.getInt32(offset, true);
-                    }
-                } else if (bytesPerVoxel === 8) { // DT_DOUBLE
-                    value = dataView.getFloat64(offset, true);
-                }
+            console.log(`HU range: ${this.histogram.min.toFixed(1)} to ${this.histogram.max.toFixed(1)}`);
 
-                this.volumeData[i] = Math.max(0, Math.min(5000, Math.floor(value))) / Math.min(5000, maxValue) * 5000;
-            }
-            
             this.initializeViewers();
             this.initialized = true;
             this.loading = false;
@@ -855,16 +868,19 @@ window.CBCTViewer = {
         this.updatePanoramicTransform();
     },
     
-    applyWindowing: function(rawValue) {
-        // Medical imaging windowing: [-1000, 0] → 0, [0, 5000] → [0, 255], >5000 → 255
-        if (rawValue <= 0) {
-            return 0; // [-1000, 0] → 0
-        } else if (rawValue >= 5000) {
-            return 255; // >5000 → 255
-        } else {
-            // [0, 5000] → [0, 255]
-            return Math.floor((rawValue / 5000) * 255);
-        }
+    applyWindowing: function(huValue) {       
+        const windowCenter = 1500; // Center of the window
+        const windowWidth = 5000;  // Width of the window
+        
+        const windowMin = windowCenter - windowWidth / 2; // -1000
+        const windowMax = windowCenter + windowWidth / 2; // 3000
+        
+        // Clamp values to window range
+        const clampedValue = Math.max(windowMin, Math.min(windowMax, huValue));
+        
+        // Map to 0-255 range
+        const normalizedValue = (clampedValue - windowMin) / (windowMax - windowMin);
+        return Math.floor(normalizedValue * 255);
     },
     
     updateSliceLabel: function(orientation) {

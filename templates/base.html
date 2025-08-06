@@ -16,7 +16,11 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TrackballControls.js"></script>
     
     <script src="https://unpkg.com/fflate@0.8.2"></script>
-    <script src="{% static 'js/nifti-reader.js' %}"></script>
+    <script type="module">
+        import * as niftiModule from '{% static "js/nifti-reader-min.js" %}';
+        window.nifti = niftiModule.default || niftiModule;
+        console.log('NIFTI library loaded as ES6 module:', niftiModule);
+    </script>
     <style>
         .form-control, .form-select {
             margin-top: 0.25rem;

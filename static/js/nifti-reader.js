@@ -1727,20 +1727,4 @@
     var loc = header.getExtensionLocation(), size = header.extensionSize;
     return data.slice(loc + 8, loc + size);
   }
-
-  // Expose functions globally
-  window.nifti = {
-    isCompressed: isCompressed,
-    decompress: decompress,
-    readHeader: readHeader,
-    readImage: readImage,
-    readExtension: readExtension,
-    readExtensionData: readExtensionData,
-    isNIFTI: isNIFTI,
-    isNIFTI1: isNIFTI1,
-    isNIFTI2: isNIFTI2,
-    hasExtension: hasExtension,
-    NIFTI1: NIFTI1,
-    NIFTI2: NIFTI2
-  };
 })();
