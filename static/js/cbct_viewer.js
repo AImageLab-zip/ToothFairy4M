@@ -83,7 +83,7 @@ window.CBCTViewer = {
         };
         
         testImg.onerror = () => {
-            console.log('Panoramic image not available');
+            console.error('Panoramic image not available');
             panoramicLoading.style.display = 'none';
             panoramicImg.style.display = 'none';
             panoramicError.style.display = 'block';
@@ -409,7 +409,7 @@ window.CBCTViewer = {
         let lastMouseY = 0;
         
         renderer.domElement.addEventListener('mousedown', (event) => {
-            if (event.button === 1) {
+            if (event.button === 0) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = true;
@@ -435,7 +435,7 @@ window.CBCTViewer = {
         });
         
         renderer.domElement.addEventListener('mouseup', (event) => {
-            if (event.button === 1) {
+            if (event.button === 0) {
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = false;
@@ -465,7 +465,6 @@ window.CBCTViewer = {
         
         if (typeof window.VolumeRenderer !== 'undefined') {
             window.VolumeRenderer.init(containerId, volumeTexture, this.volumeAtlas, this.volumeAtlas.sliceDims);
-            console.log('Volume viewer initialized with dedicated renderer');
         } else {
             console.error('VolumeRenderer not available - make sure volume_renderer.js is loaded');
         }
@@ -526,8 +525,7 @@ window.CBCTViewer = {
             if (textureData[i] > 0) nonZeroCount++;
             if (textureData[i] > maxValue) maxValue = textureData[i];
         }
-        console.log(`Texture atlas: ${textureSize}x${textureSize}, non-zero pixels: ${nonZeroCount}/${textureData.length}, max value: ${maxValue}`);
-        
+
         return texture;
     },
     
@@ -627,9 +625,7 @@ window.CBCTViewer = {
     },
     
     handleSliceScroll: function(orientation, direction) {
-        // Don't handle scroll if data isn't loaded yet
         if (!this.initialized || !this.volumeData || !this.dimensions) {
-            console.log('CBCT data not ready for slice scrolling');
             return;
         }
         
@@ -652,7 +648,6 @@ window.CBCTViewer = {
     handleSliceZoom: function(orientation, zoomDelta) {
         // Don't handle zoom if data isn't loaded yet
         if (!this.initialized || !this.cameras[orientation] || !this.baseCameraBounds[orientation]) {
-            console.log('CBCT data not ready for zooming');
             return;
         }
         
@@ -689,14 +684,11 @@ window.CBCTViewer = {
         if (this.renderFunctions[orientation]) {
             this.renderFunctions[orientation]();
         }
-        
-        console.log(`${orientation} zoom: ${zoomLevel.toFixed(2)}x`);
     },
 
     handleSlicePan: function(orientation, deltaX, deltaY) {
         // Don't handle pan if data isn't loaded yet
         if (!this.initialized || !this.cameras[orientation] || !this.baseCameraBounds[orientation]) {
-            console.log('CBCT data not ready for panning');
             return;
         }
         
@@ -722,12 +714,8 @@ window.CBCTViewer = {
         this.panOffsets[orientation].x -= deltaX * panSensitivityX;
         this.panOffsets[orientation].y += deltaY * panSensitivityY; // Invert Y for natural dragging
         
-        // Clamp pan offsets to prevent panning too far out of bounds
-        const maxPanX = (currentWidth * (zoomLevel - 1)) / (2 * zoomLevel);
-        const maxPanY = (currentHeight * (zoomLevel - 1)) / (2 * zoomLevel);
-        
-        this.panOffsets[orientation].x = Math.max(-maxPanX, Math.min(maxPanX, this.panOffsets[orientation].x));
-        this.panOffsets[orientation].y = Math.max(-maxPanY, Math.min(maxPanY, this.panOffsets[orientation].y));
+        // Allow unlimited panning when zoomed in
+        // No clamping - user can pan freely
         
         // Apply pan to camera bounds
         const panX = this.panOffsets[orientation].x;
@@ -744,9 +732,6 @@ window.CBCTViewer = {
         if (this.renderFunctions[orientation]) {
             this.renderFunctions[orientation]();
         }
-        
-        // Debug output
-        console.log(`${orientation} pan: (${panX.toFixed(3)}, ${panY.toFixed(3)})`);
     },
     
     initPanoramicInteraction: function() {
@@ -754,11 +739,9 @@ window.CBCTViewer = {
         const panoramicImg = document.getElementById('panoramicImage');
         
         if (!panoramicView || !panoramicImg) {
-            console.log('Panoramic elements not found');
+            console.warn('Panoramic elements not found');
             return;
         }
-        
-        console.log('Initializing panoramic interaction...');
         
         // Reset zoom and pan
         this.panoramicZoom = 1.0;
@@ -780,7 +763,7 @@ window.CBCTViewer = {
         let lastMouseY = 0;
         
         panoramicView.addEventListener('mousedown', (event) => {
-            if (event.button === 2) { // Right mouse button
+            if (event.button === 0) { // Left mouse button
                 event.preventDefault();
                 event.stopPropagation();
                 isDragging = true;
@@ -791,7 +774,7 @@ window.CBCTViewer = {
         });
         
         panoramicView.addEventListener('mousemove', (event) => {
-            if (isDragging && event.buttons === 2) { // Right button held
+            if (isDragging && event.buttons === 1) { // Left button held
                 event.preventDefault();
                 event.stopPropagation();
                 
@@ -806,7 +789,7 @@ window.CBCTViewer = {
         });
         
         panoramicView.addEventListener('mouseup', (event) => {
-            if (event.button === 2) { // Right mouse button
+            if (event.button === 0) { // Left mouse button
                 isDragging = false;
                 panoramicView.style.cursor = 'crosshair';
             }
@@ -835,7 +818,6 @@ window.CBCTViewer = {
         }
         
         this.updatePanoramicTransform();
-        console.log(`Panoramic zoom: ${this.panoramicZoom.toFixed(2)}x`);
     },
     
     handlePanoramicPan: function(deltaX, deltaY) {
@@ -856,16 +838,10 @@ window.CBCTViewer = {
         const containerWidth = panoramicView.clientWidth;
         const containerHeight = panoramicView.clientHeight;
         
-        // Calculate maximum pan limits based on zoom level
-        const maxPanX = (containerWidth * (this.panoramicZoom - 1)) / (2 * this.panoramicZoom);
-        const maxPanY = (containerHeight * (this.panoramicZoom - 1)) / (2 * this.panoramicZoom);
-        
-        // Clamp pan offsets
-        this.panoramicPan.x = Math.max(-maxPanX, Math.min(maxPanX, this.panoramicPan.x));
-        this.panoramicPan.y = Math.max(-maxPanY, Math.min(maxPanY, this.panoramicPan.y));
+        // Allow unlimited panning when zoomed in
+        // No clamping - user can pan freely
         
         this.updatePanoramicTransform();
-        console.log(`Panoramic pan: (${this.panoramicPan.x.toFixed(1)}, ${this.panoramicPan.y.toFixed(1)})`);
     },
     
     updatePanoramicTransform: function() {
@@ -878,7 +854,6 @@ window.CBCTViewer = {
     },
     
     resetPanoramicView: function() {
-        console.log('Resetting panoramic view');
         this.panoramicZoom = 1.0;
         this.panoramicPan = { x: 0, y: 0 };
         this.updatePanoramicTransform();
@@ -996,8 +971,6 @@ window.CBCTViewer = {
                 this.resetAllViews();
             });
         }
-        
-
         
         // Window resize for 2D views
         window.addEventListener('resize', () => {
