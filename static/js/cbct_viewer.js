@@ -141,12 +141,11 @@ window.CBCTViewer = {
                 console.log('Compressed CBCT data loaded, size:', compressedData.byteLength);
                 
                 try {
-                    const header = new Uint8Array(compressedData.slice(0, 2));
-                    if (header[0] === 0x1f && header[1] === 0x8b) {
+                    if (nifti.isCompressed(compressedData)) {
                         console.log('Decompressing gzipped NIFTI data...');
-                        const decompressedData = pako.inflate(new Uint8Array(compressedData));
-                        console.log('Decompressed size:', decompressedData.length);
-                        this.parseNiftiData(decompressedData.buffer);
+                        const decompressedData = nifti.decompress(compressedData);
+                        console.log('Decompressed size:', decompressedData.byteLength);
+                        this.parseNiftiData(decompressedData);
                     } else {
                         console.log('NIFTI data is not compressed, using as-is');
                         this.parseNiftiData(compressedData);
@@ -174,43 +173,27 @@ window.CBCTViewer = {
     },
     
     parseNiftiData: function(arrayBuffer) {
-        console.log('Parsing NIfTI data...');
+        console.log('Parsing NIfTI data using NIFTI-Reader-JS...');
         
         try {
-            const dataView = new DataView(arrayBuffer);
-            const magic1 = dataView.getUint8(0);
-            const magic2 = dataView.getUint8(1);
-            
-            let niftiBuffer = arrayBuffer;
-            
-            if (magic1 === 0x1f && magic2 === 0x8b) {
-                console.log('Detected gzipped NIfTI file, decompressing...');
-                console.log('Original compressed size:', arrayBuffer.byteLength);
-                niftiBuffer = this.decompressGzip(arrayBuffer);
-                console.log('Decompressed size:', niftiBuffer.byteLength);
-            } else {
-                console.log('NIfTI file is not gzipped, proceeding with raw data');
+            // Use NIFTI-Reader-JS to read header
+            const header = nifti.readHeader(arrayBuffer);
+            if (!header) {
+                throw new Error('Failed to read NIFTI header');
             }
+ 
+            // Get dimensions from header
+            const dimX = header.dims[1];
+            const dimY = header.dims[2];
+            const dimZ = header.dims[3];
             
-            const niftiView = new DataView(niftiBuffer);
+            // Get spacing from header
+            const spacingX = header.pixDims[1];
+            const spacingY = header.pixDims[2];
+            const spacingZ = header.pixDims[3];
             
-            const headerSize = niftiView.getInt32(0, true);
-            console.log('Header size:', headerSize);
-            
-            const ndim = niftiView.getInt16(40, true);
-            console.log('Number of dimensions:', ndim);
-            
-            const dimX = niftiView.getInt16(42, true); // little endian
-            const dimY = niftiView.getInt16(44, true);
-            const dimZ = niftiView.getInt16(46, true);
-            
-            const spacingX = niftiView.getFloat32(80, true);
-            const spacingY = niftiView.getFloat32(84, true);
-            const spacingZ = niftiView.getFloat32(88, true);
-            
-            const datatype = niftiView.getInt16(70, true);
-            
-            const bitpix = niftiView.getInt16(72, true);
+            const datatype = header.datatypeCode;
+            const bitpix = header.numBitsPerVoxel;
             
             console.log(`NIfTI dimensions: ${dimX}x${dimY}x${dimZ}`);
             console.log(`NIfTI spacing: ${spacingX}x${spacingY}x${spacingZ}`);
@@ -218,79 +201,57 @@ window.CBCTViewer = {
             
             if (dimX < 10 || dimY < 10 || dimZ < 10 || dimX > 2048 || dimY > 2048 || dimZ > 2048) {
                 console.warn('Suspicious dimensions detected, may indicate parsing error');
-                console.log('Raw dimension data:');
-                for (let i = 40; i < 50; i += 2) {
-                    console.log(`Offset ${i}: ${niftiView.getInt16(i, true)}`);
-                }
             }
             
             this.dimensions = { x: dimX, y: dimY, z: dimZ };
             this.spacing = { x: spacingX, y: spacingY, z: spacingZ };
             
-            let bytesPerVoxel = Math.max(1, bitpix / 8);
+            const imageData = nifti.readImage(header, arrayBuffer);
+            if (!imageData) {
+                throw new Error('Failed to read NIFTI image data');
+            }
             
-            if (datatype === 2) bytesPerVoxel = 1;      // DT_UNSIGNED_CHAR
-            else if (datatype === 4) bytesPerVoxel = 2;  // DT_SIGNED_SHORT
-            else if (datatype === 8) bytesPerVoxel = 4;  // DT_SIGNED_INT
-            else if (datatype === 16) bytesPerVoxel = 4; // DT_FLOAT
-            else if (datatype === 64) bytesPerVoxel = 8; // DT_DOUBLE
-            else if (datatype === 256) bytesPerVoxel = 1; // DT_INT8
-            else if (datatype === 512) bytesPerVoxel = 2; // DT_UINT16
-            else if (datatype === 768) bytesPerVoxel = 4; // DT_UINT32
-            
-            console.log(`Using ${bytesPerVoxel} bytes per voxel for datatype ${datatype}`);
-            
-            const dataOffset = Math.max(headerSize, 352);
             const volumeSize = dimX * dimY * dimZ;
-            
-            console.log(`Data offset: ${dataOffset}, Volume size: ${volumeSize}`);
-            console.log(`Expected file size: ${dataOffset + volumeSize * bytesPerVoxel}`);
-            console.log(`Actual file size: ${niftiBuffer.byteLength}`);
+            console.log(`Volume size: ${volumeSize}`);
+            console.log(`Image data size: ${imageData.byteLength}`);
             
             this.volumeData = new Uint16Array(volumeSize);
+            
+            const dataView = new DataView(imageData);
+            let bytesPerVoxel = Math.max(1, bitpix / 8);
             
             // Read volume data
             for (let i = 0; i < volumeSize; i++) {
                 let value = 0;
-                const offset = dataOffset + i * bytesPerVoxel;
+                const offset = i * bytesPerVoxel;
                 
                 if (bytesPerVoxel === 1) {
                     if (datatype === 2) { // DT_UNSIGNED_CHAR
-                        value = niftiView.getUint8(offset);
+                        value = dataView.getUint8(offset);
                     } else { // DT_INT8
-                        value = Math.max(0, niftiView.getInt8(offset) + 128);
+                        value = Math.max(0, dataView.getInt8(offset) + 128);
                     }
                     value = value * 256; // Scale to 16-bit range
                 } else if (bytesPerVoxel === 2) {
                     if (datatype === 512) { // DT_UINT16
-                        value = niftiView.getUint16(offset, true);
+                        value = dataView.getUint16(offset, true);
                     } else { // DT_SIGNED_SHORT
-                        value = Math.max(0, niftiView.getInt16(offset, true) + 32768);
+                        value = Math.max(0, dataView.getInt16(offset, true) + 32768);
                     }
                 } else if (bytesPerVoxel === 4) {
                     if (datatype === 768) { // DT_UINT32
-                        value = Math.min(65535, niftiView.getUint32(offset, true) / 65536);
+                        value = Math.min(65535, dataView.getUint32(offset, true) / 65536);
                     } else if (datatype === 16) { // DT_FLOAT
-                        value = Math.min(65535, Math.max(0, niftiView.getFloat32(offset, true) * 65535));
+                        value = Math.min(65535, Math.max(0, dataView.getFloat32(offset, true) * 65535));
                     } else { // DT_SIGNED_INT
-                        value = Math.min(65535, Math.max(0, niftiView.getInt32(offset, true) + 2147483648) / 65536);
+                        value = Math.min(65535, Math.max(0, dataView.getInt32(offset, true) + 2147483648) / 65536);
                     }
                 } else if (bytesPerVoxel === 8) { // DT_DOUBLE
-                    value = Math.min(65535, Math.max(0, niftiView.getFloat64(offset, true) * 65535));
+                    value = Math.min(65535, Math.max(0, dataView.getFloat64(offset, true) * 65535));
                 }
                 
                 this.volumeData[i] = Math.floor(value);
             }
-            
-            let minVal = 65535, maxVal = 0, nonZeroCount = 0;
-            for (let i = 0; i < Math.min(1000, this.volumeData.length); i++) {
-                const val = this.volumeData[i];
-                if (val > 0) nonZeroCount++;
-                if (val < minVal) minVal = val;
-                if (val > maxVal) maxVal = val;
-            }
-            console.log(`Volume data sample (first 1000): min=${minVal}, max=${maxVal}, non-zero=${nonZeroCount}/1000`);
-            console.log('NIfTI data parsed successfully');
             
             this.initializeViewers();
             this.initialized = true;
@@ -306,19 +267,7 @@ window.CBCTViewer = {
         }
     },
     
-    decompressGzip: function(gzipBuffer) {       
-        if (typeof pako !== 'undefined') {
-            try {
-                const uint8Array = new Uint8Array(gzipBuffer);
-                const decompressed = pako.inflate(uint8Array);
-                return decompressed.buffer;
-            } catch (error) {
-                console.error('Pako decompression failed:', error);
-                throw new Error(`Failed to decompress gzip data with pako: ${error.message}`);
-            }
-        }
-        throw new Error('Client-side gzip decompression not available. Server should handle decompression.');
-    },
+
     
 
     
