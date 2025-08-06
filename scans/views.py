@@ -832,9 +832,9 @@ def delete_voice_caption(request, scanpair_id, caption_id):
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, scanpair=scan_pair)
     
     # Check permissions
-    user_profile = getattr(request.user, 'userprofile', None)
+    user_profile = request.user.profile
     is_owner = voice_caption.user == request.user
-    is_admin = user_profile and user_profile.is_admin
+    is_admin = user_profile.is_admin
     
     # If not owner and not admin, deny access
     if not is_owner and not is_admin:
@@ -847,6 +847,7 @@ def delete_voice_caption(request, scanpair_id, caption_id):
     if is_admin and not is_owner:
         # Check if this is a confirmation request
         data = json.loads(request.body) if request.body else {}
+        print(f"DEBUG: Admin confirmation check - admin_confirmed: {data.get('admin_confirmed')}")
         if not data.get('admin_confirmed'):
             return JsonResponse({
                 'error': 'Admin confirmation required',
