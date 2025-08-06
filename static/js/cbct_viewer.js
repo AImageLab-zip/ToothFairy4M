@@ -220,37 +220,90 @@ window.CBCTViewer = {
             const dataView = new DataView(imageData);
             let bytesPerVoxel = Math.max(1, bitpix / 8);
             
-            // Read volume data
+            // First pass: find min and max values for proper normalization
+            let minValue = Infinity;
+            let maxValue = -Infinity;
+            
             for (let i = 0; i < volumeSize; i++) {
-                let value = 0;
                 const offset = i * bytesPerVoxel;
+                let value = 0;
                 
                 if (bytesPerVoxel === 1) {
                     if (datatype === 2) { // DT_UNSIGNED_CHAR
                         value = dataView.getUint8(offset);
                     } else { // DT_INT8
-                        value = Math.max(0, dataView.getInt8(offset) + 128);
+                        value = dataView.getInt8(offset);
                     }
-                    value = value * 256; // Scale to 16-bit range
                 } else if (bytesPerVoxel === 2) {
                     if (datatype === 512) { // DT_UINT16
                         value = dataView.getUint16(offset, true);
                     } else { // DT_SIGNED_SHORT
-                        value = Math.max(0, dataView.getInt16(offset, true) + 32768);
+                        value = dataView.getInt16(offset, true);
                     }
                 } else if (bytesPerVoxel === 4) {
                     if (datatype === 768) { // DT_UINT32
-                        value = Math.min(65535, dataView.getUint32(offset, true) / 65536);
+                        value = dataView.getUint32(offset, true);
                     } else if (datatype === 16) { // DT_FLOAT
-                        value = Math.min(65535, Math.max(0, dataView.getFloat32(offset, true) * 65535));
+                        value = dataView.getFloat32(offset, true);
                     } else { // DT_SIGNED_INT
-                        value = Math.min(65535, Math.max(0, dataView.getInt32(offset, true) + 2147483648) / 65536);
+                        value = dataView.getInt32(offset, true);
                     }
                 } else if (bytesPerVoxel === 8) { // DT_DOUBLE
-                    value = Math.min(65535, Math.max(0, dataView.getFloat64(offset, true) * 65535));
+                    value = dataView.getFloat64(offset, true);
                 }
                 
-                this.volumeData[i] = Math.floor(value);
+                if (!isNaN(value) && isFinite(value)) {
+                    minValue = Math.min(minValue, value);
+                    maxValue = Math.max(maxValue, value);
+                }
+            }
+            
+            console.log('Data range - Min:', minValue, 'Max:', maxValue, 'Datatype:', datatype);
+            
+            // Handle edge cases
+            if (minValue === maxValue) {
+                minValue = 0;
+                maxValue = 1;
+            }
+            
+            const range = maxValue - minValue;
+            
+            // Second pass: convert to 16-bit with proper normalization
+            for (let i = 0; i < volumeSize; i++) {
+                const offset = i * bytesPerVoxel;
+                let value = 0;
+                
+                if (bytesPerVoxel === 1) {
+                    if (datatype === 2) { // DT_UNSIGNED_CHAR
+                        value = dataView.getUint8(offset);
+                    } else { // DT_INT8
+                        value = dataView.getInt8(offset);
+                    }
+                } else if (bytesPerVoxel === 2) {
+                    if (datatype === 512) { // DT_UINT16
+                        value = dataView.getUint16(offset, true);
+                    } else { // DT_SIGNED_SHORT
+                        value = dataView.getInt16(offset, true);
+                    }
+                } else if (bytesPerVoxel === 4) {
+                    if (datatype === 768) { // DT_UINT32
+                        value = dataView.getUint32(offset, true);
+                    } else if (datatype === 16) { // DT_FLOAT
+                        value = dataView.getFloat32(offset, true);
+                    } else { // DT_SIGNED_INT
+                        value = dataView.getInt32(offset, true);
+                    }
+                } else if (bytesPerVoxel === 8) { // DT_DOUBLE
+                    value = dataView.getFloat64(offset, true);
+                }
+                
+                // Normalize to 0-65535 range
+                if (isNaN(value) || !isFinite(value)) {
+                    this.volumeData[i] = 0;
+                } else {
+                    const normalizedValue = range > 0 ? ((value - minValue) / range) * 65535 : 0;
+                    this.volumeData[i] = Math.max(0, Math.min(65535, Math.floor(normalizedValue)));
+                }
             }
             
             this.initializeViewers();
