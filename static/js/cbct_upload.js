@@ -113,49 +113,54 @@ function handleFormSubmission() {
     
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
-            // Check if folder upload is selected
-            const folderRadioUpload = document.getElementById('cbct_folder_upload');
-            const folderRadioDetail = document.getElementById('cbct_folder_upload_detail');
-            
-            if ((folderRadioUpload && folderRadioUpload.checked) || 
-                (folderRadioDetail && folderRadioDetail.checked)) {
-                
-                // Get the folder input
-                const folderInput = document.getElementById('cbct_folder') || 
-                                  document.getElementById('cbct_folder_detail');
-                
-                if (!folderInput || folderInput.files.length === 0) {
-                    // Folder mode selected but no files chosen
-                    e.preventDefault();
-                    alert('Please select a folder containing DICOM files.');
-                    return false;
-                }
+            // Skip validation for scan management form (which only updates settings)
+            const action = form.querySelector('input[name="action"]')?.value;
+            if (action === 'update_management') {
+                return true; // Allow scan management form to submit without file validation
             }
             
-            // For file upload mode, check if file is selected when required
+            // Check if user has uploaded any files at all
+            const hasUpperScan = form.querySelector('input[name="upper_scan_raw"]')?.files.length ||
+                                form.querySelector('input[name="upper_scan"]')?.files.length;
+            const hasLowerScan = form.querySelector('input[name="lower_scan_raw"]')?.files.length ||
+                                form.querySelector('input[name="lower_scan"]')?.files.length;
+            const hasAnyIOS = hasUpperScan || hasLowerScan;
+            
+            // Check if CBCT files are actually being uploaded
+            const hasCBCTFile = form.querySelector('input[name="cbct"]')?.files.length;
+            const hasCBCTFolder = form.querySelector('input[name="cbct_folder_files"]')?.files.length;
+            const hasAnyCBCT = hasCBCTFile || hasCBCTFolder;
+            
+            // If no files are being uploaded at all, show a general message
+            if (!hasAnyIOS && !hasAnyCBCT) {
+                e.preventDefault();
+                alert('Please upload at least one file (IOS scan or CBCT).');
+                return false;
+            }
+            
+            // Only validate CBCT if user has actually selected files in the chosen mode
+            // Check CBCT upload modes
+            const folderRadioUpload = document.getElementById('cbct_folder_upload');
+            const folderRadioDetail = document.getElementById('cbct_folder_upload_detail');
             const fileRadioUpload = document.getElementById('cbct_file_upload');
             const fileRadioDetail = document.getElementById('cbct_file_upload_detail');
             
-            if ((fileRadioUpload && fileRadioUpload.checked) || 
-                (fileRadioDetail && fileRadioDetail.checked)) {
-                
-                const fileSection = document.getElementById('cbct_file_section') || 
-                                  document.getElementById('cbct_file_section_detail');
-                const fileInput = fileSection ? fileSection.querySelector('input[type="file"]') : null;
-                
-                if (fileInput && !fileInput.files.length) {
-                    // Check if this form requires CBCT upload
-                    const hasOtherFiles = form.querySelector('input[name="upper_scan_raw"]')?.files.length ||
-                                        form.querySelector('input[name="lower_scan_raw"]')?.files.length ||
-                                        form.querySelector('input[name="upper_scan"]')?.files.length ||
-                                        form.querySelector('input[name="lower_scan"]')?.files.length;
-                    
-                    if (!hasOtherFiles) {
-                        e.preventDefault();
-                        alert('Please select a CBCT file to upload.');
-                        return false;
-                    }
-                }
+            const isFolderMode = (folderRadioUpload && folderRadioUpload.checked) || 
+                                (folderRadioDetail && folderRadioDetail.checked);
+            const isFileMode = (fileRadioUpload && fileRadioUpload.checked) || 
+                              (fileRadioDetail && fileRadioDetail.checked);
+            
+            // Only validate if user has actually selected CBCT files
+            if (isFolderMode && hasCBCTFolder === 0 && hasAnyIOS === 0) {
+                // Folder mode selected, no folder files, and no IOS files either
+                e.preventDefault();
+                alert('Please select a folder containing DICOM files.');
+                return false;
+            } else if (isFileMode && hasCBCTFile === 0 && hasAnyIOS === 0) {
+                // File mode selected, no file, and no IOS files either
+                e.preventDefault();
+                alert('Please select a CBCT file to upload.');
+                return false;
             }
             
             // Allow normal form submission

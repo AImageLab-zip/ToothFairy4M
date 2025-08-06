@@ -108,6 +108,22 @@ class ScanManagementForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['dataset'].empty_label = "No Dataset"
         self.fields['dataset'].required = False
+    
+    def clean(self):
+        # Override the clean method to skip file validation for management updates
+        # We only want to validate the management fields, not the scan files
+        cleaned_data = super().clean()
+        
+        # Only validate the fields we care about for management
+        name = cleaned_data.get('name')
+        visibility = cleaned_data.get('visibility')
+        dataset = cleaned_data.get('dataset')
+        
+        # Basic validation for management fields
+        if name and len(name.strip()) == 0:
+            raise forms.ValidationError("Scan name cannot be empty.")
+        
+        return cleaned_data
 
 
 class DatasetForm(forms.ModelForm):

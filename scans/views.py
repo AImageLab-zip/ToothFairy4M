@@ -380,24 +380,26 @@ def scan_detail(request, scanpair_id):
             reprocess_ios = False
             reprocess_cbct = False
             
-            # Handle upper scan upload
-            if 'upper_scan' in request.FILES:
-                scan_pair.upper_scan_raw = request.FILES['upper_scan']
+            # Check for file uploads without directly assigning to model fields
+            has_upper_scan = 'upper_scan' in request.FILES
+            has_lower_scan = 'lower_scan' in request.FILES
+            has_cbct_file = 'cbct' in request.FILES
+            has_cbct_folder = 'cbct_folder_files' in request.FILES
+            
+            if has_upper_scan:
                 updated_files.append('upper scan')
                 reprocess_ios = True
             
-            # Handle lower scan upload
-            if 'lower_scan' in request.FILES:
-                scan_pair.lower_scan_raw = request.FILES['lower_scan']
+            if has_lower_scan:
                 updated_files.append('lower scan')
                 reprocess_ios = True
             
-            # Handle CBCT upload (file or folder)
-            if 'cbct' in request.FILES or 'cbct_folder_files' in request.FILES:
-                if 'cbct' in request.FILES:
-                    updated_files.append('CBCT')
-                else:
-                    updated_files.append('CBCT Folder')
+            if has_cbct_file:
+                updated_files.append('CBCT')
+                reprocess_cbct = True
+            
+            if has_cbct_folder:
+                updated_files.append('CBCT Folder')
                 reprocess_cbct = True
             
             if updated_files:
@@ -405,7 +407,7 @@ def scan_detail(request, scanpair_id):
                 from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
                 
                 # Reset processing status for updated scan types
-                if reprocess_ios and (request.FILES.get('upper_scan') or request.FILES.get('lower_scan')):
+                if reprocess_ios and (has_upper_scan or has_lower_scan):
                     # Clear existing classifications to trigger reprocessing
                     scan_pair.classifications.filter(classifier='pipeline').delete()
                     # Reset normalized scans
@@ -426,27 +428,25 @@ def scan_detail(request, scanpair_id):
                     except Exception as e:
                         messages.error(request, f'Error uploading IOS scan(s): {e}')
                 
-                if reprocess_cbct and ('cbct' in request.FILES or 'cbct_folder_files' in request.FILES):
+                if reprocess_cbct and (has_cbct_file or has_cbct_folder):
                     scan_pair.cbct_processing_status = 'processing'
                     scan_pair.save()
                     
-                    # Check for folder upload first
-                    cbct_folder_files = request.FILES.getlist('cbct_folder_files')
-                    
-                    if cbct_folder_files:
+                    if has_cbct_folder:
                         # Handle folder upload
                         try:
                             from .file_utils import save_cbct_folder_to_dataset
                             from .models import validate_cbct_folder
                             
                             # Validate folder first
+                            cbct_folder_files = request.FILES.getlist('cbct_folder_files')
                             validate_cbct_folder(cbct_folder_files)
                             
                             folder_path, processing_job = save_cbct_folder_to_dataset(scan_pair, cbct_folder_files)
                             messages.success(request, f'CBCT folder uploaded and queued for processing (Job #{processing_job.id})')
                         except Exception as e:
                             messages.error(request, f'Error uploading CBCT folder: {e}')
-                    elif 'cbct' in request.FILES:
+                    elif has_cbct_file:
                         # Handle single file upload
                         try:
                             file_path, processing_job = save_cbct_to_dataset(scan_pair, request.FILES['cbct'])
