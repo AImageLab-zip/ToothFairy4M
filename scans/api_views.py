@@ -21,8 +21,9 @@ def get_pending_jobs(request, job_type):
     API endpoint for Docker containers to get pending jobs
     URL: /api/processing/jobs/pending/<job_type>/
     """
-    if job_type not in ['cbct', 'ios', 'audio']:
-        return JsonResponse({'error': 'Invalid job type'}, status=400)
+    valid_job_types = [choice[0] for choice in ProcessingJob.JOB_TYPE_CHOICES]
+    if job_type not in valid_job_types:
+        return JsonResponse({'error': f'Invalid job type. Valid types: {", ".join(valid_job_types)}'}, status=400)
     
     try:
         jobs = get_pending_jobs_for_type(job_type)[:10]  # Limit to 10 jobs at a time

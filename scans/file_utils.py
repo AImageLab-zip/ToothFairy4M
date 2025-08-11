@@ -6,7 +6,7 @@ import traceback
 from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
-from .models import FileRegistry, ProcessingJob, VoiceCaption
+from .models import FileRegistry, ProcessingJob, VoiceCaption, Classification
 import json
 import zipfile
 import tarfile
@@ -30,6 +30,7 @@ PROCESSED_DIRS = {
     'cbct': f"{DATASET_ROOT}/processed/cbct",
     'ios': f"{DATASET_ROOT}/processed/ios",
     'audio': f"{DATASET_ROOT}/processed/audio",
+    'bite_classification': f"{DATASET_ROOT}/processed/bite",
 }
 
 
@@ -419,6 +420,7 @@ def save_ios_to_dataset(scanpair, upper_file=None, lower_file=None):
     
     # Create processing job if we have files
     processing_job = None
+    bite_classification_job = None
     if saved_files:
         input_files = {scan_type: path for scan_type, path in saved_files}
         
@@ -434,11 +436,50 @@ def save_ios_to_dataset(scanpair, upper_file=None, lower_file=None):
                 '--output-dir', PROCESSED_DIRS['ios']
             ]
         )
+        
+        # Need to double check this, i think we can be sure 100% that it does not exists, but what about
+        # when we rerun some jobs? Is this always true? We should delete it and create a new one?
+        existing_bite_job = ProcessingJob.objects.filter(
+            scanpair=scanpair,
+            job_type='bite_classification'
+        ).first()
+        
+        if existing_bite_job:
+            existing_bite_job.add_dependency(processing_job)
+            
+            current_output_files = existing_bite_job.output_files or {}
+            current_output_files['depends_on_ios_job'] = processing_job.id
+            current_output_files['ios_job_id'] = processing_job.id
+            existing_bite_job.output_files = current_output_files
+            existing_bite_job.save()
+            
+            bite_classification_job = existing_bite_job
+            print(f"Updated existing bite classification job #{existing_bite_job.id} with dependency on IOS job #{processing_job.id}")
+        else:
+            bite_classification_job = ProcessingJob.objects.create(
+                job_type='bite_classification',
+                status='dependency',
+                scanpair=scanpair,
+                input_file_path=f"Waiting for IOS Job #{processing_job.id} to complete",  # Will be updated when IOS job completes
+                docker_image='bite-classification:latest',
+                docker_command=['python', 'classify_bite.py'],
+                priority=processing_job.priority,
+                output_files={
+                    'output_dir': PROCESSED_DIRS['bite_classification'],
+                    'expected_outputs': ['*_bite_classification_results.json'],
+                    'depends_on_ios_job': processing_job.id,
+                    'ios_job_id': processing_job.id
+                }
+            )
+            bite_classification_job.add_dependency(processing_job)
+            
+            print(f"Created bite classification job #{bite_classification_job.id} with dependency on IOS job #{processing_job.id}")
     
     return {
         'files': saved_files,
         'file_registries': file_registries,
-        'processing_job': processing_job
+        'processing_job': processing_job,
+        'bite_classification_job': bite_classification_job
     }
 
 
@@ -511,7 +552,7 @@ def get_pending_jobs_for_type(job_type):
     This is what the external Docker containers will call.
     
     Args:
-        job_type: 'cbct', 'ios', or 'audio'
+        job_type: Any valid job type from ProcessingJob.JOB_TYPE_CHOICES
         
     Returns:
         QuerySet of ProcessingJob objects
@@ -616,7 +657,8 @@ def mark_job_completed(job_id, output_files, logs=None):
                     # Determine file registry type based on job type
                     registry_type_map = {
                         'ios': f'ios_processed_{file_type}',  # file_type could be 'upper' or 'lower'
-                        'audio': 'audio_processed'
+                        'audio': 'audio_processed',
+                        'bite_classification': 'bite_classification'
                     }
                     
                     registry_type = registry_type_map.get(job.job_type)
@@ -647,6 +689,19 @@ def mark_job_completed(job_id, output_files, logs=None):
             logger.info(f"Updating scanpair IOS processing status")
             job.scanpair.ios_processing_status = 'processed'
             job.scanpair.save()
+            
+            # Update bite classification jobs that depend on this IOS job
+            try:
+                dependent_bite_jobs = job.dependent_jobs.filter(job_type='bite_classification')
+                for bite_job in dependent_bite_jobs:
+                    if output_files:
+                        bite_job.input_file_path = json.dumps(output_files)
+                        bite_job.save()
+                        logger.info(f"Updated bite classification job #{bite_job.id} with IOS output files: {list(output_files.keys())}")
+                    else:
+                        logger.warning(f"No output files found for IOS job #{job.id}, cannot update bite classification job #{bite_job.id}")
+            except Exception as e:
+                logger.error(f"Error updating dependent bite classification jobs: {e}")
         elif job.voice_caption and job.job_type == 'audio':
             
             job.voice_caption.processing_status = 'completed'
@@ -680,6 +735,95 @@ def mark_job_completed(job_id, output_files, logs=None):
             
             job.voice_caption.save()
             
+        elif job.scanpair and job.job_type == 'bite_classification':
+            logger.info(f"Bite classification job completed for scanpair {job.scanpair.scanpair_id}")
+            
+            try:
+                classification_file = None
+                for file_type, file_path in output_files.items():
+                    if (file_path.endswith('_bite_classification_results.json') or 
+                        'bite_classification' in file_type.lower() or
+                        'classification' in file_type.lower()):
+                        classification_file = file_path
+                        break
+                
+                if not classification_file:
+                    for file_path in output_files.values():
+                        if file_path.endswith('_bite_classification_results.json'):
+                            classification_file = file_path
+                            break
+                
+                if not classification_file:
+                    # Fallback: try to find any JSON file
+                    for file_path in output_files.values():
+                        if file_path.endswith('.json'):
+                            classification_file = file_path
+                            break
+                
+                if classification_file and os.path.exists(classification_file):
+                    logger.info(f"Found classification file: {classification_file}")
+                    
+                    with open(classification_file, 'r', encoding='utf-8') as f:
+                        classification_data = json.loads(f.read())
+                    
+                    sagittal_left = classification_data.get('sagittal_left', 'Unknown')
+                    sagittal_right = classification_data.get('sagittal_right', 'Unknown')
+                    vertical = classification_data.get('vertical', 'Unknown')
+                    transverse = classification_data.get('transverse', 'Unknown')
+                    midline = classification_data.get('midline', 'Unknown')
+                    
+                    if any(val != 'Unknown' for val in [sagittal_left, sagittal_right, vertical, transverse, midline]):
+                        classification, created = Classification.objects.get_or_create(
+                            scanpair=job.scanpair,
+                            classifier='pipeline',
+                            defaults={
+                                'sagittal_left': sagittal_left,
+                                'sagittal_right': sagittal_right,
+                                'vertical': vertical,
+                                'transverse': transverse,
+                                'midline': midline,
+                                'annotator': None,
+                            }
+                        )
+                        
+                        if not created:
+                            classification.sagittal_left = sagittal_left
+                            classification.sagittal_right = sagittal_right
+                            classification.vertical = vertical
+                            classification.transverse = transverse
+                            classification.midline = midline
+                            classification.save()
+                        
+                        logger.info(f"{'Created' if created else 'Updated'} classification for scanpair {job.scanpair.scanpair_id}")
+                        
+                        file_hash = calculate_file_hash(classification_file)
+                        file_size = os.path.getsize(classification_file)
+                        
+                        FileRegistry.objects.create(
+                            file_type='bite_classification',
+                            file_path=classification_file,
+                            file_size=file_size,
+                            file_hash=file_hash,
+                            scanpair=job.scanpair,
+                            processing_job=job,
+                            metadata={
+                                'processed_at': timezone.now().isoformat(),
+                                'classification_results': classification_data,
+                                'logs': logs if logs else ''
+                            }
+                        )
+                        
+                        logger.info(f"Stored classification file in FileRegistry")
+                    else:
+                        logger.warning(f"Classification file contains no valid classification data: {classification_data}")
+                        
+                else:
+                    logger.warning(f"No classification file found in output files: {output_files}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing bite classification completion for scanpair {job.scanpair.scanpair_id}: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+            
         logger.info(f"mark_job_completed completed successfully")
         return True
         
@@ -706,7 +850,6 @@ def mark_job_failed(job_id, error_msg, can_retry=True):
         job = ProcessingJob.objects.get(id=job_id)
         job.mark_failed(error_msg, can_retry)
         
-        # Update related model status
         if job.scanpair and job.job_type == 'cbct':
             job.scanpair.cbct_processing_status = 'failed'
             job.scanpair.save()
@@ -716,6 +859,8 @@ def mark_job_failed(job_id, error_msg, can_retry=True):
         elif job.voice_caption and job.job_type == 'audio':
             job.voice_caption.processing_status = 'failed'
             job.voice_caption.save()
+        elif job.scanpair and job.job_type == 'bite_classification':
+            logger.info(f"Bite classification job failed for scanpair {job.scanpair.scanpair_id}")
             
         return True
         

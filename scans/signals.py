@@ -9,12 +9,3 @@ from .processing import execute_ios_processing_command, execute_cbct_processing_
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
-
-
-# Legacy processing pipeline removed - processing now handled by external Docker containers
-# that poll the ProcessingJob queue
-
-# @receiver(post_save, sender=ScanPair)
-# def trigger_processing_pipeline(sender, instance, created, **kwargs):
-#     # Processing now handled by external Docker containers polling the database
-#     pass 

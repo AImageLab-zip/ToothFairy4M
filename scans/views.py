@@ -268,6 +268,8 @@ def upload_scan(request):
                     result = save_ios_to_dataset(scan_pair, upper_scan_file, lower_scan_file)
                     if result['processing_job']:
                         processing_jobs.append(f"IOS Job #{result['processing_job'].id}")
+                    if result['bite_classification_job']:
+                        processing_jobs.append(f"Bite Classification Job #{result['bite_classification_job'].id} (waiting for IOS)")
                 
                 # Handle CBCT file or folder if provided
                 if cbct_file:
@@ -425,6 +427,8 @@ def scan_detail(request, scanpair_id):
                         )
                         if result['processing_job']:
                             messages.success(request, f'IOS scan(s) uploaded and queued for processing (Job #{result["processing_job"].id})')
+                        if result['bite_classification_job']:
+                            messages.success(request, f'Bite classification job #{result["bite_classification_job"].id} created (waiting for IOS completion)')
                     except Exception as e:
                         messages.error(request, f'Error uploading IOS scan(s): {e}')
                 

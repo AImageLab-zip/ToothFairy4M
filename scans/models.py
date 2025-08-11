@@ -424,6 +424,37 @@ class ScanPair(models.Model):
     def get_failed_jobs(self):
         """Get failed processing jobs for this scan pair"""
         return self.processing_jobs.filter(status='failed')
+    
+    def get_jobs_by_status(self, status):
+        """Get jobs by specific status"""
+        return self.processing_jobs.filter(status=status)
+    
+    def get_dependency_jobs(self):
+        """Get jobs waiting for dependencies"""
+        return self.processing_jobs.filter(status='dependency')
+    
+    def create_bite_classification_job(self, ios_job):
+        """Create a bite classification job that depends on the IOS processing job"""
+        from .models import ProcessingJob
+        
+        existing_job = self.processing_jobs.filter(job_type='bite_classification').first()
+        if existing_job:
+            return existing_job
+        
+        bite_job = ProcessingJob.objects.create(
+            job_type='bite_classification',
+            status='dependency',
+            scanpair=self,
+            input_file_path='',
+            docker_image='bite-classification:latest',
+            docker_command=['python', 'classify_bite.py'],
+        )
+        
+        bite_job.add_dependency(ios_job)
+        
+        return bite_job
+    
+
 
 
 class Classification(models.Model):
@@ -568,22 +599,22 @@ class ProcessingJob(models.Model):
         ('cbct', 'CBCT Processing'),
         ('ios', 'IOS Processing'),
         ('audio', 'Audio Speech-to-Text'),
+        ('bite_classification', 'Bite Classification'),
     ]
     
     JOB_STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('dependency', 'Waiting for Dependencies'),
         ('processing', 'Processing'),
         ('completed', 'Completed'),
         ('failed', 'Failed'),
         ('retrying', 'Retrying'),
     ]
     
-    # Basic job info
-    job_type = models.CharField(max_length=10, choices=JOB_TYPE_CHOICES)
+    job_type = models.CharField(max_length=20, choices=JOB_TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='pending')
     priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
-    
-    # Related objects
+    dependencies = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependent_jobs', help_text='Jobs that must complete before this job can start')
     scanpair = models.ForeignKey(ScanPair, on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
     voice_caption = models.ForeignKey(VoiceCaption, on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
     
@@ -638,6 +669,54 @@ class ProcessingJob(models.Model):
         if output_files:
             self.output_files = output_files
         self.save()
+        self.notify_dependents()
+    
+    @classmethod
+    def get_ready_jobs(cls):
+        """Get all jobs that are ready to be processed (not waiting for dependencies)"""
+        return cls.objects.filter(status='pending').order_by('-priority', 'created_at')
+    
+    @classmethod
+    def get_dependency_jobs(cls):
+        """Get all jobs waiting for dependencies"""
+        return cls.objects.filter(status='dependency')
+    
+    def add_dependency(self, dependency_job):
+        """Add a dependency job and update status accordingly"""
+        self.dependencies.add(dependency_job)
+        self.update_status_based_on_dependencies()
+    
+    def remove_dependency(self, dependency_job):
+        """Remove a dependency job and update status accordingly"""
+        self.dependencies.remove(dependency_job)
+        self.update_status_based_on_dependencies()
+    
+    def get_dependent_jobs(self):
+        """Get all jobs that depend on this job"""
+        return self.dependent_jobs.all()
+    
+    def notify_dependents(self):
+        """Notify dependent jobs that this job has completed"""
+        for dependent in self.dependent_jobs.all():
+            dependent.update_status_based_on_dependencies()
+    
+    def check_dependencies(self):
+        """Check if all dependencies are completed"""
+        if not self.dependencies.exists():
+            return True
+        return all(dep.status == 'completed' for dep in self.dependencies.all())
+    
+    def update_status_based_on_dependencies(self):
+        """Update job status based on dependency status"""
+        if self.status == 'dependency' and self.check_dependencies():
+            self.status = 'pending'
+            self.save()
+            return True
+        elif self.status == 'pending' and not self.check_dependencies():
+            self.status = 'dependency'
+            self.save()
+            return True
+        return False
     
     def mark_failed(self, error_msg, can_retry=True):
         """Mark job as failed with error message"""
@@ -669,6 +748,7 @@ class FileRegistry(models.Model):
         ('ios_processed_lower', 'IOS Processed Lower'),
         ('audio_raw', 'Audio Raw'),
         ('audio_processed', 'Audio Processed Text'),
+        ('bite_classification', 'Bite Classification Results'),
     ]
     
     # File identification
