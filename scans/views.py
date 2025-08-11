@@ -836,9 +836,9 @@ def delete_voice_caption(request, scanpair_id, caption_id):
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, scanpair=scan_pair)
     
     # Check permissions
-    user_profile = getattr(request.user, 'userprofile', None)
+    user_profile = request.user.profile
     is_owner = voice_caption.user == request.user
-    is_admin = user_profile and user_profile.is_admin
+    is_admin = user_profile.is_admin
     
     # If not owner and not admin, deny access
     if not is_owner and not is_admin:
