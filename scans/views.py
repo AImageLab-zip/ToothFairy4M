@@ -847,7 +847,6 @@ def delete_voice_caption(request, scanpair_id, caption_id):
     if is_admin and not is_owner:
         # Check if this is a confirmation request
         data = json.loads(request.body) if request.body else {}
-        print(f"DEBUG: Admin confirmation check - admin_confirmed: {data.get('admin_confirmed')}")
         if not data.get('admin_confirmed'):
             return JsonResponse({
                 'error': 'Admin confirmation required',
