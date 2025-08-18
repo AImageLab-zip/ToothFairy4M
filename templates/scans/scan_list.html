@@ -17,7 +17,7 @@
                     <i class="fas fa-tachometer-alt me-2"></i>Admin Panel
                 </a>
             {% endif %}
-            {% if user_profile.is_annotator %}
+            {% if user_profile.can_upload_scans %}
                 <a href="{% url 'upload_scan' %}" class="btn btn-primary">
                     <i class="fas fa-upload me-2"></i>Upload New Scan
                 </a>
@@ -62,6 +62,12 @@
                     <span class="remove" data-filter="has_annotated">&times;</span>
                 </span>
             {% endif %}
+            {% if debug_filter and user_profile.is_admin %}
+                <span class="filter-badge">
+                    Debug: {% if debug_filter == 'debug_only' %}Only{% elif debug_filter == 'no_debug' %}Excluded{% endif %}
+                    <span class="remove" data-filter="debug_filter">&times;</span>
+                </span>
+            {% endif %}
         </div>
         
         <!-- Filter Controls -->
@@ -98,6 +104,16 @@
                             <option value="no" {% if has_annotated_filter == 'no' %}selected{% endif %}>No</option>
                         </select>
                     </div>
+                    {% if user_profile.is_admin %}
+                    <div class="col-md-2">
+                        <label class="form-label">Debug Scans</label>
+                        <select class="form-select" name="debug_filter">
+                            <option value="">All</option>
+                            <option value="debug_only" {% if debug_filter == 'debug_only' %}selected{% endif %}>Debug Only</option>
+                            <option value="no_debug" {% if debug_filter == 'no_debug' %}selected{% endif %}>No Debug</option>
+                        </select>
+                    </div>
+                    {% endif %}
                     <div class="col-md-1">
                         <label class="form-label">Per Page</label>
                         <select class="form-select" name="per_page">
@@ -141,7 +157,7 @@
                         <span class="scan-name-text scan-name-display" data-scan-id="{{ scan.scanpair_id }}">
                             {{ scan.name }}
                         </span>
-                        {% if user_profile.is_annotator %}
+                        {% if user_profile.is_admin or user_profile.is_annotator and scan.visibility != 'debug' or user_profile.is_student_developer and scan.visibility == 'debug' %}
                             <button class="btn btn-sm btn-outline-secondary btn-edit-name-list" 
                                     data-scan-id="{{ scan.scanpair_id }}" 
                                     title="Edit name">
@@ -275,8 +291,8 @@
                     
                     <!-- Privacy -->
                     <div>
-                        <span class="privacy-badge {% if scan.visibility == 'public' %}privacy-public{% else %}privacy-private{% endif %}">
-                            <i class="fas fa-{% if scan.visibility == 'public' %}globe{% else %}lock{% endif %} me-1"></i>
+                        <span class="privacy-badge {% if scan.visibility == 'public' %}privacy-public{% elif scan.visibility == 'debug' %}privacy-debug{% else %}privacy-private{% endif %}">
+                            <i class="fas fa-{% if scan.visibility == 'public' %}globe{% elif scan.visibility == 'debug' %}bug{% else %}lock{% endif %} me-1"></i>
                             {{ scan.get_visibility_display }}
                         </span>
                     </div>
@@ -365,13 +381,13 @@
             <i class="fas fa-search"></i>
             <h4>No scans found</h4>
             <p>
-                {% if search_query or has_ios_filter or has_cbct_filter or has_annotated_filter %}
+                {% if search_query or has_ios_filter or has_cbct_filter or has_annotated_filter or debug_filter %}
                     No scans match your current filters. Try adjusting your search criteria.
                 {% else %}
                     No scans available yet.
                 {% endif %}
             </p>
-            {% if user_profile.is_annotator %}
+            {% if user_profile.can_upload_scans %}
                 <a href="{% url 'upload_scan' %}" class="btn btn-primary mt-2">
                     <i class="fas fa-upload me-2"></i>Upload First Scan
                 </a>

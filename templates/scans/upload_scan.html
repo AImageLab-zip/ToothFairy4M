@@ -99,7 +99,8 @@
                             {% endif %}
                             <div class="form-text">
                                 <strong>Public:</strong> Visible to all users<br>
-                                <strong>Private:</strong> Visible only to annotators and administrators
+                                <strong>Private:</strong> Visible only to annotators and administrators<br>
+                                {% if user.profile.is_student_developer %}<strong>Debug:</strong> Visible only to student developers and administrators{% endif %}
                             </div>
                         </div>
 

@@ -105,9 +105,17 @@ def scan_list(request):
     user_profile = request.user.profile
     
     # Filter scans based on user role
-    if user_profile.is_annotator():
+    if user_profile.is_admin():
+        # Admins can see all scans (public, private, debug)
         scans = ScanPair.objects.all()
+    elif user_profile.is_annotator():
+        # Annotators can see public and private scans, but not debug
+        scans = ScanPair.objects.filter(visibility__in=['public', 'private'])
+    elif user_profile.is_student_developer():
+        # Student developers can only see debug scans
+        scans = ScanPair.objects.filter(visibility='debug')
     else:
+        # Standard users can only see public scans
         scans = ScanPair.objects.filter(visibility='public')
     
     # Get filter parameters
@@ -115,6 +123,7 @@ def scan_list(request):
     has_ios_filter = request.GET.get('has_ios', '')
     has_cbct_filter = request.GET.get('has_cbct', '')
     has_annotated_filter = request.GET.get('has_annotated', '')
+    debug_filter = request.GET.get('debug_filter', '')  # For admins to filter debug scans
     per_page = int(request.GET.get('per_page', 20))
     
     # Apply basic filters
@@ -183,6 +192,13 @@ def scan_list(request):
         elif has_annotated_filter == 'no':
             scans_with_status = [s for s in scans_with_status if not s['has_manual']]
     
+    # Apply debug filter (only for admins)
+    if user_profile.is_admin() and debug_filter:
+        if debug_filter == 'debug_only':
+            scans_with_status = [s for s in scans_with_status if s['scan'].visibility == 'debug']
+        elif debug_filter == 'no_debug':
+            scans_with_status = [s for s in scans_with_status if s['scan'].visibility != 'debug']
+    
     # Pagination
     paginator = Paginator(scans_with_status, per_page)
     page_number = request.GET.get('page')
@@ -194,6 +210,7 @@ def scan_list(request):
         'has_ios_filter': has_ios_filter,
         'has_cbct_filter': has_cbct_filter,
         'has_annotated_filter': has_annotated_filter,
+        'debug_filter': debug_filter,
         'per_page': per_page,
         'user_profile': user_profile,
     }
@@ -204,13 +221,13 @@ def scan_list(request):
 def upload_scan(request):
     user_profile = request.user.profile
     
-    if not user_profile.is_annotator():
+    if not user_profile.can_upload_scans():
         messages.error(request, 'You do not have permission to upload scans.')
         return redirect('scan_list')
     
     if request.method == 'POST':
         patient_form = PatientForm(request.POST)
-        scan_form = ScanPairForm(request.POST, request.FILES)
+        scan_form = ScanPairForm(request.POST, request.FILES, user=request.user)
         
         # Check for folder upload before form validation
         cbct_folder_files = request.FILES.getlist('cbct_folder_files')
@@ -225,9 +242,9 @@ def upload_scan(request):
             mutable_files = request.FILES.copy()
             mutable_files['cbct'] = dummy_file
             # Create a new form with modified files
-            scan_form = ScanPairForm(request.POST, mutable_files)
+            scan_form = ScanPairForm(request.POST, mutable_files, user=request.user)
         else:
-            scan_form = ScanPairForm(request.POST, request.FILES)
+            scan_form = ScanPairForm(request.POST, request.FILES, user=request.user)
         
         if scan_form.is_valid():
             # Create patient first (no form data needed)
@@ -249,6 +266,11 @@ def upload_scan(request):
             scan_pair = scan_form.save(commit=False)
             scan_pair.patient = patient
             scan_pair.uploaded_by = request.user
+            
+            # Force debug visibility for Student Developers
+            if user_profile.is_student_developer():
+                scan_pair.visibility = 'debug'
+            
             # Clear file fields since we'll store them in /dataset instead
             scan_pair.upper_scan_raw = None
             scan_pair.lower_scan_raw = None
@@ -312,7 +334,7 @@ def upload_scan(request):
             return redirect('scan_detail', scanpair_id=scan_pair.scanpair_id)
     else:
         patient_form = PatientForm()
-        scan_form = ScanPairForm()
+        scan_form = ScanPairForm(user=request.user)
     
     context = {
         'patient_form': patient_form,
@@ -326,8 +348,18 @@ def scan_detail(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions
-    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+    # Check permissions based on scan visibility and user role
+    can_view = False
+    if user_profile.is_admin():
+        can_view = True
+    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        can_view = True
+    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        can_view = True
+    elif scan_pair.visibility == 'public':
+        can_view = True
+    
+    if not can_view:
         messages.error(request, 'You do not have permission to view this scan.')
         return redirect('scan_list')
     
@@ -336,7 +368,7 @@ def scan_detail(request, scanpair_id):
     manual_classification = scan_pair.classifications.filter(classifier='manual').first()
     
     # Initialize scan management form
-    management_form = ScanManagementForm(instance=scan_pair)
+    management_form = ScanManagementForm(instance=scan_pair, user=request.user)
     
     # Check for CBCT availability in FileRegistry
     has_cbct = False
@@ -349,8 +381,16 @@ def scan_detail(request, scanpair_id):
     except:
         pass
     
-    # Handle POST requests
-    if request.method == 'POST' and user_profile.is_annotator():
+    # Handle POST requests - check permissions based on scan type and user role
+    can_modify = False
+    if user_profile.is_admin():
+        can_modify = True
+    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        can_modify = True
+    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        can_modify = True
+    
+    if request.method == 'POST' and can_modify:
         action = request.POST.get('action')
         
         if action == 'accept_ai' and ai_classification:
@@ -370,7 +410,7 @@ def scan_detail(request, scanpair_id):
         
         elif action == 'update_management':
             # Handle scan management updates (visibility and dataset)
-            management_form = ScanManagementForm(request.POST, instance=scan_pair)
+            management_form = ScanManagementForm(request.POST, instance=scan_pair, user=request.user)
             if management_form.is_valid():
                 management_form.save()
                 messages.success(request, 'Scan settings updated successfully!')
@@ -482,11 +522,22 @@ def scan_detail(request, scanpair_id):
 @csrf_exempt
 def update_classification(request, scanpair_id):
     """AJAX endpoint for instant classification updates"""
-    if not request.user.profile.is_annotator():
-        return JsonResponse({'error': 'Permission denied'}, status=403)
+    user_profile = request.user.profile
     
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        
+        # Check permissions based on scan type and user role
+        can_classify = False
+        if user_profile.is_admin():
+            can_classify = True
+        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+            can_classify = True
+        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+            can_classify = True
+        
+        if not can_classify:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
         data = json.loads(request.body)
         
         field = data.get('field')
@@ -541,11 +592,22 @@ def update_classification(request, scanpair_id):
 @csrf_exempt
 def update_scan_name(request, scanpair_id):
     """AJAX endpoint for updating scan name"""
-    if not request.user.profile.is_annotator():
-        return JsonResponse({'error': 'Permission denied'}, status=403)
+    user_profile = request.user.profile
     
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        
+        # Check permissions based on scan type and user role
+        can_modify = False
+        if user_profile.is_admin():
+            can_modify = True
+        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+            can_modify = True
+        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+            can_modify = True
+        
+        if not can_modify:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
         data = json.loads(request.body)
         
         new_name = data.get('name', '').strip()
@@ -567,8 +629,18 @@ def scan_viewer_data(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions
-    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+    # Check permissions based on scan visibility and user role
+    can_view = False
+    if user_profile.is_admin():
+        can_view = True
+    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        can_view = True
+    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        can_view = True
+    elif scan_pair.visibility == 'public':
+        can_view = True
+    
+    if not can_view:
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
     # Check if IOS exists but is still processing
@@ -677,8 +749,18 @@ def scan_cbct_data(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions
-    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+    # Check permissions based on scan visibility and user role
+    can_view = False
+    if user_profile.is_admin():
+        can_view = True
+    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        can_view = True
+    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        can_view = True
+    elif scan_pair.visibility == 'public':
+        can_view = True
+    
+    if not can_view:
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
     # Check if CBCT exists but is still processing
@@ -880,8 +962,18 @@ def scan_panoramic_data(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions
-    if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+    # Check permissions based on scan visibility and user role
+    can_view = False
+    if user_profile.is_admin():
+        can_view = True
+    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        can_view = True
+    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        can_view = True
+    elif scan_pair.visibility == 'public':
+        can_view = True
+    
+    if not can_view:
         return JsonResponse({'error': 'Permission denied'}, status=403)
     
     # Check if CBCT exists but is still processing
@@ -956,12 +1048,26 @@ def scan_panoramic_data(request, scanpair_id):
 
 
 @login_required
-@user_passes_test(lambda u: u.profile.is_admin)
 @require_POST
 def delete_scan(request, scanpair_id):
-    """Delete a scan and all associated files (admin only)"""
+    """Delete a scan and all associated files"""
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        user_profile = request.user.profile
+        
+        # Check permissions based on scan type and user role
+        can_delete = False
+        if user_profile.is_admin():
+            can_delete = True  # Admins can delete all scans
+        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+            can_delete = True  # Student developers can only delete debug scans
+        
+        if not can_delete:
+            return JsonResponse({
+                'success': False, 
+                'error': 'You do not have permission to delete this scan.'
+            }, status=403)
+        
         patient = scan_pair.patient
         
         # Delete all associated files from filesystem
@@ -1201,8 +1307,18 @@ def get_nifti_metadata(request, scanpair_id):
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
         user_profile = request.user.profile
         
-        # Check permissions
-        if not user_profile.is_annotator() and scan_pair.visibility == 'private':
+        # Check permissions based on scan visibility and user role
+        can_view = False
+        if user_profile.is_admin():
+            can_view = True
+        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+            can_view = True
+        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+            can_view = True
+        elif scan_pair.visibility == 'public':
+            can_view = True
+        
+        if not can_view:
             return JsonResponse({'error': 'Permission denied'}, status=403)
         
         # Check if CBCT exists

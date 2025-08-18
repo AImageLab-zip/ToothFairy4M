@@ -1,16 +1,36 @@
 from django.contrib import admin
+from django.contrib.auth.models import User
 from .models import UserProfile, Dataset, Patient, ScanPair, Classification, VoiceCaption, ProcessingJob, FileRegistry, Invitation
 
 
+class ReadOnlyAdminMixin:
+    """Mixin to make admin interface read-only for Student Developers"""
+    
+    def has_add_permission(self, request):
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            return False
+        return super().has_add_permission(request)
+    
+    def has_change_permission(self, request, obj=None):
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            return False
+        return super().has_change_permission(request, obj)
+    
+    def has_delete_permission(self, request, obj=None):
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            return False
+        return super().has_delete_permission(request, obj)
+
+
 @admin.register(UserProfile)
-class UserProfileAdmin(admin.ModelAdmin):
+class UserProfileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['user', 'role']
     list_filter = ['role']
     search_fields = ['user__username', 'user__email']
 
 
 @admin.register(Dataset)
-class DatasetAdmin(admin.ModelAdmin):
+class DatasetAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['name', 'scan_count', 'patient_count', 'created_at', 'created_by']
     list_filter = ['created_at']
     search_fields = ['name', 'description']
@@ -18,30 +38,46 @@ class DatasetAdmin(admin.ModelAdmin):
 
 
 @admin.register(Patient)
-class PatientAdmin(admin.ModelAdmin):
+class PatientAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['patient_id', 'created_at']
     search_fields = ['patient_id']
     readonly_fields = ['patient_id', 'created_at']
 
 
 @admin.register(ScanPair)
-class ScanPairAdmin(admin.ModelAdmin):
+class ScanPairAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['scanpair_id', 'name', 'patient', 'dataset', 'visibility', 'uploaded_at', 'uploaded_by']
     list_filter = ['visibility', 'dataset', 'uploaded_at']
     search_fields = ['scanpair_id', 'name', 'patient__patient_id']
     readonly_fields = ['uploaded_at']
+    
+    def get_queryset(self, request):
+        """Filter scans based on user role"""
+        qs = super().get_queryset(request)
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            # Student developers can only see debug scans
+            return qs.filter(visibility='debug')
+        return qs
 
 
 @admin.register(Classification)
-class ClassificationAdmin(admin.ModelAdmin):
+class ClassificationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['id', 'scanpair', 'classifier', 'sagittal_left', 'sagittal_right', 'vertical', 'transverse', 'midline', 'annotator', 'timestamp']
     list_filter = ['classifier', 'sagittal_left', 'sagittal_right', 'vertical', 'transverse', 'midline', 'timestamp']
     search_fields = ['scanpair__scanpair_id']
     readonly_fields = ['timestamp']
+    
+    def get_queryset(self, request):
+        """Filter classifications based on user role"""
+        qs = super().get_queryset(request)
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            # Student developers can only see classifications for debug scans
+            return qs.filter(scanpair__visibility='debug')
+        return qs
 
 
 @admin.register(VoiceCaption)
-class VoiceCaptionAdmin(admin.ModelAdmin):
+class VoiceCaptionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['id', 'user', 'scanpair', 'modality', 'duration', 'processing_status', 'created_at']
     list_filter = ['modality', 'processing_status', 'created_at']
     search_fields = ['user__username', 'scanpair__scanpair_id', 'scanpair__patient__patient_id']
@@ -51,10 +87,18 @@ class VoiceCaptionAdmin(admin.ModelAdmin):
         if obj:  # Editing an existing object
             return self.readonly_fields + ['scanpair', 'user']
         return self.readonly_fields
+    
+    def get_queryset(self, request):
+        """Filter voice captions based on user role"""
+        qs = super().get_queryset(request)
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            # Student developers can only see voice captions for debug scans
+            return qs.filter(scanpair__visibility='debug')
+        return qs
 
 
 @admin.register(ProcessingJob)
-class ProcessingJobAdmin(admin.ModelAdmin):
+class ProcessingJobAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['id', 'job_type', 'status', 'scanpair', 'voice_caption', 'priority', 'dependencies_count', 'created_at', 'started_at', 'completed_at', 'retry_count']
     list_filter = ['job_type', 'status', 'created_at', 'started_at', 'completed_at', 'priority', ('dependencies', admin.EmptyFieldListFilter)]
     search_fields = ['scanpair__scanpair_id', 'scanpair__patient__patient_id', 'voice_caption__id', 'worker_id']
@@ -108,8 +152,12 @@ class ProcessingJobAdmin(admin.ModelAdmin):
     dependencies_list.short_description = "Dependency Jobs"
     
     def get_queryset(self, request):
-        """Optimize queryset to include dependencies count"""
-        return super().get_queryset(request).prefetch_related('dependencies')
+        """Optimize queryset to include dependencies count and filter based on user role"""
+        qs = super().get_queryset(request).prefetch_related('dependencies')
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            # Student developers can only see processing jobs for debug scans
+            return qs.filter(scanpair__visibility='debug')
+        return qs
     
     def get_fieldsets(self, request, obj=None):
         """Customize fieldsets based on job status"""
@@ -164,7 +212,7 @@ class ProcessingJobAdmin(admin.ModelAdmin):
 
 
 @admin.register(FileRegistry)
-class FileRegistryAdmin(admin.ModelAdmin):  
+class FileRegistryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):  
     list_display = ['id', 'file_type', 'scanpair', 'voice_caption', 'file_size_mb', 'created_at']
     list_filter = ['file_type', 'created_at']
     search_fields = ['file_path', 'scanpair__scanpair_id', 'scanpair__patient__patient_id', 'voice_caption__id']
@@ -193,11 +241,19 @@ class FileRegistryAdmin(admin.ModelAdmin):
         if obj:  # Editing existing object
             return self.readonly_fields + ['file_type', 'file_path', 'scanpair', 'voice_caption', 'processing_job']
         return self.readonly_fields
+    
+    def get_queryset(self, request):
+        """Filter file registry based on user role"""
+        qs = super().get_queryset(request)
+        if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
+            # Student developers can only see files for debug scans
+            return qs.filter(scanpair__visibility='debug')
+        return qs
 
 
 
 @admin.register(Invitation)
-class InvitationAdmin(admin.ModelAdmin):
+class InvitationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['code', 'email', 'role', 'created_by', 'created_at', 'expires_at', 'used_at', 'used_by']
     list_filter = ['role', 'created_at', 'expires_at']
     search_fields = ['code', 'email', 'created_by__username', 'used_by__username']

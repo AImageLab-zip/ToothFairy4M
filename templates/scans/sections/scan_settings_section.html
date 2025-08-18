@@ -86,7 +86,8 @@
                     </div>
                     <div class="col-6">
                         <small class="text-muted d-block">Visibility:</small>
-                        <span class="badge bg-{% if scan_pair.visibility == 'public' %}success{% else %}warning{% endif %}">
+                        <span class="badge bg-{% if scan_pair.visibility == 'public' %}success{% elif scan_pair.visibility == 'debug' %}info{% else %}warning{% endif %}">
+                            <i class="fas fa-{% if scan_pair.visibility == 'public' %}globe{% elif scan_pair.visibility == 'debug' %}bug{% else %}lock{% endif %} me-1"></i>
                             {{ scan_pair.get_visibility_display }}
                         </span>
                     </div>

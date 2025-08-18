@@ -40,6 +40,26 @@ class ScanPairForm(forms.ModelForm):
             'visibility': 'Visibility',
         }
     
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Customize visibility choices based on user role
+        if user and hasattr(user, 'profile'):
+            if user.profile.is_student_developer():
+                # Student developers can only create debug scans
+                self.fields['visibility'].choices = [('debug', 'Debug')]
+                self.fields['visibility'].initial = 'debug'
+                self.fields['visibility'].widget.attrs['readonly'] = True
+            elif user.profile.is_admin():
+                # Admins can create all types of scans
+                self.fields['visibility'].choices = ScanPair.VISIBILITY_CHOICES
+            else:
+                # Annotators can create public and private scans (not debug)
+                self.fields['visibility'].choices = [
+                    ('public', 'Public'),
+                    ('private', 'Private'),
+                ]
+    
     def clean(self):
         cleaned_data = super().clean()
         upper_scan = cleaned_data.get('upper_scan_raw')
@@ -104,10 +124,25 @@ class ScanManagementForm(forms.ModelForm):
             'dataset': 'Dataset',
         }
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['dataset'].empty_label = "No Dataset"
         self.fields['dataset'].required = False
+        
+        # Customize visibility choices based on user role
+        if user and hasattr(user, 'profile'):
+            if user.profile.is_student_developer():
+                # Student developers can only manage debug scans
+                self.fields['visibility'].choices = [('debug', 'Debug')]
+            elif user.profile.is_admin():
+                # Admins can manage all types of scans
+                self.fields['visibility'].choices = ScanPair.VISIBILITY_CHOICES
+            else:
+                # Annotators can manage public and private scans (not debug)
+                self.fields['visibility'].choices = [
+                    ('public', 'Public'),
+                    ('private', 'Private'),
+                ]
     
     def clean(self):
         # Override the clean method to skip file validation for management updates

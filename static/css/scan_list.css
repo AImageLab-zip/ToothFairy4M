@@ -179,6 +179,11 @@
     color: #721c24;
 }
 
+.privacy-debug {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
 .btn-open {
     width: 36px;
     height: 36px;

@@ -140,10 +140,11 @@ class UserProfile(models.Model):
         ('standard', 'Standard User'),
         ('annotator', 'Annotator'),
         ('admin', 'Administrator'),
+        ('student_dev', 'Student Developer'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='standard')
+    role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='standard')
     
     def __str__(self):
         return f"{self.user.username} - {self.get_role_display()}"
@@ -153,12 +154,39 @@ class UserProfile(models.Model):
     
     def is_admin(self):
         return self.role == 'admin'
+    
+    def is_student_developer(self):
+        return self.role == 'student_dev'
+    
+    def can_upload_scans(self):
+        """Check if user can upload scans"""
+        return self.role in ['annotator', 'admin', 'student_dev']
+    
+    def can_see_debug_scans(self):
+        """Check if user can see debug scans"""
+        return self.role in ['admin', 'student_dev']
+    
+    def can_see_public_private_scans(self):
+        """Check if user can see public/private scans"""
+        return self.role in ['annotator', 'admin', 'standard']
+    
+    def can_modify_scan_settings(self):
+        """Check if user can modify scan settings (visibility, dataset, etc.)"""
+        return self.role in ['annotator', 'admin']
+    
+    def can_delete_scans(self):
+        """Check if user can delete scans"""
+        return self.role in ['admin']  # Only admins can delete non-debug scans
+    
+    def can_delete_debug_scans(self):
+        """Check if user can delete debug scans"""
+        return self.role in ['admin', 'student_dev']
 
 
 class Invitation(models.Model):
     code = models.CharField(max_length=64, unique=True)
     email = models.EmailField(blank=True, null=True)
-    role = models.CharField(max_length=10, choices=UserProfile.ROLE_CHOICES, default='standard')
+    role = models.CharField(max_length=15, choices=UserProfile.ROLE_CHOICES, default='standard')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
@@ -216,6 +244,7 @@ class ScanPair(models.Model):
     VISIBILITY_CHOICES = [
         ('public', 'Public'),
         ('private', 'Private'),
+        ('debug', 'Debug'),
     ]
     
     # Processing status choices
