@@ -280,3 +280,16 @@ if not DEBUG:
 # Create logs directory if it doesn't exist
 import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+
+#celery settings
+CELERY_BROKER_URL = 'amqp://guest:guest@rabbitmq:5672//'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+# opzionale: backend risultati
+CELERY_RESULT_BACKEND = 'rpc://'
+
+# opzionale: timezone e altre impostazioni
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
+TIME_ZONE = 'Europe/Rome'

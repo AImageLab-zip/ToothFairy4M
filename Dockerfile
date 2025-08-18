@@ -2,15 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# N.B: ffmpeg is used to make celery work; it is supposed unnecessary if celery will start in a separate container
 RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg2 \
+    lsb-release \
     pkg-config \
     default-libmysqlclient-dev \
     build-essential \
-    curl \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg
 
 # Install Docker CLI
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -28,6 +28,6 @@ COPY . .
 # Create processing directory
 RUN mkdir -p /tmp/processing
 
-EXPOSE 8000
+EXPOSE 9000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"] 
+CMD ["python", "manage.py", "runserver", "0.0.0.0:9000"] 

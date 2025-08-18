@@ -30,7 +30,6 @@ def copy_files_to_processing_dir(scanpair, scan_type='ios'):
     
     return None
 
-
 def execute_ios_processing_command(scanpair):
     """
     Execute Docker command for IOS processing
@@ -99,7 +98,6 @@ def execute_ios_processing_command(scanpair):
                 shutil.rmtree(processing_dir)
             except:
                 pass
-
 
 def execute_cbct_processing_command(scanpair):
     """
@@ -170,7 +168,6 @@ def execute_cbct_processing_command(scanpair):
                 shutil.rmtree(processing_dir)
             except:
                 pass 
-
 
 def execute_speech_to_text_command(voice_caption):
     """

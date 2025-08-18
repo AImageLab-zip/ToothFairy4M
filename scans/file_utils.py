@@ -4,12 +4,14 @@ import hashlib
 import logging
 import traceback
 from pathlib import Path
+from urllib import request
 from django.conf import settings
 from django.utils import timezone
 from .models import FileRegistry, ProcessingJob, VoiceCaption
 import json
 import zipfile
 import tarfile
+from celery import Celery
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -501,7 +503,18 @@ def save_audio_to_dataset(voice_caption, audio_file):
             '--model', 'base'
         ]
     )
-    
+    # construct json of the job to make it workable with celery
+    job_data = {
+        'id': processing_job.id,
+        'voice_caption_id': voice_caption.id,
+        'audio_file': file_path,
+        'output_dir': PROCESSED_DIRS['audio'],
+        'language': 'en',
+        'model': 'base'
+    }
+    #Here we have to tell our broker our processing job is ready to be processed
+    STT_sender = Celery('Sender', broker='amqp://guest:guest@rabbitmq:5672//')
+    STT_sender.send_task('speech_to_text.transcribe', args=[job_data, DATASET_ROOT], queue="speech_to_text_queue")
     return file_path, processing_job
 
 
