@@ -4,6 +4,7 @@
 {% block title %}Scans - ToothFairy4M{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
 <link rel="stylesheet" href="{% static 'css/scan_list.css' %}">
 {% endblock %}
 
@@ -25,378 +26,411 @@
         </div>
     </div>
 
-    <!-- Advanced Filter Section -->
-    <div class="filter-section">
-        <div class="filter-toggle d-flex justify-content-between align-items-center" onclick="toggleFilters()">
-            <div>
-                <i class="fas fa-filter me-2"></i>
-                <strong>Filters</strong>
-                <small class="text-muted ms-2">Click to expand filtering options</small>
-            </div>
-            <i class="fas fa-chevron-down" id="filterChevron"></i>
-        </div>
-        
-        <!-- Active Filters Display -->
-        <div class="active-filters" id="activeFilters">
-            {% if search_query %}
-                <span class="filter-badge">
-                    Search: "{{ search_query }}"
-                    <span class="remove" data-filter="search">&times;</span>
-                </span>
-            {% endif %}
-            {% if has_ios_filter %}
-                <span class="filter-badge">
-                    Has IOS: {{ has_ios_filter|title }}
-                    <span class="remove" data-filter="has_ios">&times;</span>
-                </span>
-            {% endif %}
-            {% if has_cbct_filter %}
-                <span class="filter-badge">
-                    Has CBCT: {{ has_cbct_filter|title }}
-                    <span class="remove" data-filter="has_cbct">&times;</span>
-                </span>
-            {% endif %}
-            {% if has_annotated_filter %}
-                <span class="filter-badge">
-                    Annotated: {{ has_annotated_filter|title }}
-                    <span class="remove" data-filter="has_annotated">&times;</span>
-                </span>
-            {% endif %}
-            {% if debug_filter and user_profile.is_admin %}
-                <span class="filter-badge">
-                    Debug: {% if debug_filter == 'debug_only' %}Only{% elif debug_filter == 'no_debug' %}Excluded{% endif %}
-                    <span class="remove" data-filter="debug_filter">&times;</span>
-                </span>
-            {% endif %}
-        </div>
-        
-        <!-- Filter Controls -->
-        <div class="filter-content" id="filterContent">
-            <form method="get" id="filterForm">
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Search</label>
-                        <input type="text" class="form-control" name="search" 
-                               placeholder="Name, Patient ID, Scan ID..." 
-                               value="{{ search_query }}">
+    <div class="row">
+        <!-- Folder Sidebar -->
+        <div class="col-lg-2 mb-3">
+            <div class="card folder-sidebar">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong><i class="fas fa-folder-tree me-2"></i>Folders</strong>
+                    <button class="btn btn-sm btn-outline-primary" id="btnCreateFolder"><i class="fas fa-plus me-1"></i>New</button>
+                </div>
+                <div class="card-body">
+                    <div class="folder-item {% if folder_id == 'all' %}active{% endif %}" data-folder="all">
+                        <i class="fas fa-folder-open text-warning me-2"></i>Show All
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Has IOS (Processed)</label>
-                        <select class="form-select" name="has_ios">
-                            <option value="">All</option>
-                            <option value="yes" {% if has_ios_filter == 'yes' %}selected{% endif %}>Yes</option>
-                            <option value="no" {% if has_ios_filter == 'no' %}selected{% endif %}>No</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Has CBCT (Processed)</label>
-                        <select class="form-select" name="has_cbct">
-                            <option value="">All</option>
-                            <option value="yes" {% if has_cbct_filter == 'yes' %}selected{% endif %}>Yes</option>
-                            <option value="no" {% if has_cbct_filter == 'no' %}selected{% endif %}>No</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Annotated</label>
-                        <select class="form-select" name="has_annotated">
-                            <option value="">All</option>
-                            <option value="yes" {% if has_annotated_filter == 'yes' %}selected{% endif %}>Yes</option>
-                            <option value="no" {% if has_annotated_filter == 'no' %}selected{% endif %}>No</option>
-                        </select>
-                    </div>
-                    {% if user_profile.is_admin %}
-                    <div class="col-md-2">
-                        <label class="form-label">Debug Scans</label>
-                        <select class="form-select" name="debug_filter">
-                            <option value="">All</option>
-                            <option value="debug_only" {% if debug_filter == 'debug_only' %}selected{% endif %}>Debug Only</option>
-                            <option value="no_debug" {% if debug_filter == 'no_debug' %}selected{% endif %}>No Debug</option>
-                        </select>
-                    </div>
-                    {% endif %}
-                    <div class="col-md-1">
-                        <label class="form-label">Per Page</label>
-                        <select class="form-select" name="per_page">
-                            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
-                            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
-                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
-                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-                        </select>
-                    </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary me-2">
-                            <i class="fas fa-search me-1"></i>Apply
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="clearAllFilters()">
-                            <i class="fas fa-times me-1"></i>Clear
-                        </button>
+                    <div id="folderTree">
+                        {% for f in folders %}
+                        <div class="folder-node" data-id="{{ f.id }}">
+                            <div class="folder-item {% if folder_id|default:'all'|add:'' == f.id|stringformat:'s' %}active{% endif %}" data-folder="{{ f.id }}">
+                                <i class="fas fa-folder text-warning me-2"></i>{{ f.name }}
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Scan List -->
-    {% if page_obj %}
-        <div class="scan-list">
-            <div class="scan-list-header">
-                <div>Scan Name</div>
-                <div>Processing Status</div>
-                <div>Annotators</div>
-                <div>Upload Info</div>
-                <div>Privacy</div>
-                <div>Action</div>
             </div>
-            
-            {% for scan_data in page_obj %}
-                {% with scan_data.scan as scan %}
-                <div class="scan-row">
-                    <!-- Scan Name -->
-                    <div class="scan-name">
-                        <i class="fas fa-tag text-primary me-2"></i>
-                        <span class="scan-name-text scan-name-display" data-scan-id="{{ scan.scanpair_id }}">
-                            {{ scan.name }}
-                        </span>
-                        {% if user_profile.is_admin or user_profile.is_annotator and scan.visibility != 'debug' or user_profile.is_student_developer and scan.visibility == 'debug' %}
-                            <button class="btn btn-sm btn-outline-secondary btn-edit-name-list" 
-                                    data-scan-id="{{ scan.scanpair_id }}" 
-                                    title="Edit name">
-                                <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
-                            </button>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Processing Status -->
-                    <div class="processing-status">
-                        <div class="status-indicators">
-                            <!-- IOS Status -->
-                            {% if not scan.has_ios_scans %}
-                                <div class="status-icon status-absent" title="No IOS Scans">
-                                    <i class="fas fa-tooth"></i>
-                                </div>
-                            {% elif scan.ios_processing_status == 'processing' %}
-                                <div class="status-icon status-processing" title="IOS Processing">
-                                    <i class="fas fa-tooth"></i>
-                                </div>
-                            {% elif scan.ios_processing_status == 'processed' %}
-                                <div class="status-icon status-processed" title="IOS Processed">
-                                    <i class="fas fa-tooth"></i>
-                                </div>
-                            {% elif scan.ios_processing_status == 'failed' %}
-                                <div class="status-icon status-failed" title="IOS Processing Failed">
-                                    <i class="fas fa-tooth"></i>
-                                </div>
-                            {% else %}
-                                <div class="status-icon status-pending" title="IOS Processing Pending">
-                                    <i class="fas fa-tooth"></i>
-                                </div>
-                            {% endif %}
-                            
-                            <!-- CBCT Status -->
-                            {% if not scan.has_cbct_scan %}
-                                <div class="status-icon status-absent" title="No CBCT Scan">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                            {% elif scan.cbct_processing_status == 'processing' %}
-                                <div class="status-icon status-processing" title="CBCT Processing">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                            {% elif scan.cbct_processing_status == 'processed' %}
-                                <div class="status-icon status-processed" title="CBCT Processed">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                            {% elif scan.cbct_processing_status == 'failed' %}
-                                <div class="status-icon status-failed" title="CBCT Processing Failed">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                            {% else %}
-                                <div class="status-icon status-pending" title="CBCT Processing Pending">
-                                    <i class="fas fa-cube"></i>
-                                </div>
-                            {% endif %}
-                            
-                            <!-- Voice Captions Status -->
-                            {% if not scan.voice_captions.exists %}
-                                <div class="status-icon status-absent" title="No Voice Captions">
-                                    <i class="fas fa-microphone"></i>
-                                </div>
-                            {% elif scan_data.voice_caption_processing %}
-                                <div class="status-icon status-processing" title="Voice Captions Processing">
-                                    <i class="fas fa-microphone"></i>
-                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
-                                </div>
-                            {% elif scan_data.voice_caption_processed %}
-                                <div class="status-icon status-processed" title="All Voice Captions Processed">
-                                    <i class="fas fa-microphone"></i>
-                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
-                                </div>
-                            {% else %}
-                                <div class="status-icon status-pending" title="Voice Captions Pending">
-                                    <i class="fas fa-microphone"></i>
-                                    <span class="status-count">{{ scan.voice_captions.count }}</span>
-                                </div>
-                            {% endif %}
+        </div>
 
-                            <!-- Bite Classification Status -->
-                            {% if not scan.has_ios_scans %}
-                                <div class="status-icon status-absent" title="No IOS - Classification Not Possible">
-                                    <i class="fas fa-teeth"></i>
+        <!-- Main Content -->
+        <div class="col-lg-10">
+            <!-- Bulk toolbar -->
+            <div class="bulk-toolbar d-flex align-items-center justify-content-between" id="bulkToolbar">
+                <div><strong id="selectedCount">0 selected</strong></div>
+                <div class="d-flex align-items-center gap-2">
+                    <select id="moveFolderSelect" class="form-select form-select-sm">
+                        <option value="all">Remove from folder</option>
+                        {% for folder in folders %}
+                        <option value="{{ folder.id }}">Move to {{ folder.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button id="btnMoveSelected" class="btn btn-primary btn-sm uniform-btn">
+                        <i class="fas fa-arrows-alt me-1"></i>Apply
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary uniform-btn" id="btnClearSelection">Clear</button>
+                </div>
+            </div>
+
+            <!-- Advanced Filter Section -->
+            <div class="filter-section" id="filterContent">
+                <form method="get" id="filterForm">
+                    <input type="hidden" name="folder" id="folderInput" value="{{ folder_id }}">
+                    <div class="filter-row">
+                        <!-- Search Field -->
+                        <div class="filter-item">
+                            <label class="filter-label">Search</label>
+                            <input type="text" class="filter-input" name="search" placeholder="Name, Patient ID..." value="{{ search_query }}">
+                        </div>
+
+                        <!-- Tags Filter -->
+                        <div class="filter-item">
+                            <label class="filter-label">Tags</label>
+                            <div class="tags-filter-container">
+                                <div class="tags-input-wrapper">
+                                    <input type="text" class="filter-input" id="tagSearchInput" placeholder="Search tags...">
+                                    <div class="tags-dropdown" id="tagsDropdown"></div>
                                 </div>
-                            {% elif scan_data.has_manual %}
-                                <div class="status-icon status-processed" title="Bite Classification Verified">
+                                <input type="hidden" name="tags" id="tagsInput" value="{{ selected_tags|join:',' }}">
+                            </div>
+                        </div>
+
+                        <!-- Status Filters -->
+                        <div class="filter-item">
+                            <label class="filter-label">Status</label>
+                            <div class="status-filter-buttons">
+                                <button type="button" class="status-filter-btn status-gray" data-filter="ios" data-value="" title="IOS Status">
+                                    <i class="fas fa-tooth"></i>
+                                </button>
+                                <button type="button" class="status-filter-btn status-gray" data-filter="cbct" data-value="" title="CBCT Status">
+                                    <i class="fas fa-cube"></i>
+                                </button>
+                                <button type="button" class="status-filter-btn status-gray" data-filter="voice" data-value="" title="Voice Status">
+                                    <i class="fas fa-microphone"></i>
+                                </button>
+                                <button type="button" class="status-filter-btn status-gray" data-filter="bite" data-value="" title="Bite Status">
                                     <i class="fas fa-teeth"></i>
-                                </div>
-                            {% elif scan_data.has_ai_only %}
-                                <div class="status-icon status-processing" title="AI Classification - Needs Review">
-                                    <i class="fas fa-teeth"></i>
-                                </div>
-                            {% else %}
-                                <div class="status-icon status-absent" title="No Classification Available">
-                                    <i class="fas fa-teeth"></i>
-                                </div>
-                            {% endif %}
+                                </button>
+                                <input type="hidden" name="has_ios" id="iosFilterValue" value="{{ has_ios_filter }}">
+                                <input type="hidden" name="has_cbct" id="cbctFilterValue" value="{{ has_cbct_filter }}">
+                                <input type="hidden" name="has_voice" id="voiceFilterValue" value="{{ has_voice_filter }}">
+                                <input type="hidden" name="has_bite" id="biteFilterValue" value="{{ has_bite_filter }}">
+                            </div>
+                        </div>
+
+                        <!-- Per Page -->
+                        <div class="filter-item">
+                            <label class="filter-label">Per Page</label>
+                            <select class="filter-select" name="per_page" onchange="this.form.submit()">
+                                <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                                <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                                <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                                <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                            </select>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="filter-item filter-actions">
+                            <button type="submit" class="btn btn-primary filter-btn">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary filter-btn" onclick="clearAllFilters()">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
                         </div>
                     </div>
+                </form>
+            </div>
+
+            <!-- Scan List -->
+            {% if page_obj %}
+                <div class="scan-list">
+                    <div class="scan-list-header">
+                        <div class="col-check">
+                            <input type="checkbox" id="selectAll">
+                        </div>
+                        <div>Scan Name</div>
+                        <div>Tags</div>
+                        <div>Processing</div>
+                        <div>Annotators</div>
+                        <div>Uploaded</div>
+                        <div>Privacy</div>
+                        <div>Action</div>
+                    </div>
                     
-                    <!-- Annotators -->
-                    <div class="annotators-info">
-                        {% if scan_data.has_manual or scan_data.voice_annotators %}
-                            <div class="annotator-list">
-                                {% if scan_data.has_manual %}
-                                    <div class="annotator-item">
-                                        <small class="text-primary">{{ scan_data.manual_classification.annotator.username }}</small>
-                                        <small class="text-muted">(Bite)</small>
+                    {% for scan_data in page_obj %}
+                        {% with scan_data.scan as scan %}
+                        <div class="scan-row" data-scan-id="{{ scan.scanpair_id }}">
+                            <div class="col-check">
+                                <input type="checkbox" class="row-select" value="{{ scan.scanpair_id }}">
+                            </div>
+                            <!-- Scan Name -->
+                            <div class="scan-name">
+                                <i class="fas fa-tag text-primary me-2"></i>
+                                <span class="scan-name-text scan-name-display" data-scan-id="{{ scan.scanpair_id }}">
+                                    {{ scan.name }}
+                                </span>
+                                {% if user_profile.is_admin or user_profile.is_annotator and scan.visibility != 'debug' or user_profile.is_student_developer and scan.visibility == 'debug' %}
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit-name-list" 
+                                            data-scan-id="{{ scan.scanpair_id }}" 
+                                            title="Edit name">
+                                        <i class="fas fa-edit" style="font-size: 0.7rem;"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Tags -->
+                            <div class="tags-col">
+                                {% if scan_data.tags %}
+                                    {% for tag in scan_data.tags %}
+                                        <span class="tag-badge" data-tag="{{ tag }}">
+                                            {{ tag }}
+                                            {% if user_profile.is_admin or user_profile.is_annotator or user_profile.is_student_developer %}
+                                            <button class="btn-remove-tag-inline" data-scan-id="{{ scan.scanpair_id }}" data-tag="{{ tag }}" title="Remove tag">&times;</button>
+                                            {% endif %}
+                                        </span>
+                                    {% endfor %}
+                                {% else %}
+                                    <small class="text-muted">-</small>
+                                {% endif %}
+                                {% if user_profile.is_admin or user_profile.is_annotator or user_profile.is_student_developer %}
+                                <button class="btn btn-sm btn-outline-secondary p-0 ms-1 btn-add-tag" data-scan-id="{{ scan.scanpair_id }}" title="Add tag">
+                                    <i class="fas fa-plus" style="font-size: 0.65rem;"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Processing Status -->
+                            <div class="processing-status">
+                                <div class="status-indicators">
+                                    {% if not scan.has_ios_scans %}
+                                        <div class="status-icon status-absent" title="No IOS Scans">
+                                            <i class="fas fa-tooth"></i>
+                                        </div>
+                                    {% elif scan.ios_processing_status == 'processing' %}
+                                        <div class="status-icon status-processing" title="IOS Processing">
+                                            <i class="fas fa-tooth"></i>
+                                        </div>
+                                    {% elif scan.ios_processing_status == 'processed' %}
+                                        <div class="status-icon status-processed" title="IOS Processed">
+                                            <i class="fas fa-tooth"></i>
+                                        </div>
+                                    {% elif scan.ios_processing_status == 'failed' %}
+                                        <div class="status-icon status-failed" title="IOS Processing Failed">
+                                            <i class="fas fa-tooth"></i>
+                                        </div>
+                                    {% else %}
+                                        <div class="status-icon status-pending" title="IOS Processing Pending">
+                                            <i class="fas fa-tooth"></i>
+                                        </div>
+                                    {% endif %}
+                                    {% if not scan.has_cbct_scan %}
+                                        <div class="status-icon status-absent" title="No CBCT Scan">
+                                            <i class="fas fa-cube"></i>
+                                        </div>
+                                    {% elif scan.cbct_processing_status == 'processing' %}
+                                        <div class="status-icon status-processing" title="CBCT Processing">
+                                            <i class="fas fa-cube"></i>
+                                        </div>
+                                    {% elif scan.cbct_processing_status == 'processed' %}
+                                        <div class="status-icon status-processed" title="CBCT Processed">
+                                            <i class="fas fa-cube"></i>
+                                        </div>
+                                    {% elif scan.cbct_processing_status == 'failed' %}
+                                        <div class="status-icon status-failed" title="CBCT Processing Failed">
+                                            <i class="fas fa-cube"></i>
+                                        </div>
+                                    {% else %}
+                                        <div class="status-icon status-pending" title="CBCT Processing Pending">
+                                            <i class="fas fa-cube"></i>
+                                        </div>
+                                    {% endif %}
+                                    {# Voice Captions Status #}
+                                    {% if not scan.voice_captions.exists %}
+                                        <div class="status-icon status-absent" title="No Voice Captions">
+                                            <i class="fas fa-microphone"></i>
+                                        </div>
+                                    {% elif scan_data.voice_caption_processing %}
+                                        <div class="status-icon status-processing" title="Voice Captions Processing">
+                                            <i class="fas fa-microphone"></i>
+                                            <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                        </div>
+                                    {% elif scan_data.voice_caption_processed %}
+                                        <div class="status-icon status-processed" title="All Voice Captions Processed">
+                                            <i class="fas fa-microphone"></i>
+                                            <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                        </div>
+                                    {% else %}
+                                        <div class="status-icon status-pending" title="Voice Captions Pending">
+                                            <i class="fas fa-microphone"></i>
+                                            <span class="status-count">{{ scan.voice_captions.count }}</span>
+                                        </div>
+                                    {% endif %}
+                                    {# Bite Classification Status #}
+                                    {% if not scan.has_ios_scans %}
+                                        <div class="status-icon status-absent" title="No IOS - Classification Not Possible">
+                                            <i class="fas fa-teeth"></i>
+                                        </div>
+                                    {% elif scan_data.has_manual %}
+                                        <div class="status-icon status-processed" title="Bite Classification Verified">
+                                            <i class="fas fa-teeth"></i>
+                                        </div>
+                                    {% elif scan_data.has_ai_only %}
+                                        <div class="status-icon status-processing" title="AI Classification - Needs Review">
+                                            <i class="fas fa-teeth"></i>
+                                        </div>
+                                    {% else %}
+                                        <div class="status-icon status-absent" title="No Classification Available">
+                                            <i class="fas fa-teeth"></i>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Annotators -->
+                            <div class="annotators-info">
+                                {% if scan_data.has_manual or scan_data.voice_annotators %}
+                                    <div class="annotator-list">
+                                        {% if scan_data.has_manual %}
+                                            <div class="annotator-item">
+                                                <small class="text-primary">{{ scan_data.manual_classification.annotator.username }}</small>
+                                                <small class="text-muted">(Bite)</small>
+                                            </div>
+                                        {% endif %}
+                                        {% for annotator in scan_data.voice_annotators %}
+                                            <div class="annotator-item">
+                                                <small class="text-secondary">{{ annotator }}</small>
+                                                <small class="text-muted">(Voice)</small>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <div class="no-annotators">
+                                        <small class="text-muted">-</small>
                                     </div>
                                 {% endif %}
-                                {% for annotator in scan_data.voice_annotators %}
-                                    <div class="annotator-item">
-                                        <small class="text-secondary">{{ annotator }}</small>
-                                        <small class="text-muted">(Voice)</small>
-                                    </div>
-                                {% endfor %}
                             </div>
-                        {% else %}
-                            <div class="no-annotators">
-                                <small class="text-muted">-</small>
+                            
+                            <!-- Upload Info -->
+                            <div class="meta-info">
+                                <div><strong>{{ scan.uploaded_at|date:"M d, Y" }}</strong></div>
+                                <div>by {{ scan.uploaded_by.username }}</div>
+                                <div class="text-muted">Patient {{ scan.patient.patient_id }}</div>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Upload Info -->
-                    <div class="meta-info">
-                        <div><strong>{{ scan.uploaded_at|date:"M d, Y" }}</strong></div>
-                        <div>by {{ scan.uploaded_by.username }}</div>
-                        <div class="text-muted">Patient {{ scan.patient.patient_id }}</div>
-                    </div>
-                    
-                    <!-- Privacy -->
-                    <div>
-                        <span class="privacy-badge {% if scan.visibility == 'public' %}privacy-public{% elif scan.visibility == 'debug' %}privacy-debug{% else %}privacy-private{% endif %}">
-                            <i class="fas fa-{% if scan.visibility == 'public' %}globe{% elif scan.visibility == 'debug' %}bug{% else %}lock{% endif %} me-1"></i>
-                            {{ scan.get_visibility_display }}
-                        </span>
-                    </div>
-                    
-                    <!-- Action -->
-                    <div class="d-flex gap-1">
-                        <a href="{% url 'scan_detail' scan.scanpair_id %}" 
-                           class="btn btn-primary btn-open" 
-                           title="Open scan">
-                            <i class="fas fa-arrow-right"></i>
-                        </a>
-                        {% if user_profile.is_admin %}
-                            <button class="btn btn-sm btn-warning btn-rerun-processing" 
-                                    data-scan-id="{{ scan.scanpair_id }}"
-                                    data-scan-name="{{ scan.name }}"
-                                    title="Rerun processing">
-                                <i class="fas fa-sync"></i>
-                            </button>
-                            <button class="btn btn-sm btn-danger btn-delete-scan" 
-                                    data-scan-id="{{ scan.scanpair_id }}"
-                                    data-scan-name="{{ scan.name }}"
-                                    data-patient-id="{{ scan.patient.patient_id }}"
-                                    title="Delete scan">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endwith %}
-            {% endfor %}
-        </div>
-
-        <!-- Pagination -->
-        {% if page_obj.paginator.num_pages > 1 %}
-            <nav aria-label="Scan pagination" class="mt-4">
-                <ul class="pagination justify-content-center">
-                    <!-- First page -->
-                    {% if page_obj.number > 1 %}
-                        <li class="page-item">
-                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1" title="First page">
-                                <i class="fas fa-angle-double-left"></i>
-                            </a>
-                        </li>
-                    {% endif %}
-                    
-                    <!-- Previous page -->
-                    {% if page_obj.has_previous %}
-                        <li class="page-item">
-                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a>
-                        </li>
-                    {% endif %}
-                    
-                    <!-- Page numbers -->
-                    {% for num in page_obj.paginator.page_range %}
-                        {% if page_obj.number == num %}
-                            <li class="page-item active">
-                                <span class="page-link">{{ num }}</span>
-                            </li>
-                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                            <li class="page-item">
-                                <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ num }}">{{ num }}</a>
-                            </li>
-                        {% endif %}
+                            
+                            <!-- Privacy -->
+                            <div>
+                                <span class="privacy-badge {% if scan.visibility == 'public' %}privacy-public{% elif scan.visibility == 'debug' %}privacy-debug{% else %}privacy-private{% endif %}">
+                                    <i class="fas fa-{% if scan.visibility == 'public' %}globe{% elif scan.visibility == 'debug' %}bug{% else %}lock{% endif %} me-1"></i>
+                                    {{ scan.get_visibility_display }}
+                                </span>
+                            </div>
+                            
+                            <!-- Action -->
+                            <div class="d-flex gap-1">
+                                <a href="{% url 'scan_detail' scan.scanpair_id %}" 
+                                   class="btn btn-primary btn-open" 
+                                   title="Open scan">
+                                    <i class="fas fa-arrow-right"></i>
+                                </a>
+                                {% if user_profile.is_admin %}
+                                    <button class="btn btn-sm btn-warning btn-rerun-processing" 
+                                            data-scan-id="{{ scan.scanpair_id }}"
+                                            data-scan-name="{{ scan.name }}"
+                                            title="Rerun processing">
+                                        <i class="fas fa-sync"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger btn-delete-scan" 
+                                            data-scan-id="{{ scan.scanpair_id }}"
+                                            data-scan-name="{{ scan.name }}"
+                                            data-patient-id="{{ scan.patient.patient_id }}"
+                                            title="Delete scan">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endwith %}
                     {% endfor %}
-                    
-                    <!-- Next page -->
-                    {% if page_obj.has_next %}
-                        <li class="page-item">
-                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a>
-                        </li>
-                    {% endif %}
-                    
-                    <!-- Last page -->
-                    {% if page_obj.number < page_obj.paginator.num_pages %}
-                        <li class="page-item">
-                            <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}" title="Last page">
-                                <i class="fas fa-angle-double-right"></i>
-                            </a>
-                        </li>
-                    {% endif %}
-                </ul>
-            </nav>
-        {% endif %}
-    {% else %}
-        <div class="empty-state">
-            <i class="fas fa-search"></i>
-            <h4>No scans found</h4>
-            <p>
-                {% if search_query or has_ios_filter or has_cbct_filter or has_annotated_filter or debug_filter %}
-                    No scans match your current filters. Try adjusting your search criteria.
-                {% else %}
-                    No scans available yet.
+                </div>
+
+                <!-- Pagination -->
+                {% if page_obj.paginator.num_pages > 1 %}
+                    <nav aria-label="Scan pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.number > 1 %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1" title="First page">
+                                        <i class="fas fa-angle-double-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a>
+                                </li>
+                            {% endif %}
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ num }}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a>
+                                </li>
+                            {% endif %}
+                            {% if page_obj.number < page_obj.paginator.num_pages %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}" title="Last page">
+                                        <i class="fas fa-angle-double-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
                 {% endif %}
-            </p>
-            {% if user_profile.can_upload_scans %}
-                <a href="{% url 'upload_scan' %}" class="btn btn-primary mt-2">
-                    <i class="fas fa-upload me-2"></i>Upload First Scan
-                </a>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-search"></i>
+                    <h4>No scans found</h4>
+                    <p>
+                        {% if search_query or has_ios_filter or has_cbct_filter or has_annotated_filter or debug_filter %}
+                            No scans match your current filters. Try adjusting your search criteria.
+                        {% else %}
+                            No scans available yet.
+                        {% endif %}
+                    </p>
+                    {% if user_profile.can_upload_scans %}
+                        <a href="{% url 'upload_scan' %}" class="btn btn-primary mt-2">
+                            <i class="fas fa-upload me-2"></i>Upload First Scan
+                        </a>
+                    {% endif %}
+                </div>
             {% endif %}
         </div>
-    {% endif %}
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'js/scan_list.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Folder navigation
+        document.querySelectorAll('.folder-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const folder = this.dataset.folder;
+                const url = new URL(window.location);
+                url.searchParams.set('folder', folder);
+                url.searchParams.delete('page');
+                window.location.href = url.toString();
+            });
+        });
+    });
+</script>
 {% endblock %} 

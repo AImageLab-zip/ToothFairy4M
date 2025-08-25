@@ -11,11 +11,17 @@ urlpatterns = [
     path('scan/<int:scanpair_id>/update-name/', views.update_scan_name, name='update_scan_name'),
     path('scan/<int:scanpair_id>/voice-caption/', views.upload_voice_caption, name='upload_voice_caption'),
     path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/delete/', views.delete_voice_caption, name='delete_voice_caption'),
+    path('scan/<int:scanpair_id>/tags/add/', views.add_scan_tag, name='add_scan_tag'),
+    path('scan/<int:scanpair_id>/tags/remove/', views.remove_scan_tag, name='remove_scan_tag'),
     
     # Admin endpoints
     path('scan/<int:scanpair_id>/delete/', views.delete_scan, name='delete_scan'),
     path('scan/<int:scanpair_id>/rerun-processing/', views.rerun_processing, name='rerun_processing'),
     path('admin/control-panel/', views.admin_control_panel, name='admin_control_panel'),
+    
+    # Folder/tag management
+    path('folders/create/', views.create_folder, name='create_folder'),
+    path('folders/move-scans/', views.move_scans_to_folder, name='move_scans_to_folder'),
     
     # API endpoints
     path('api/scan/<int:scanpair_id>/data/', views.scan_viewer_data, name='scan_viewer_data'),

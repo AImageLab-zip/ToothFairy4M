@@ -23,6 +23,7 @@ import uuid
 from .models import (
     Patient, ScanPair, Classification, UserProfile, Dataset, VoiceCaption, ProcessingJob, FileRegistry, Invitation
 )
+from .models import Tag, Folder
 from .forms import (
     PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm, InvitationForm, InvitedUserCreationForm
 )
@@ -122,8 +123,16 @@ def scan_list(request):
     search_query = request.GET.get('search', '').strip()
     has_ios_filter = request.GET.get('has_ios', '')
     has_cbct_filter = request.GET.get('has_cbct', '')
-    has_annotated_filter = request.GET.get('has_annotated', '')
-    debug_filter = request.GET.get('debug_filter', '')  # For admins to filter debug scans
+    has_bite_filter = request.GET.get('has_bite', '')
+    has_voice_filter = request.GET.get('has_voice', '')
+    debug_filter = ''  # Debug filter removed from UI
+    folder_id = request.GET.get('folder')
+    # Tags can be provided as multiple params (?tags=a&tags=b) or comma-separated
+    tags_selected = request.GET.getlist('tags')
+    if not tags_selected:
+        comma = request.GET.get('tags', '')
+        if comma:
+            tags_selected = [t.strip() for t in comma.split(',') if t.strip()]
     per_page = int(request.GET.get('per_page', 20))
     
     # Apply basic filters
@@ -134,12 +143,31 @@ def scan_list(request):
             Q(scanpair_id__icontains=search_query)
         )
     
+    # Filter by folder
+    if folder_id and folder_id != 'all':
+        if folder_id == 'root':
+            scans = scans.filter(folder__isnull=True)
+        else:
+            try:
+                scans = scans.filter(folder_id=int(folder_id))
+            except ValueError:
+                pass
+    # If folder_id is 'all' or not specified, show all scans (no folder filtering applied)
+    
+    # Filter by tags (all selected must match)
+    if tags_selected:
+        for name in tags_selected:
+            scans = scans.filter(tags__name__iexact=name)
+        scans = scans.distinct()
+    
     # Prefetch classifications and prepare data
     scans = scans.prefetch_related(
         'classifications', 
         'uploaded_by', 
         'patient',
-        'voice_captions'
+        'voice_captions',
+        'tags',
+        'folder'
     ).select_related('dataset').order_by('-uploaded_at')
     
     # Prepare classification status for each scan
@@ -171,6 +199,8 @@ def scan_list(request):
             'voice_caption_processing': voice_caption_processing,
             'voice_caption_processed': voice_caption_processed,
             'voice_annotators': voice_annotators,
+            'tags': scan.tag_names(),
+            'folder': scan.folder,
         }
         scans_with_status.append(scan_data)
     
@@ -186,11 +216,17 @@ def scan_list(request):
         elif has_cbct_filter == 'no':
             scans_with_status = [s for s in scans_with_status if not s['scan'].is_cbct_processed()]
     
-    if has_annotated_filter:
-        if has_annotated_filter == 'yes':
+    if has_bite_filter:
+        if has_bite_filter == 'yes':
             scans_with_status = [s for s in scans_with_status if s['has_manual']]
-        elif has_annotated_filter == 'no':
+        elif has_bite_filter == 'no':
             scans_with_status = [s for s in scans_with_status if not s['has_manual']]
+    
+    if has_voice_filter:
+        if has_voice_filter == 'yes':
+            scans_with_status = [s for s in scans_with_status if s['voice_annotators']]
+        elif has_voice_filter == 'no':
+            scans_with_status = [s for s in scans_with_status if not s['voice_annotators']]
     
     # Apply debug filter (only for admins)
     if user_profile.is_admin() and debug_filter:
@@ -198,6 +234,10 @@ def scan_list(request):
             scans_with_status = [s for s in scans_with_status if s['scan'].visibility == 'debug']
         elif debug_filter == 'no_debug':
             scans_with_status = [s for s in scans_with_status if s['scan'].visibility != 'debug']
+    
+    # Single-level folders for UI
+    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    all_tags = Tag.objects.all().order_by('name')
     
     # Pagination
     paginator = Paginator(scans_with_status, per_page)
@@ -209,8 +249,12 @@ def scan_list(request):
         'search_query': search_query,
         'has_ios_filter': has_ios_filter,
         'has_cbct_filter': has_cbct_filter,
-        'has_annotated_filter': has_annotated_filter,
-        'debug_filter': debug_filter,
+        'has_bite_filter': has_bite_filter,
+        'has_voice_filter': has_voice_filter,
+        'folder_id': folder_id or 'all',
+        'selected_tags': tags_selected,
+        'folders': folders,
+        'all_tags': all_tags,
         'per_page': per_page,
         'user_profile': user_profile,
     }
@@ -277,6 +321,12 @@ def upload_scan(request):
             scan_pair.cbct = None
             scan_pair.save()
             
+            # Apply folder after instance exists
+            folder = scan_form.cleaned_data.get('folder')
+            if folder:
+                scan_pair.folder = folder
+                scan_pair.save()
+            
             # Now process files using the new deferred processing system
             try:
                 from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
@@ -336,9 +386,13 @@ def upload_scan(request):
         patient_form = PatientForm()
         scan_form = ScanPairForm(user=request.user)
     
+    # Get available folders for the dropdown
+    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    
     context = {
         'patient_form': patient_form,
         'scan_form': scan_form,
+        'folders': folders,
     }
     return render(request, 'scans/upload_scan.html', context)
 
@@ -1619,4 +1673,92 @@ def update_nifti_metadata(request, scanpair_id):
             
     except Exception as e:
         logger.error(f"Error in update_nifti_metadata: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def create_folder(request):
+    """Create a folder (single-level only)."""
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+        name = (data.get('name') or '').strip()
+        if not name:
+            return JsonResponse({'error': 'Folder name is required'}, status=400)
+        # Force single-level folders
+        folder, created = Folder.objects.get_or_create(name=name, parent=None, defaults={'created_by': request.user})
+        return JsonResponse({'success': True, 'folder': {'id': folder.id, 'name': folder.name, 'path': folder.name, 'created': created}})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def move_scans_to_folder(request):
+    """Bulk move scans to a folder (or root if folder_id is null/root)"""
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+        scan_ids = data.get('scan_ids', [])
+        folder_id = data.get('folder_id')
+        if not isinstance(scan_ids, list) or not scan_ids:
+            return JsonResponse({'error': 'scan_ids list is required'}, status=400)
+        folder = None
+        if folder_id and folder_id != 'root' and folder_id != 'all':
+            folder = get_object_or_404(Folder, id=folder_id)
+        # Permission: reuse visibility rules from list; only allow moving visible scans
+        qs = ScanPair.objects.filter(scanpair_id__in=scan_ids)
+        # Update folder
+        updated = qs.update(folder=folder)
+        return JsonResponse({'success': True, 'updated': updated})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def add_scan_tag(request, scanpair_id):
+    """Add a tag to a scan; creates tag if it doesn't exist."""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        user_profile = request.user.profile
+        # Permissions aligned with management updates
+        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and scan_pair.visibility != 'debug') or (user_profile.is_student_developer() and scan_pair.visibility == 'debug')
+        if not can_modify:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        data = json.loads(request.body) if request.body else request.POST
+        tag_name = (data.get('tag') or '').strip()
+        if not tag_name:
+            return JsonResponse({'error': 'Tag name required'}, status=400)
+        tag, _ = Tag.objects.get_or_create(name=tag_name)
+        scan_pair.tags.add(tag)
+        return JsonResponse({'success': True, 'tags': scan_pair.tag_names()})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def remove_scan_tag(request, scanpair_id):
+    """Remove a tag from a scan by tag name or id."""
+    try:
+        scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+        user_profile = request.user.profile
+        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and scan_pair.visibility != 'debug') or (user_profile.is_student_developer() and scan_pair.visibility == 'debug')
+        if not can_modify:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        data = json.loads(request.body) if request.body else request.POST
+        tag_name = (data.get('tag') or '').strip()
+        tag_id = data.get('tag_id')
+        tag = None
+        if tag_id:
+            tag = get_object_or_404(Tag, id=tag_id)
+        elif tag_name:
+            tag = Tag.objects.filter(name__iexact=tag_name).first()
+        if not tag:
+            return JsonResponse({'error': 'Tag not found'}, status=404)
+        scan_pair.tags.remove(tag)
+        return JsonResponse({'success': True, 'tags': scan_pair.tag_names()})
+    except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

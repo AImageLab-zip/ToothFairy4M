@@ -685,6 +685,7 @@ document.addEventListener('DOMContentLoaded', function() {
     init3DControls();
     initConfirmReview();
     initViewerToggle();
+    initTagManagement();
 });
 
 // Load scan data from API and initialize viewer
@@ -855,4 +856,69 @@ function initViewerToggle() {
             }, 100); // 100ms delay to ensure containers are visible and sized
         }
     });
+} 
+
+// Tag management
+function initTagManagement() {
+    const chips = document.getElementById('tagChips');
+    const addBtn = document.getElementById('btnAddTag');
+    const input = document.getElementById('newTagInput');
+    if (!chips || !addBtn || !input) return;
+    
+    addBtn.addEventListener('click', () => addTag(input, chips));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addTag(input, chips);
+        }
+    });
+    chips.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-remove-tag');
+        if (!btn) return;
+        const tag = btn.dataset.tag;
+        fetch(`/scan/${window.scanId}/tags/remove/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                const toRemove = chips.querySelector(`[data-tag="${CSS.escape(tag)}"]`);
+                if (toRemove) toRemove.remove();
+                showSavedIndicator();
+            } else {
+                alert(data.error || 'Failed to remove tag');
+            }
+        }).catch(() => alert('Network error'));
+    });
+}
+
+function addTag(input, chips) {
+    const tag = (input.value || '').trim();
+    if (!tag) return;
+    fetch(`/scan/${window.scanId}/tags/add/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            // add chip if not already present
+            if (!chips.querySelector(`[data-tag="${CSS.escape(tag)}"]`)) {
+                const span = document.createElement('span');
+                span.className = 'badge rounded-pill bg-light text-dark border';
+                span.setAttribute('data-tag', tag);
+                span.innerHTML = `${escapeHtml(tag)} <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-remove-tag" data-tag="${escapeHtml(tag)}"><i class="fas fa-times"></i></button>`;
+                chips.appendChild(span);
+            }
+            input.value = '';
+            showSavedIndicator();
+        } else {
+            alert(data.error || 'Failed to add tag');
+        }
+    }).catch(() => alert('Network error'));
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.innerText = text;
+    return div.innerHTML;
 } 

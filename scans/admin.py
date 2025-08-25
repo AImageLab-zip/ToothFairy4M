@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from .models import UserProfile, Dataset, Patient, ScanPair, Classification, VoiceCaption, ProcessingJob, FileRegistry, Invitation
+from .models import Tag, Folder
 
 
 class ReadOnlyAdminMixin:
@@ -263,6 +264,19 @@ class InvitationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         if obj:  # Editing existing object
             return self.readonly_fields + ['created_by']
         return self.readonly_fields
+
+
+@admin.register(Tag)
+class TagAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['name', 'created_at']
+    search_fields = ['name']
+
+
+@admin.register(Folder)
+class FolderAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['name', 'parent', 'created_at', 'created_by']
+    search_fields = ['name']
+    list_filter = ['created_at']
 
 
 

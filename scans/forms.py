@@ -7,6 +7,7 @@ from .models import (
     Patient, ScanPair, Classification, Dataset, 
     Invitation
 )
+from .models import Tag, Folder
 
 
 class PatientForm(forms.ModelForm):
@@ -18,10 +19,12 @@ class PatientForm(forms.ModelForm):
 class ScanPairForm(forms.ModelForm):
     # Hidden field to track upload type
     cbct_upload_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    folder = forms.ModelChoiceField(queryset=Folder.objects.all().order_by('name'), required=False, widget=forms.Select(attrs={'class': 'form-control'}))
+    tags_text = forms.CharField(required=False, help_text='Comma-separated tags', widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. caseA, urgent'}))
     
     class Meta:
         model = ScanPair
-        fields = ['name', 'upper_scan_raw', 'lower_scan_raw', 'cbct', 'visibility']
+        fields = ['name', 'upper_scan_raw', 'lower_scan_raw', 'cbct', 'visibility', 'folder']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Patient X'}),
             'upper_scan_raw': forms.FileInput(attrs={'class': 'form-control', 'accept': '.stl'}),
@@ -38,6 +41,7 @@ class ScanPairForm(forms.ModelForm):
             'lower_scan_raw': 'Lower Jaw Scan (STL)',
             'cbct': 'CBCT Scan (DICOM/NIfTI/MetaImage/NRRD)',
             'visibility': 'Visibility',
+            'folder': 'Folder',
         }
     
     def __init__(self, *args, user=None, **kwargs):
@@ -94,6 +98,20 @@ class ScanPairForm(forms.ModelForm):
                 )
         
         return cleaned_data
+   
+    def save(self, commit=True):
+        instance = super().save(commit)
+        # Parse tags and assign
+        tags_text = self.cleaned_data.get('tags_text', '') or ''
+        tag_names = [t.strip() for t in tags_text.split(',') if t.strip()]
+        if commit:
+            if tag_names:
+                tags = []
+                for name in tag_names:
+                    tag, _ = Tag.objects.get_or_create(name=name)
+                    tags.append(tag)
+                instance.tags.set(tags + list(instance.tags.all()))
+        return instance
 
 
 class ClassificationForm(forms.ModelForm):
@@ -110,9 +128,11 @@ class ClassificationForm(forms.ModelForm):
 
 
 class ScanManagementForm(forms.ModelForm):
+    folder = forms.ModelChoiceField(queryset=Folder.objects.all().order_by('name'), required=False, widget=forms.Select(attrs={'class': 'form-select form-select-sm'}))
+    tags_text = forms.CharField(required=False, help_text='Comma-separated tags', widget=forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'e.g. caseA, urgent'}))
     class Meta:
         model = ScanPair
-        fields = ['name', 'visibility', 'dataset']
+        fields = ['name', 'visibility', 'dataset', 'folder']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Scan name'}),
             'visibility': forms.Select(attrs={'class': 'form-select form-select-sm'}),
@@ -122,12 +142,16 @@ class ScanManagementForm(forms.ModelForm):
             'name': 'Name',
             'visibility': 'Visibility',
             'dataset': 'Dataset',
+            'folder': 'Folder',
         }
     
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['dataset'].empty_label = "No Dataset"
         self.fields['dataset'].required = False
+        # Pre-fill tags_text from existing tags
+        if self.instance and self.instance.pk:
+            self.fields['tags_text'].initial = ', '.join(self.instance.tag_names())
         
         # Customize visibility choices based on user role
         if user and hasattr(user, 'profile'):
@@ -159,6 +183,19 @@ class ScanManagementForm(forms.ModelForm):
             raise forms.ValidationError("Scan name cannot be empty.")
         
         return cleaned_data
+   
+    def save(self, commit=True):
+        instance = super().save(commit)
+        # Update tags from text
+        tags_text = self.cleaned_data.get('tags_text', '') or ''
+        tag_names = [t.strip() for t in tags_text.split(',') if t.strip()]
+        if commit:
+            tags = []
+            for name in tag_names:
+                tag, _ = Tag.objects.get_or_create(name=name)
+                tags.append(tag)
+            instance.tags.set(tags)
+        return instance
 
 
 class DatasetForm(forms.ModelForm):

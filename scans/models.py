@@ -224,6 +224,40 @@ class Patient(models.Model):
         return f"Patient {self.patient_id}"
 
 
+# New models for organizing scans
+class Folder(models.Model):
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('name', 'parent')
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.get_full_path()
+    
+    def get_full_path(self):
+        parts = []
+        node = self
+        while node:
+            parts.append(node.name)
+            node = node.parent
+        return '/'.join(reversed(parts))
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name
+
+
 def scan_upload_path(instance, filename):
     return f"scans/patient_{instance.patient.patient_id}/raw/{filename}"
 
@@ -259,6 +293,8 @@ class ScanPair(models.Model):
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='scan_pairs')
     dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='scan_pairs')
     name = models.CharField(max_length=100, blank=True)
+    folder = models.ForeignKey('Folder', on_delete=models.SET_NULL, null=True, blank=True, related_name='scans')
+    tags = models.ManyToManyField('Tag', blank=True, related_name='scans')
     
     upper_scan_raw = models.FileField(
         upload_to=scan_upload_path,
@@ -311,6 +347,9 @@ class ScanPair(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     
+    def tag_names(self):
+        return list(self.tags.values_list('name', flat=True))
+
     def save(self, *args, **kwargs):
         if not self.name:
             self.name = f"Patient {self.patient.patient_id}"

@@ -747,19 +747,6 @@ def mark_job_completed(job_id, output_files, logs=None):
                         classification_file = file_path
                         break
                 
-                if not classification_file:
-                    for file_path in output_files.values():
-                        if file_path.endswith('_bite_classification_results.json'):
-                            classification_file = file_path
-                            break
-                
-                if not classification_file:
-                    # Fallback: try to find any JSON file
-                    for file_path in output_files.values():
-                        if file_path.endswith('.json'):
-                            classification_file = file_path
-                            break
-                
                 if classification_file and os.path.exists(classification_file):
                     logger.info(f"Found classification file: {classification_file}")
                     
