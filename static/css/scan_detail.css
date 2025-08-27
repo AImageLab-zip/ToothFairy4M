@@ -941,51 +941,7 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.edit-history-list {
-    max-height: 200px;
-    overflow-y: auto;
-    border: 1px solid #dee2e6;
-    border-radius: 0.375rem;
-    padding: 0.5rem;
-    background-color: #f8f9fa;
-}
 
-.edit-history-item {
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
-    background: white;
-    border-radius: 0.25rem;
-    border-left: 3px solid #007bff;
-}
-
-.edit-history-item:last-child {
-    margin-bottom: 0;
-}
-
-.edit-history-timestamp {
-    font-size: 0.75rem;
-    color: #6c757d;
-    font-weight: 500;
-}
-
-.edit-history-user {
-    font-size: 0.875rem;
-    color: #495057;
-    font-weight: 600;
-}
-
-.edit-history-action {
-    font-size: 0.8rem;
-    color: #28a745;
-    font-weight: 500;
-}
-
-.edit-history-text {
-    font-size: 0.875rem;
-    color: #495057;
-    margin-top: 0.25rem;
-    font-style: italic;
-}
 
 #editTranscriptionModal .modal-dialog {
     max-width: 700px;

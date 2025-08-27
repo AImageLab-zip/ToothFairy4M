@@ -646,8 +646,6 @@ class VocalCaptionRecorder {
         this.transcriptionTextarea = document.getElementById('transcriptionText');
         this.saveButton = document.getElementById('saveTranscription');
         this.revertButton = document.getElementById('revertToOriginal');
-        this.editHistorySection = document.getElementById('editHistorySection');
-        this.editHistoryList = document.getElementById('editHistoryList');
         
         // Attach event listeners
         this.saveButton.addEventListener('click', () => this.saveTranscription());
@@ -666,16 +664,24 @@ class VocalCaptionRecorder {
             return;
         }
         
-        // Get the current transcription text
-        const textElement = captionElement.querySelector('.caption-text-preview small, .caption-text-full small');
-        if (!textElement) {
+        // Get the FULL transcription text from the full view, not the preview
+        const fullTextElement = captionElement.querySelector('.caption-text-full small');
+        const previewTextElement = captionElement.querySelector('.caption-text-preview small');
+        
+        let currentText = '';
+        if (fullTextElement) {
+            // Use the full text if available
+            currentText = fullTextElement.textContent.trim();
+        } else if (previewTextElement) {
+            // Fallback to preview text if full text not available
+            currentText = previewTextElement.textContent.trim();
+        } else {
             console.error('Transcription text not found');
             return;
         }
         
         // Extract text without the [edited] badge
-        let currentText = textElement.textContent.trim();
-        const editedBadge = textElement.querySelector('.badge');
+        const editedBadge = fullTextElement ? fullTextElement.querySelector('.badge') : previewTextElement.querySelector('.badge');
         if (editedBadge) {
             currentText = currentText.replace(editedBadge.textContent, '').trim();
         }
@@ -687,16 +693,14 @@ class VocalCaptionRecorder {
             isEdited: captionElement.querySelector('.badge.bg-warning') !== null
         };
         
-        // Populate modal
+        // Populate modal with full text
         this.transcriptionTextarea.value = currentText;
         
         // Show/hide revert button based on edit status
         if (this.currentCaptionData.isEdited) {
             this.revertButton.style.display = 'block';
-            this.loadEditHistory(captionId);
         } else {
             this.revertButton.style.display = 'none';
-            this.editHistorySection.style.display = 'none';
         }
         
         // Show modal
@@ -788,29 +792,7 @@ class VocalCaptionRecorder {
         }
     }
     
-    async loadEditHistory(captionId) {
-        try {
-            // For now, we'll get the edit history from the caption element
-            // In a future version, we could fetch this from the server
-            const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
-            if (!captionElement) return;
-            
-            // Show edit history section
-            this.editHistorySection.style.display = 'block';
-            
-            // For now, just show a placeholder
-            this.editHistoryList.innerHTML = `
-                <div class="alert alert-info">
-                    <small>
-                        <i class="fas fa-info-circle me-1"></i>
-                        Edit history tracking is available. Previous versions are preserved.
-                    </small>
-                </div>
-            `;
-        } catch (error) {
-            console.error('Error loading edit history:', error);
-        }
-    }
+
     
     updateCaptionDisplay(captionId, newText, isEdited) {
         const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
