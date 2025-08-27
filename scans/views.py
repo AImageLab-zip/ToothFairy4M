@@ -1,35 +1,29 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, authenticate
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.forms import UserCreationForm
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile
 import json
 import os
 import shutil
 import logging
 from django.utils import timezone
-from django.contrib.auth.models import User
 from django.urls import reverse
 from django.conf import settings
 import uuid
 
 from .models import (
-    Patient, ScanPair, Classification, UserProfile, Dataset, VoiceCaption, ProcessingJob, FileRegistry, Invitation
+    Patient, ScanPair, Classification, VoiceCaption, ProcessingJob, Invitation
 )
+
 from .models import Tag, Folder
 from .forms import (
-    PatientForm, ScanPairForm, ClassificationForm, ScanManagementForm, DatasetForm, InvitationForm, InvitedUserCreationForm
+    PatientForm, ScanPairForm, ScanManagementForm, InvitationForm, InvitedUserCreationForm
 )
-from .processing import execute_ios_processing_command, execute_cbct_processing_command
 
-# Get logger for this module
 logger = logging.getLogger(__name__)
 
 
@@ -45,17 +39,14 @@ def register(request):
         if form.is_valid():
             invitation = Invitation.objects.get(code=form.cleaned_data['invitation_code'])
             user = form.save()
-            # Update the user profile with role from invitation (signal already created it)
             user.profile.role = invitation.role
             user.profile.save()
-            # Mark invitation as used
             invitation.used_at = timezone.now()
             invitation.used_by = user
             invitation.save()
             messages.success(request, f'Account created for {user.username}!')
             return redirect('login')
     else:
-        # Pre-fill invitation code if provided in URL
         initial = {}
         if 'code' in request.GET:
             initial['invitation_code'] = request.GET['code']
@@ -105,19 +96,23 @@ def delete_invitation(request, code):
 def scan_list(request):
     user_profile = request.user.profile
     
-    # Filter scans based on user role
+    base_queryset = ScanPair.objects.select_related(
+        'patient', 'dataset', 'uploaded_by', 'folder'
+    ).prefetch_related(
+        'classifications', 
+        'voice_captions', 
+        'voice_captions__user',
+        'tags'
+    )
+    
     if user_profile.is_admin():
-        # Admins can see all scans (public, private, debug)
-        scans = ScanPair.objects.all()
+        scans = base_queryset.all()
     elif user_profile.is_annotator():
-        # Annotators can see public and private scans, but not debug
-        scans = ScanPair.objects.filter(visibility__in=['public', 'private'])
+        scans = base_queryset.filter(visibility__in=['public', 'private'])
     elif user_profile.is_student_developer():
-        # Student developers can only see debug scans
-        scans = ScanPair.objects.filter(visibility='debug')
+        scans = base_queryset.filter(visibility='debug')
     else:
-        # Standard users can only see public scans
-        scans = ScanPair.objects.filter(visibility='public')
+        scans = base_queryset.filter(visibility='public')
     
     # Get filter parameters
     search_query = request.GET.get('search', '').strip()
@@ -125,9 +120,8 @@ def scan_list(request):
     has_cbct_filter = request.GET.get('has_cbct', '')
     has_bite_filter = request.GET.get('has_bite', '')
     has_voice_filter = request.GET.get('has_voice', '')
-    debug_filter = ''  # Debug filter removed from UI
+
     folder_id = request.GET.get('folder')
-    # Tags can be provided as multiple params (?tags=a&tags=b) or comma-separated
     tags_selected = request.GET.getlist('tags')
     if not tags_selected:
         comma = request.GET.get('tags', '')
@@ -135,7 +129,6 @@ def scan_list(request):
             tags_selected = [t.strip() for t in comma.split(',') if t.strip()]
     per_page = int(request.GET.get('per_page', 20))
     
-    # Apply basic filters
     if search_query:
         scans = scans.filter(
             Q(name__icontains=search_query) |
@@ -143,7 +136,6 @@ def scan_list(request):
             Q(scanpair_id__icontains=search_query)
         )
     
-    # Filter by folder
     if folder_id and folder_id != 'all':
         if folder_id == 'root':
             scans = scans.filter(folder__isnull=True)
@@ -152,41 +144,63 @@ def scan_list(request):
                 scans = scans.filter(folder_id=int(folder_id))
             except ValueError:
                 pass
-    # If folder_id is 'all' or not specified, show all scans (no folder filtering applied)
     
-    # Filter by tags (all selected must match)
     if tags_selected:
-        for name in tags_selected:
-            scans = scans.filter(tags__name__iexact=name)
-        scans = scans.distinct()
+        scans = scans.filter(tags__name__in=tags_selected).distinct()
     
-    # Prefetch classifications and prepare data
-    scans = scans.prefetch_related(
-        'classifications', 
-        'uploaded_by', 
-        'patient',
-        'voice_captions',
-        'tags',
-        'folder'
-    ).select_related('dataset').order_by('-uploaded_at')
+    # Apply IOS filter at database level
+    if has_ios_filter:
+        if has_ios_filter == 'yes':
+            scans = scans.filter(
+                files__file_type__in=['ios_raw_upper', 'ios_raw_lower']
+            ).distinct()
+        elif has_ios_filter == 'no':
+            scans = scans.exclude(
+                files__file_type__in=['ios_raw_upper', 'ios_raw_lower']
+            )
     
-    # Prepare classification status for each scan
+    # Apply CBCT filter at database level
+    if has_cbct_filter:
+        if has_cbct_filter == 'yes':
+            scans = scans.filter(files__file_type='cbct_raw').distinct()
+        elif has_cbct_filter == 'no':
+            scans = scans.exclude(files__file_type='cbct_raw')
+    
+    # Apply bite classification filter at database level
+    if has_bite_filter:
+        if has_bite_filter == 'yes':
+            scans = scans.filter(classifications__classifier='manual').distinct()
+        elif has_bite_filter == 'no':
+            scans = scans.exclude(classifications__classifier='manual')
+    
+    # Apply voice filter at database level
+    if has_voice_filter:
+        if has_voice_filter == 'yes':
+            scans = scans.filter(voice_captions__isnull=False).distinct()
+        elif has_voice_filter == 'no':
+            scans = scans.filter(voice_captions__isnull=True)
+    
+    scans = scans.order_by('-uploaded_at')
+    
+    # Build scan data efficiently using prefetched data
     scans_with_status = []
     for scan in scans:
-        manual_classification = scan.classifications.filter(classifier='manual').first()
-        ai_classification = scan.classifications.filter(classifier='pipeline').first()
+        # Get classifications from prefetched data
+        classifications = list(scan.classifications.all())
+        manual_classification = next((c for c in classifications if c.classifier == 'manual'), None)
+        ai_classification = next((c for c in classifications if c.classifier == 'pipeline'), None)
         
-        # Voice caption processing status
-        voice_captions = scan.voice_captions.all()
+        # Get voice captions from prefetched data
+        voice_captions = list(scan.voice_captions.all())
         voice_caption_processing = any(
             vc.processing_status in ['pending', 'processing'] for vc in voice_captions
         )
         voice_caption_processed = (
-            voice_captions.exists() and 
+            voice_captions and 
             all(vc.processing_status == 'completed' for vc in voice_captions)
         )
         
-        # Get unique voice caption annotators
+        # Get voice annotators from prefetched data
         voice_annotators = list(set(vc.user.username for vc in voice_captions))
         
         scan_data = {
@@ -204,42 +218,9 @@ def scan_list(request):
         }
         scans_with_status.append(scan_data)
     
-    if has_ios_filter:
-        if has_ios_filter == 'yes':
-            scans_with_status = [s for s in scans_with_status if s['scan'].is_ios_processed()]
-        elif has_ios_filter == 'no':
-            scans_with_status = [s for s in scans_with_status if not s['scan'].is_ios_processed()]
-    
-    if has_cbct_filter:
-        if has_cbct_filter == 'yes':
-            scans_with_status = [s for s in scans_with_status if s['scan'].is_cbct_processed()]
-        elif has_cbct_filter == 'no':
-            scans_with_status = [s for s in scans_with_status if not s['scan'].is_cbct_processed()]
-    
-    if has_bite_filter:
-        if has_bite_filter == 'yes':
-            scans_with_status = [s for s in scans_with_status if s['has_manual']]
-        elif has_bite_filter == 'no':
-            scans_with_status = [s for s in scans_with_status if not s['has_manual']]
-    
-    if has_voice_filter:
-        if has_voice_filter == 'yes':
-            scans_with_status = [s for s in scans_with_status if s['voice_annotators']]
-        elif has_voice_filter == 'no':
-            scans_with_status = [s for s in scans_with_status if not s['voice_annotators']]
-    
-    # Apply debug filter (only for admins)
-    if user_profile.is_admin() and debug_filter:
-        if debug_filter == 'debug_only':
-            scans_with_status = [s for s in scans_with_status if s['scan'].visibility == 'debug']
-        elif debug_filter == 'no_debug':
-            scans_with_status = [s for s in scans_with_status if s['scan'].visibility != 'debug']
-    
-    # Single-level folders for UI
     folders = Folder.objects.filter(parent__isnull=True).order_by('name')
     all_tags = Tag.objects.all().order_by('name')
     
-    # Pagination
     paginator = Paginator(scans_with_status, per_page)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -273,66 +254,51 @@ def upload_scan(request):
         patient_form = PatientForm(request.POST)
         scan_form = ScanPairForm(request.POST, request.FILES, user=request.user)
         
-        # Check for folder upload before form validation
         cbct_folder_files = request.FILES.getlist('cbct_folder_files')
         cbct_upload_type = request.POST.get('cbct_upload_type', 'file')
         
-        # If folder upload is selected, temporarily set a dummy value to pass validation
         if cbct_upload_type == 'folder' and cbct_folder_files:
-            # Create a temporary request.FILES with a dummy cbct file to pass form validation
             from django.core.files.uploadedfile import SimpleUploadedFile
             dummy_file = SimpleUploadedFile("dummy.dcm", b"dummy", content_type="application/dicom")
-            # Create a mutable copy of FILES
             mutable_files = request.FILES.copy()
             mutable_files['cbct'] = dummy_file
-            # Create a new form with modified files
             scan_form = ScanPairForm(request.POST, mutable_files, user=request.user)
         else:
             scan_form = ScanPairForm(request.POST, request.FILES, user=request.user)
         
         if scan_form.is_valid():
-            # Create patient first (no form data needed)
             patient = Patient.objects.create()
             
-            # Extract files from form before saving
             upper_scan_file = scan_form.cleaned_data.get('upper_scan_raw')
             lower_scan_file = scan_form.cleaned_data.get('lower_scan_raw')
             cbct_file = scan_form.cleaned_data.get('cbct')
             
-            # Check for folder upload (re-get from request.FILES since we modified it)
             cbct_folder_files = request.FILES.getlist('cbct_folder_files')
             
-            # If we used a dummy file for validation, clear it
             if cbct_upload_type == 'folder' and cbct_folder_files:
                 cbct_file = None
             
-            # Save scan pair without file fields (they'll be stored in /dataset)
             scan_pair = scan_form.save(commit=False)
             scan_pair.patient = patient
             scan_pair.uploaded_by = request.user
             
-            # Force debug visibility for Student Developers
             if user_profile.is_student_developer():
                 scan_pair.visibility = 'debug'
             
-            # Clear file fields since we'll store them in /dataset instead
             scan_pair.upper_scan_raw = None
             scan_pair.lower_scan_raw = None
             scan_pair.cbct = None
             scan_pair.save()
             
-            # Apply folder after instance exists
             folder = scan_form.cleaned_data.get('folder')
             if folder:
                 scan_pair.folder = folder
                 scan_pair.save()
             
-            # Now process files using the new deferred processing system
             try:
                 from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
                 processing_jobs = []
                 
-                # Handle IOS files if provided
                 if upper_scan_file or lower_scan_file:
                     scan_pair.ios_processing_status = 'processing'
                     scan_pair.save()
@@ -343,7 +309,6 @@ def upload_scan(request):
                     if result['bite_classification_job']:
                         processing_jobs.append(f"Bite Classification Job #{result['bite_classification_job'].id} (waiting for IOS)")
                 
-                # Handle CBCT file or folder if provided
                 if cbct_file:
                     scan_pair.cbct_processing_status = 'processing'  
                     scan_pair.save()
@@ -355,7 +320,6 @@ def upload_scan(request):
                     from .models import validate_cbct_folder
                     
                     try:
-                        # Validate folder first
                         validate_cbct_folder(cbct_folder_files)
                         
                         scan_pair.cbct_processing_status = 'processing'
@@ -365,7 +329,7 @@ def upload_scan(request):
                         processing_jobs.append(f"CBCT Folder Job #{processing_job.id}")
                     except Exception as e:
                         messages.error(request, f'Invalid CBCT folder: {e}')
-                        scan_pair.delete()  # Clean up if folder validation fails
+                        scan_pair.delete()
                         patient.delete()
                         return render(request, 'scans/upload_scan.html', {
                             'patient_form': patient_form,
@@ -386,7 +350,6 @@ def upload_scan(request):
         patient_form = PatientForm()
         scan_form = ScanPairForm(user=request.user)
     
-    # Get available folders for the dropdown
     folders = Folder.objects.filter(parent__isnull=True).order_by('name')
     
     context = {
@@ -402,7 +365,6 @@ def scan_detail(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions based on scan visibility and user role
     can_view = False
     if user_profile.is_admin():
         can_view = True
@@ -417,14 +379,11 @@ def scan_detail(request, scanpair_id):
         messages.error(request, 'You do not have permission to view this scan.')
         return redirect('scan_list')
     
-    # Get AI and manual classifications
     ai_classification = scan_pair.classifications.filter(classifier='pipeline').first()
     manual_classification = scan_pair.classifications.filter(classifier='manual').first()
     
-    # Initialize scan management form
     management_form = ScanManagementForm(instance=scan_pair, user=request.user)
     
-    # Check for CBCT availability in FileRegistry
     has_cbct = False
     try:
         raw_cbct = scan_pair.get_cbct_raw_file()
@@ -435,7 +394,6 @@ def scan_detail(request, scanpair_id):
     except:
         pass
     
-    # Handle POST requests - check permissions based on scan type and user role
     can_modify = False
     if user_profile.is_admin():
         can_modify = True
@@ -448,7 +406,6 @@ def scan_detail(request, scanpair_id):
         action = request.POST.get('action')
         
         if action == 'accept_ai' and ai_classification:
-            # Create manual classification based on AI prediction
             Classification.objects.create(
                 scanpair=scan_pair,
                 classifier='manual',
@@ -463,7 +420,6 @@ def scan_detail(request, scanpair_id):
             return redirect('scan_detail', scanpair_id=scanpair_id)
         
         elif action == 'update_management':
-            # Handle scan management updates (visibility and dataset)
             management_form = ScanManagementForm(request.POST, instance=scan_pair, user=request.user)
             if management_form.is_valid():
                 management_form.save()
@@ -471,12 +427,10 @@ def scan_detail(request, scanpair_id):
                 return redirect('scan_detail', scanpair_id=scanpair_id)
         
         elif action == 'update_files':
-            # Handle file uploads
             updated_files = []
             reprocess_ios = False
             reprocess_cbct = False
             
-            # Check for file uploads without directly assigning to model fields
             has_upper_scan = 'upper_scan' in request.FILES
             has_lower_scan = 'lower_scan' in request.FILES
             has_cbct_file = 'cbct' in request.FILES
@@ -499,20 +453,15 @@ def scan_detail(request, scanpair_id):
                 reprocess_cbct = True
             
             if updated_files:
-                # Import the new file utilities
                 from .file_utils import save_cbct_to_dataset, save_ios_to_dataset
                 
-                # Reset processing status for updated scan types
                 if reprocess_ios and (has_upper_scan or has_lower_scan):
-                    # Clear existing classifications to trigger reprocessing
                     scan_pair.classifications.filter(classifier='pipeline').delete()
-                    # Reset normalized scans
                     scan_pair.upper_scan_norm = None
                     scan_pair.lower_scan_norm = None
                     scan_pair.ios_processing_status = 'processing'
                     scan_pair.save()
                     
-                    # Save IOS files to dataset and create processing job
                     try:
                         result = save_ios_to_dataset(
                             scan_pair, 
@@ -531,12 +480,10 @@ def scan_detail(request, scanpair_id):
                     scan_pair.save()
                     
                     if has_cbct_folder:
-                        # Handle folder upload
                         try:
                             from .file_utils import save_cbct_folder_to_dataset
                             from .models import validate_cbct_folder
                             
-                            # Validate folder first
                             cbct_folder_files = request.FILES.getlist('cbct_folder_files')
                             validate_cbct_folder(cbct_folder_files)
                             
@@ -545,14 +492,12 @@ def scan_detail(request, scanpair_id):
                         except Exception as e:
                             messages.error(request, f'Error uploading CBCT folder: {e}')
                     elif has_cbct_file:
-                        # Handle single file upload
                         try:
                             file_path, processing_job = save_cbct_to_dataset(scan_pair, request.FILES['cbct'])
                             messages.success(request, f'CBCT uploaded and queued for processing (Job #{processing_job.id})')
                         except Exception as e:
                             messages.error(request, f'Error uploading CBCT: {e}')
                 
-                # Success message
                 files_str = ', '.join(updated_files)
                 messages.success(request, f'Successfully uploaded {files_str}! Files are queued for processing.')
                 return redirect('scan_detail', scanpair_id=scanpair_id)
@@ -566,7 +511,7 @@ def scan_detail(request, scanpair_id):
         'manual_classification': manual_classification,
         'user_profile': user_profile,
         'management_form': management_form,
-        'has_cbct': has_cbct,  # Add has_cbct to context
+        'has_cbct': has_cbct,
     }
     return render(request, 'scans/scan_detail.html', context)
 
@@ -581,7 +526,6 @@ def update_classification(request, scanpair_id):
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
         
-        # Check permissions based on scan type and user role
         can_classify = False
         if user_profile.is_admin():
             can_classify = True
@@ -597,12 +541,10 @@ def update_classification(request, scanpair_id):
         field = data.get('field')
         value = data.get('value')
         
-        # Validate field and value
         valid_fields = ['sagittal_left', 'sagittal_right', 'vertical', 'transverse', 'midline']
         if field not in valid_fields:
             return JsonResponse({'error': 'Invalid field'}, status=400)
         
-        # Get or create manual classification
         manual_classification, created = Classification.objects.get_or_create(
             scanpair=scan_pair,
             classifier='manual',
@@ -616,7 +558,6 @@ def update_classification(request, scanpair_id):
             }
         )
         
-        # If created, copy AI values as defaults
         if created:
             ai_classification = scan_pair.classifications.filter(classifier='pipeline').first()
             if ai_classification:
@@ -626,7 +567,6 @@ def update_classification(request, scanpair_id):
                 manual_classification.transverse = ai_classification.transverse
                 manual_classification.midline = ai_classification.midline
         
-        # Update the specific field
         setattr(manual_classification, field, value)
         manual_classification.save()
         
@@ -651,7 +591,6 @@ def update_scan_name(request, scanpair_id):
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
         
-        # Check permissions based on scan type and user role
         can_modify = False
         if user_profile.is_admin():
             can_modify = True
@@ -683,7 +622,6 @@ def scan_viewer_data(request, scanpair_id):
     scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
     user_profile = request.user.profile
     
-    # Check permissions based on scan visibility and user role
     can_view = False
     if user_profile.is_admin():
         can_view = True
@@ -1010,6 +948,76 @@ def delete_voice_caption(request, scanpair_id, caption_id):
 
 
 @login_required
+@require_POST
+def edit_voice_caption_transcription(request, scanpair_id, caption_id):
+    """Edit the transcription of a voice caption"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    voice_caption = get_object_or_404(VoiceCaption, id=caption_id, scanpair=scan_pair)
+    
+    # Check permissions
+    user_profile = request.user.profile
+    is_owner = voice_caption.user == request.user
+    is_admin = user_profile.is_admin
+    is_annotator = user_profile.is_annotator
+    
+    # Only owners, admins, or annotators can edit transcriptions
+    if not (is_owner or is_admin or is_annotator):
+        return JsonResponse({
+            'error': 'You do not have permission to edit this transcription.',
+            'code': 'permission_denied'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        action = data.get('action')
+        
+        if action == 'edit':
+            new_text = data.get('text', '').strip()
+            if not new_text:
+                return JsonResponse({'error': 'Transcription text cannot be empty'}, status=400)
+            
+            # Edit the transcription
+            voice_caption.edit_transcription(new_text, request.user)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Transcription updated successfully',
+                'caption': {
+                    'id': voice_caption.id,
+                    'text_caption': voice_caption.text_caption,
+                    'is_edited': voice_caption.is_edited,
+                    'edit_history': voice_caption.edit_history
+                }
+            })
+            
+        elif action == 'revert':
+            # Revert to original transcription
+            voice_caption.revert_to_original(request.user)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Transcription reverted to original',
+                'caption': {
+                    'id': voice_caption.id,
+                    'text_caption': voice_caption.text_caption,
+                    'is_edited': voice_caption.is_edited,
+                    'edit_history': voice_caption.edit_history
+                }
+            })
+            
+        else:
+            return JsonResponse({'error': 'Invalid action. Use "edit" or "revert"'}, status=400)
+            
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
 def scan_panoramic_data(request, scanpair_id):
     """API endpoint to serve panoramic image data"""
     
@@ -1194,6 +1202,133 @@ def delete_scan(request, scanpair_id):
         
     except Exception as e:
         logger.error(f"Error deleting scan {scanpair_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def bulk_delete_scans(request):
+    """Bulk delete multiple scans and all associated files"""
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+        scan_ids = data.get('scan_ids', [])
+        
+        if not isinstance(scan_ids, list) or not scan_ids:
+            return JsonResponse({'error': 'scan_ids list is required'}, status=400)
+        
+        user_profile = request.user.profile
+        
+        # Check permissions - only admins can bulk delete
+        if not user_profile.is_admin():
+            return JsonResponse({
+                'success': False, 
+                'error': 'You do not have permission to bulk delete scans.'
+            }, status=403)
+        
+        # Get the scans to delete
+        scans_to_delete = ScanPair.objects.filter(scanpair_id__in=scan_ids)
+        
+        if not scans_to_delete.exists():
+            return JsonResponse({'error': 'No valid scans found to delete'}, status=404)
+        
+        deleted_count = 0
+        failed_deletions = []
+        
+        for scan_pair in scans_to_delete:
+            try:
+                patient = scan_pair.patient
+                
+                # Delete all associated files from filesystem
+                # Delete IOS files
+                if scan_pair.upper_scan_raw:
+                    try:
+                        os.remove(scan_pair.upper_scan_raw.path)
+                    except:
+                        pass
+                if scan_pair.lower_scan_raw:
+                    try:
+                        os.remove(scan_pair.lower_scan_raw.path)
+                    except:
+                        pass
+                if scan_pair.upper_scan_norm:
+                    try:
+                        os.remove(scan_pair.upper_scan_norm.path)
+                    except:
+                        pass
+                if scan_pair.lower_scan_norm:
+                    try:
+                        os.remove(scan_pair.lower_scan_norm.path)
+                    except:
+                        pass
+                        
+                # Delete CBCT files
+                if scan_pair.cbct:
+                    try:
+                        os.remove(scan_pair.cbct.path)
+                    except:
+                        pass
+                        
+                # Delete from FileRegistry
+                from .models import FileRegistry
+                file_entries = FileRegistry.objects.filter(scanpair=scan_pair)
+                for entry in file_entries:
+                    try:
+                        if os.path.exists(entry.file_path):
+                            os.remove(entry.file_path)
+                    except:
+                        pass
+                file_entries.delete()
+                
+                # Delete voice captions and their files
+                for voice_caption in scan_pair.voice_captions.all():
+                    # Delete associated files
+                    voice_files = FileRegistry.objects.filter(voice_caption=voice_caption)
+                    for file_entry in voice_files:
+                        try:
+                            if os.path.exists(file_entry.file_path):
+                                os.remove(file_entry.file_path)
+                        except:
+                            pass
+                    voice_files.delete()
+                    
+                # Delete the scan pair (this will cascade delete classifications, voice captions, etc.)
+                scan_pair.delete()
+                
+                # Check if patient has any other scans
+                if not patient.scan_pairs.exists():
+                    # Delete patient directory
+                    patient_dir = os.path.join(settings.MEDIA_ROOT, 'scans', f'patient_{patient.patient_id}')
+                    if os.path.exists(patient_dir):
+                        shutil.rmtree(patient_dir, ignore_errors=True)
+                    # Delete patient
+                    patient.delete()
+                
+                deleted_count += 1
+                
+            except Exception as e:
+                logger.error(f"Error deleting scan {scan_pair.scanpair_id}: {e}")
+                failed_deletions.append({
+                    'scanpair_id': scan_pair.scanpair_id,
+                    'error': str(e)
+                })
+        
+        if failed_deletions:
+            return JsonResponse({
+                'success': True,
+                'message': f'Successfully deleted {deleted_count} scans. {len(failed_deletions)} scans failed to delete.',
+                'deleted_count': deleted_count,
+                'failed_deletions': failed_deletions
+            })
+        else:
+            return JsonResponse({
+                'success': True,
+                'message': f'Successfully deleted {deleted_count} scans and all associated data.',
+                'deleted_count': deleted_count
+            })
+        
+    except Exception as e:
+        logger.error(f"Error in bulk delete: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
@@ -1552,15 +1687,12 @@ def update_nifti_metadata(request, scanpair_id):
         if not scan_pair.has_cbct_scan():
             return JsonResponse({'error': 'No CBCT scan available'}, status=404)
         
-        # Get CBCT file path - prioritize processed NIFTI files
         cbct_path = None
         
-        # First, try to get processed CBCT (converted .nii.gz)
         try:
             processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
             if processed_entry:
                 if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
-                    # New structure: look for converted volume in metadata
                     files_data = processed_entry.metadata.get('files', {})
                     volume_data = files_data.get('volume_nifti', {})
                     volume_path = volume_data.get('path')
@@ -1569,16 +1701,13 @@ def update_nifti_metadata(request, scanpair_id):
         except:
             pass
         
-        # Fallback to raw CBCT if no processed version available
         if not cbct_path:
             try:
                 cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
                 if cbct_entry and os.path.exists(cbct_entry.file_path):
-                    # Only use raw file if it's already in .nii.gz format
                     if cbct_entry.file_path.endswith('.nii.gz'):
                         cbct_path = cbct_entry.file_path
                     else:
-                        # Raw file is a directory or non-NIFTI file
                         if os.path.isdir(cbct_entry.file_path):
                             return JsonResponse({
                                 'error': 'CBCT needs to be processed first',
@@ -1608,17 +1737,13 @@ def update_nifti_metadata(request, scanpair_id):
         import numpy as np
         
         try:
-            # Create backup first
             backup_path = cbct_path + '.backup'
             shutil.copy2(cbct_path, backup_path)
             
-            # Load the NIFTI file
             nifti_img = nib.load(cbct_path)
             
-            # Get current affine
             current_affine = nifti_img.affine.copy()
             
-            # Update affine matrix if provided
             if new_affine:
                 try:
                     new_affine_array = np.array(new_affine, dtype=np.float64)
@@ -1628,7 +1753,6 @@ def update_nifti_metadata(request, scanpair_id):
                 except Exception as e:
                     return JsonResponse({'error': f'Invalid affine matrix: {str(e)}'}, status=400)
             
-            # Update origin if provided (modifies translation in affine)
             elif new_origin:
                 try:
                     if len(new_origin) != 3:
@@ -1637,17 +1761,11 @@ def update_nifti_metadata(request, scanpair_id):
                 except Exception as e:
                     return JsonResponse({'error': f'Invalid origin: {str(e)}'}, status=400)
             
-            # Create new NIFTI image with updated affine
             new_nifti = nib.Nifti1Image(nifti_img.get_fdata(), current_affine, nifti_img.header)
             
-            # Save the updated file
             nib.save(new_nifti, cbct_path)
-            
-            # Remove backup if successful
             os.remove(backup_path)
-            
-            # Log the change
-            from .models import ProcessingJob
+
             ProcessingJob.objects.create(
                 scanpair=scan_pair,
                 job_type='metadata_update',

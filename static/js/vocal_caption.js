@@ -77,11 +77,19 @@ class VocalCaptionRecorder {
                 this.deleteCaption(captionId);
             }
             
+            if (e.target.closest('.btn-edit-caption')) {
+                const captionId = e.target.closest('.btn-edit-caption').dataset.captionId;
+                this.editCaption(captionId);
+            }
+            
             if (e.target.closest('.caption-toggle-btn')) {
                 const captionId = e.target.closest('.caption-toggle-btn').dataset.captionId;
                 this.toggleCaption(captionId);
             }
         });
+        
+        // Initialize edit modal functionality
+        this.initializeEditModal();
     }
     
     getCurrentModality() {
@@ -630,6 +638,249 @@ class VocalCaptionRecorder {
             button.title = 'Play';
             icon.className = 'fas fa-play';
             icon.style.fontSize = '0.75rem';
+        }
+    }
+    
+    initializeEditModal() {
+        this.editModal = new bootstrap.Modal(document.getElementById('editTranscriptionModal'));
+        this.transcriptionTextarea = document.getElementById('transcriptionText');
+        this.saveButton = document.getElementById('saveTranscription');
+        this.revertButton = document.getElementById('revertToOriginal');
+        this.editHistorySection = document.getElementById('editHistorySection');
+        this.editHistoryList = document.getElementById('editHistoryList');
+        
+        // Attach event listeners
+        this.saveButton.addEventListener('click', () => this.saveTranscription());
+        this.revertButton.addEventListener('click', () => this.revertTranscription());
+        
+        // Store current caption data
+        this.currentCaptionId = null;
+        this.currentCaptionData = null;
+    }
+    
+    editCaption(captionId) {
+        // Find the caption element and extract data
+        const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
+        if (!captionElement) {
+            console.error('Caption element not found');
+            return;
+        }
+        
+        // Get the current transcription text
+        const textElement = captionElement.querySelector('.caption-text-preview small, .caption-text-full small');
+        if (!textElement) {
+            console.error('Transcription text not found');
+            return;
+        }
+        
+        // Extract text without the [edited] badge
+        let currentText = textElement.textContent.trim();
+        const editedBadge = textElement.querySelector('.badge');
+        if (editedBadge) {
+            currentText = currentText.replace(editedBadge.textContent, '').trim();
+        }
+        
+        // Store current caption data
+        this.currentCaptionId = captionId;
+        this.currentCaptionData = {
+            text: currentText,
+            isEdited: captionElement.querySelector('.badge.bg-warning') !== null
+        };
+        
+        // Populate modal
+        this.transcriptionTextarea.value = currentText;
+        
+        // Show/hide revert button based on edit status
+        if (this.currentCaptionData.isEdited) {
+            this.revertButton.style.display = 'block';
+            this.loadEditHistory(captionId);
+        } else {
+            this.revertButton.style.display = 'none';
+            this.editHistorySection.style.display = 'none';
+        }
+        
+        // Show modal
+        this.editModal.show();
+    }
+    
+    async saveTranscription() {
+        if (!this.currentCaptionId) return;
+        
+        const newText = this.transcriptionTextarea.value.trim();
+        if (!newText) {
+            alert('Transcription text cannot be empty');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/scan/${window.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    action: 'edit',
+                    text: newText
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Update the caption display
+                this.updateCaptionDisplay(this.currentCaptionId, newText, true);
+                
+                // Show success message
+                this.showSavedIndicator();
+                
+                // Close modal
+                this.editModal.hide();
+                
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to save transcription');
+            }
+        } catch (error) {
+            console.error('Error saving transcription:', error);
+            alert('Failed to save transcription: ' + error.message);
+        }
+    }
+    
+    async revertTranscription() {
+        if (!this.currentCaptionId) return;
+        
+        if (!confirm('Are you sure you want to revert to the original transcription? This action cannot be undone.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/scan/${window.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    action: 'revert'
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Update the caption display
+                this.updateCaptionDisplay(this.currentCaptionId, result.caption.text_caption, false);
+                
+                // Show success message
+                this.showSavedIndicator();
+                
+                // Close modal
+                this.editModal.hide();
+                
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to revert transcription');
+            }
+        } catch (error) {
+            console.error('Error reverting transcription:', error);
+            alert('Failed to revert transcription: ' + error.message);
+        }
+    }
+    
+    async loadEditHistory(captionId) {
+        try {
+            // For now, we'll get the edit history from the caption element
+            // In a future version, we could fetch this from the server
+            const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
+            if (!captionElement) return;
+            
+            // Show edit history section
+            this.editHistorySection.style.display = 'block';
+            
+            // For now, just show a placeholder
+            this.editHistoryList.innerHTML = `
+                <div class="alert alert-info">
+                    <small>
+                        <i class="fas fa-info-circle me-1"></i>
+                        Edit history tracking is available. Previous versions are preserved.
+                    </small>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error loading edit history:', error);
+        }
+    }
+    
+    updateCaptionDisplay(captionId, newText, isEdited) {
+        const captionElement = document.querySelector(`[data-caption-id="${captionId}"]`);
+        if (!captionElement) return;
+        
+        // Update both preview and full text
+        const previewText = captionElement.querySelector('.caption-text-preview small');
+        const fullText = captionElement.querySelector('.caption-text-full small');
+        
+        if (previewText) {
+            let displayText = newText;
+            if (newText.length > 100) {
+                displayText = newText.substring(0, 100) + '...';
+            }
+            
+            // Remove existing edited badge if present
+            const existingBadge = previewText.querySelector('.badge');
+            if (existingBadge) {
+                existingBadge.remove();
+            }
+            
+            previewText.textContent = displayText;
+            
+            // Add edited badge if needed
+            if (isEdited) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-warning ms-1';
+                badge.title = 'Edited transcription';
+                badge.textContent = 'edited';
+                previewText.appendChild(badge);
+            }
+            
+            // Update more/less button visibility
+            const moreButton = captionElement.querySelector('.caption-toggle-btn');
+            if (moreButton) {
+                if (newText.length > 100) {
+                    moreButton.style.display = 'inline';
+                } else {
+                    moreButton.style.display = 'none';
+                }
+            }
+        }
+        
+        if (fullText) {
+            // Remove existing edited badge if present
+            const existingBadge = fullText.querySelector('.badge');
+            if (existingBadge) {
+                existingBadge.remove();
+            }
+            
+            fullText.textContent = newText;
+            
+            // Add edited badge if needed
+            if (isEdited) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-warning ms-1';
+                badge.title = 'Edited transcription';
+                badge.textContent = 'edited';
+                fullText.appendChild(badge);
+            }
+        }
+    }
+    
+    showSavedIndicator() {
+        const indicator = document.getElementById('savingIndicator');
+        if (indicator) {
+            indicator.style.display = 'block';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 2000);
         }
     }
 }

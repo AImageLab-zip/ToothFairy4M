@@ -70,6 +70,11 @@
                                             <i class="fas fa-play" style="font-size: 0.75rem;"></i>
                                         </button>
                                         {% endif %}
+                                        {% if caption.is_processed and caption.text_caption and user_profile.is_annotator or caption.user == request.user %}
+                                        <button class="btn btn-outline-secondary btn-sm btn-edit-caption" data-caption-id="{{ caption.id }}" title="Edit">
+                                            <i class="fas fa-edit" style="font-size: 0.75rem;"></i>
+                                        </button>
+                                        {% endif %}
                                         {% if user_profile.is_annotator or caption.user == request.user %}
                                         <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="{{ caption.id }}" title="Delete">
                                             <i class="fas fa-trash" style="font-size: 0.75rem;"></i>
@@ -92,7 +97,12 @@
                                     {% elif caption.is_processed and caption.text_caption %}
                                         <div class="caption-text-display">
                                             <div class="caption-text-preview">
-                                                <small class="text-dark">{{ caption.text_caption|truncatechars:100 }}</small>
+                                                <small class="text-dark">
+                                                    {{ caption.text_caption|truncatechars:100 }}
+                                                    {% if caption.is_edited %}
+                                                        <span class="badge bg-warning ms-1" title="Edited transcription">edited</span>
+                                                    {% endif %}
+                                                </small>
                                                 {% if caption.text_caption|length > 100 %}
                                                     <button class="btn btn-link btn-sm p-0 caption-toggle-btn" 
                                                             data-caption-id="{{ caption.id }}">
@@ -101,7 +111,12 @@
                                                 {% endif %}
                                             </div>
                                             <div class="caption-text-full" id="caption-full-{{ caption.id }}" style="display: none;">
-                                                <small class="text-dark">{{ caption.text_caption }}</small>
+                                                <small class="text-dark">
+                                                    {{ caption.text_caption }}
+                                                    {% if caption.is_edited %}
+                                                        <span class="badge bg-warning ms-1" title="Edited transcription">edited</span>
+                                                    {% endif %}
+                                                </small>
                                                 <button class="btn btn-link btn-sm p-0 caption-toggle-btn" 
                                                         data-caption-id="{{ caption.id }}">
                                                     <small class="text-primary">less</small>
@@ -126,6 +141,50 @@
                         </p>
                     </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Transcription Modal -->
+<div class="modal fade" id="editTranscriptionModal" tabindex="-1" aria-labelledby="editTranscriptionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editTranscriptionModalLabel">
+                    <i class="fas fa-edit me-2"></i>Edit Transcription
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editTranscriptionForm">
+                    <div class="mb-3">
+                        <label for="transcriptionText" class="form-label">Transcription Text</label>
+                        <textarea class="form-control" id="transcriptionText" rows="6" required></textarea>
+                        <div class="form-text">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                This will override the original transcription. The original will be preserved and can be restored if needed.
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3" id="editHistorySection" style="display: none;">
+                        <label class="form-label">Edit History</label>
+                        <div class="edit-history-list" id="editHistoryList">
+                            <!-- Edit history will be populated here -->
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="revertToOriginal" style="display: none;">
+                    <i class="fas fa-undo me-1"></i>Revert to Original
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveTranscription">
+                    <i class="fas fa-save me-1"></i>Save Changes
+                </button>
             </div>
         </div>
     </div>

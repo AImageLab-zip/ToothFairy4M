@@ -220,6 +220,11 @@ class Patient(models.Model):
     patient_id = models.AutoField(primary_key=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    class Meta:
+        indexes = [
+            models.Index(fields=['patient_id']),
+        ]
+    
     def __str__(self):
         return f"Patient {self.patient_id}"
 
@@ -234,6 +239,10 @@ class Folder(models.Model):
     class Meta:
         unique_together = ('name', 'parent')
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['parent']),
+            models.Index(fields=['name']),
+        ]
     
     def __str__(self):
         return self.get_full_path()
@@ -253,6 +262,9 @@ class Tag(models.Model):
     
     class Meta:
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+        ]
     
     def __str__(self):
         return self.name
@@ -372,6 +384,17 @@ class ScanPair(models.Model):
     
     def __str__(self):
         return f"ScanPair {self.scanpair_id} - {self.name}"
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['visibility']),
+            models.Index(fields=['uploaded_at']),
+            models.Index(fields=['folder']),
+            models.Index(fields=['name']),
+            models.Index(fields=['visibility', 'uploaded_at']),
+            models.Index(fields=['folder', 'visibility']),
+        ]
+        ordering = ['-uploaded_at']
     
     def has_ios_scans(self):
         """Check if both upper and lower scans are uploaded"""
@@ -574,6 +597,10 @@ class Classification(models.Model):
     
     class Meta:
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['scanpair', 'classifier']),
+            models.Index(fields=['classifier']),
+        ]
     
     def __str__(self):
         return f"Classification {self.id} - {self.get_classifier_display()} - ScanPair {self.scanpair.scanpair_id}"
@@ -598,12 +625,20 @@ class VoiceCaption(models.Model):
     # Note: audio_file now stored in FileRegistry, not directly in model
     duration = models.FloatField(help_text='Duration of audio recording in seconds')
     text_caption = models.TextField(blank=True, null=True, help_text='Transcribed text from audio')
+    original_text_caption = models.TextField(blank=True, null=True, help_text='Original transcription before any edits')
+    is_edited = models.BooleanField(default=False, help_text='Whether the transcription has been manually edited')
+    edit_history = models.JSONField(default=list, blank=True, help_text='History of edits with timestamps and users')
     processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS_CHOICES, default='pending', help_text='Status of speech-to-text processing')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['scanpair', 'processing_status']),
+            models.Index(fields=['processing_status']),
+            models.Index(fields=['user']),
+        ]
     
     def get_display_duration(self):
         """Return a human-readable duration string"""
@@ -639,6 +674,73 @@ class VoiceCaption(models.Model):
             return "Processing failed"
         else:
             return "Preprocessing audio..."
+    
+    def get_display_text_caption(self):
+        """Get the text caption to display, showing if it's edited"""
+        if self.is_processed():
+            text = self.text_caption
+            if self.is_edited:
+                text += " [edited]"
+            return text
+        return self.get_processing_display_text()
+    
+    def save_original_transcription(self):
+        """Save the current transcription as original if not already set"""
+        if self.text_caption and not self.original_text_caption:
+            self.original_text_caption = self.text_caption
+    
+    def edit_transcription(self, new_text, user):
+        """Edit the transcription and track the change"""
+        if not self.is_processed():
+            raise ValueError("Cannot edit transcription that is not yet processed")
+        
+        # Save original transcription if this is the first edit
+        if not self.original_text_caption:
+            self.original_text_caption = self.text_caption
+        
+        # Add to edit history
+        edit_record = {
+            'timestamp': timezone.now().isoformat(),
+            'user_id': user.id,
+            'username': user.username,
+            'previous_text': self.text_caption,
+            'new_text': new_text
+        }
+        
+        if not self.edit_history:
+            self.edit_history = []
+        
+        self.edit_history.append(edit_record)
+        
+        # Update the transcription
+        self.text_caption = new_text
+        self.is_edited = True
+        self.save()
+    
+    def revert_to_original(self, user):
+        """Revert transcription to the original version"""
+        if not self.original_text_caption:
+            raise ValueError("No original transcription to revert to")
+        
+        # Add revert action to edit history
+        revert_record = {
+            'timestamp': timezone.now().isoformat(),
+            'user_id': user.id,
+            'username': user.username,
+            'action': 'reverted_to_original',
+            'previous_text': self.text_caption,
+            'reverted_text': self.original_text_caption
+        }
+        
+        if not self.edit_history:
+            self.edit_history = []
+        
+        self.edit_history.append(revert_record)
+        
+        # Revert the transcription
+        self.text_caption = self.original_text_caption
+        self.is_edited = False
+        self.save()
     
     def get_audio_file(self):
         """Get audio file from FileRegistry"""

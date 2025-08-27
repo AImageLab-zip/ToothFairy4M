@@ -11,11 +11,13 @@ urlpatterns = [
     path('scan/<int:scanpair_id>/update-name/', views.update_scan_name, name='update_scan_name'),
     path('scan/<int:scanpair_id>/voice-caption/', views.upload_voice_caption, name='upload_voice_caption'),
     path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/delete/', views.delete_voice_caption, name='delete_voice_caption'),
+    path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/edit/', views.edit_voice_caption_transcription, name='edit_voice_caption_transcription'),
     path('scan/<int:scanpair_id>/tags/add/', views.add_scan_tag, name='add_scan_tag'),
     path('scan/<int:scanpair_id>/tags/remove/', views.remove_scan_tag, name='remove_scan_tag'),
     
     # Admin endpoints
     path('scan/<int:scanpair_id>/delete/', views.delete_scan, name='delete_scan'),
+    path('scans/bulk-delete/', views.bulk_delete_scans, name='bulk_delete_scans'),
     path('scan/<int:scanpair_id>/rerun-processing/', views.rerun_processing, name='rerun_processing'),
     path('admin/control-panel/', views.admin_control_panel, name='admin_control_panel'),
     

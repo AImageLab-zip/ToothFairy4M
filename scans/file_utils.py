@@ -733,6 +733,8 @@ def mark_job_completed(job_id, output_files, logs=None):
                     # Set a placeholder text to indicate processing completed but no text found
                     job.voice_caption.text_caption = ""
             
+            # Save the original transcription when processing is first completed
+            job.voice_caption.save_original_transcription()
             job.voice_caption.save()
             
         elif job.scanpair and job.job_type == 'bite_classification':

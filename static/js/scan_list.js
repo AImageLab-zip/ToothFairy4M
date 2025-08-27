@@ -448,6 +448,45 @@ function initBulkSelection() {
             });
         });
     }
+
+    // Add bulk delete functionality
+    const deleteBtn = document.getElementById('btnDeleteSelected');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function() {
+            const ids = Array.from(document.querySelectorAll('.row-select:checked')).map(cb => parseInt(cb.value));
+            if (!ids.length) return;
+            
+            // Show confirmation dialog
+            const count = ids.length;
+            const confirmMessage = `Are you sure you want to delete ${count} scan${count > 1 ? 's' : ''}? This action cannot be undone and will permanently remove all associated data and files.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+            
+            fetch('/scans/bulk-delete/', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ scan_ids: ids })
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    showNotification('success', data.message || 'Scans deleted successfully');
+                    window.location.reload();
+                } else {
+                    showNotification('error', data.error || 'Failed to delete scans');
+                }
+            }).catch(() => showNotification('error', 'Network error')).finally(() => {
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = '<i class="fas fa-trash me-1"></i>Delete';
+            });
+        });
+    }
 }
 
 function initCreateFolder() {
