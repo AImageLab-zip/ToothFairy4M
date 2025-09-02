@@ -536,6 +536,14 @@ def mark_job_completed(job_id, output_files, logs=None):
                 scanpair=job.scanpair,
                 file_type='cbct_processed'
             )
+            # Remove existing DB entries only; keep files on disk
+            try:
+                existing_count = existing_processed_files.count()
+                if existing_count:
+                    logger.info(f"Deleting {existing_count} existing cbct_processed FileRegistry entries for scanpair {job.scanpair.scanpair_id}")
+                    existing_processed_files.delete()
+            except Exception as e:
+                logger.error(f"Error deleting existing cbct_processed FileRegistry entries: {e}")
             
             for file_type, file_path in output_files.items():
                 logger.info(f"Processing CBCT output: type={file_type}, path={file_path}")
@@ -581,6 +589,13 @@ def mark_job_completed(job_id, output_files, logs=None):
             for file_type, file_path in output_files.items():
                 logger.info(f"Processing output file: type={file_type}, path={file_path}")
                 if os.path.exists(file_path):
+                    # Remove existing DB entry for this file_path (keep file on disk)
+                    try:
+                        deleted, _ = FileRegistry.objects.filter(file_path=file_path).delete()
+                        if deleted:
+                            logger.info(f"Deleted existing FileRegistry entry for path={file_path}")
+                    except Exception as e:
+                        logger.error(f"Error deleting existing FileRegistry entry for path={file_path}: {e}")
                     logger.info(f"File exists, calculating hash and size")
                     file_hash = calculate_file_hash(file_path)
                     file_size = os.path.getsize(file_path)
