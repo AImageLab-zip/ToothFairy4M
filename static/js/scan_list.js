@@ -263,62 +263,99 @@ function initAdminActions() {
         });
     });
     
-    // Rerun processing handler
+    // Rerun processing handler with modal selection
+    const rerunModalEl = document.getElementById('rerunProcessingModal');
+    let rerunModal = null;
+    let rerunTargetScanId = null;
+    if (rerunModalEl && window.bootstrap) {
+        rerunModal = new window.bootstrap.Modal(rerunModalEl);
+    }
     document.querySelectorAll('.btn-rerun-processing').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            
-            const scanId = this.dataset.scanId;
-            const scanName = this.dataset.scanName || `Scan #${scanId}`;
-            
-            if (!confirm(`Rerun all processing for ${scanName}?\n\nThis will:\n- Reprocess IOS scans (if present)\n- Reprocess CBCT scan (if present)\n- Reprocess all voice captions\n\nExisting results will be overwritten.`)) {
+            rerunTargetScanId = this.dataset.scanId;
+            const scanName = this.dataset.scanName || `Scan #${rerunTargetScanId}`;
+            const subtitle = document.getElementById('rerunScanSubtitle');
+            if (subtitle) subtitle.textContent = scanName;
+            // reset checkboxes
+            ['rerunIos','rerunBite','rerunCbct','rerunVoice'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.checked = false;
+            });
+            if (rerunModal) rerunModal.show();
+        });
+    });
+    const confirmRerunBtn = document.getElementById('confirmRerunBtn');
+    if (confirmRerunBtn) {
+        confirmRerunBtn.addEventListener('click', function() {
+            const jobs = [];
+            if (document.getElementById('rerunIos')?.checked) jobs.push('ios');
+            if (document.getElementById('rerunBite')?.checked) jobs.push('bite_classification');
+            if (document.getElementById('rerunCbct')?.checked) jobs.push('cbct');
+            if (document.getElementById('rerunVoice')?.checked) jobs.push('voice');
+            if (!jobs.length) {
+                showNotification('error', 'Select at least one job to rerun');
                 return;
             }
-            
-            // Disable button and show loading
+            const label = this.querySelector('.label');
+            const spinner = this.querySelector('.spinner');
             this.disabled = true;
-            const originalContent = this.innerHTML;
-            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            
-            fetch(`/scan/${scanId}/rerun-processing/`, {
+            if (label) label.classList.add('d-none');
+            if (spinner) spinner.classList.remove('d-none');
+            fetch(`/scan/${rerunTargetScanId}/rerun-processing/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': getCookie('csrftoken'),
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/json'
                 },
-            })
-            .then(response => response.json())
-            .then(data => {
+                body: JSON.stringify({ jobs })
+            }).then(r => r.json()).then(data => {
                 if (data.success) {
-                    showNotification('success', data.message || 'Processing restarted successfully');
-                    // Update status indicators
-                    const row = this.closest('.scan-row');
-                    const statusIcons = row.querySelectorAll('.status-icon');
-                    statusIcons.forEach(icon => {
-                        if (!icon.classList.contains('status-absent')) {
-                            icon.classList.remove('status-processed', 'status-failed', 'status-pending');
-                            icon.classList.add('status-processing');
+                    showNotification('success', data.message || 'Jobs set to pending');
+                    if (rerunModal) rerunModal.hide();
+                    // Update status indicators for this row based on selected jobs
+                    const row = document.querySelector(`.scan-row[data-scan-id="${rerunTargetScanId}"]`);
+                    if (row) {
+                        if (jobs.includes('ios')) {
+                            // first .status-icon with tooth
+                            const icon = row.querySelector('.status-icon i.fas.fa-tooth')?.parentElement;
+                            if (icon) {
+                                icon.classList.remove('status-processed','status-failed','status-pending');
+                                icon.classList.add('status-processing');
+                            }
                         }
-                    });
-                    
-                    // Re-enable button after delay
-                    setTimeout(() => {
-                        this.disabled = false;
-                        this.innerHTML = originalContent;
-                    }, 2000);
+                        if (jobs.includes('cbct')) {
+                            const icon = row.querySelector('.status-icon i.fas.fa-cube')?.parentElement;
+                            if (icon) {
+                                icon.classList.remove('status-processed','status-failed','status-pending');
+                                icon.classList.add('status-processing');
+                            }
+                        }
+                        if (jobs.includes('voice')) {
+                            const icon = row.querySelector('.status-icon i.fas.fa-microphone')?.parentElement;
+                            if (icon) {
+                                icon.classList.remove('status-processed','status-failed','status-pending');
+                                icon.classList.add('status-processing');
+                            }
+                        }
+                        if (jobs.includes('bite_classification')) {
+                            const icon = row.querySelector('.status-icon i.fas.fa-teeth')?.parentElement;
+                            if (icon) {
+                                icon.classList.remove('status-processed','status-failed','status-absent');
+                                icon.classList.add('status-processing');
+                            }
+                        }
+                    }
                 } else {
-                    throw new Error(data.error || 'Failed to restart processing');
+                    showNotification('error', data.error || 'Failed to rerun jobs');
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showNotification('error', error.message || 'Error restarting processing');
-                // Re-enable button
-                this.disabled = false;
-                this.innerHTML = originalContent;
+            }).catch(() => showNotification('error', 'Network error')).finally(() => {
+                confirmRerunBtn.disabled = false;
+                if (label) label.classList.remove('d-none');
+                if (spinner) spinner.classList.add('d-none');
             });
         });
-    });
+    }
 }
 
 // Utility function to get CSRF token

@@ -1398,72 +1398,117 @@ def bulk_delete_scans(request):
 @user_passes_test(lambda u: u.profile.is_admin)
 @require_POST
 def rerun_processing(request, scanpair_id):
-    """Rerun all processing for a scan (admin only)"""
+    """Set selected existing jobs to pending so workers can pick them up (admin only).
+
+    Accepts JSON body: { "jobs": ["ios", "cbct", "bite_classification", "voice"] }
+    - ios: mark latest IOS job pending and set scan IOS status to processing
+    - cbct: mark latest CBCT job pending and set scan CBCT status to processing
+    - bite_classification: mark job pending (or dependency if deps not met)
+    - voice: mark all audio jobs pending and related captions to pending
+    """
     try:
         scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
-        
-        # Reset processing statuses
-        if scan_pair.has_ios_scans():
-            scan_pair.ios_processing_status = 'processing'
-            
-        if scan_pair.has_cbct_scan():
-            scan_pair.cbct_processing_status = 'processing'
-            
-        scan_pair.save()
-        
-        # Create new processing jobs
         from .models import ProcessingJob
-        from .processing import execute_ios_processing_command, execute_cbct_processing_command
-        
-        jobs_created = []
-        
-        # Create IOS processing job
-        if scan_pair.has_ios_scans():
-            ios_job = ProcessingJob.objects.create(
-                scanpair=scan_pair,
-                job_type='ios_processing',
-                status='pending',
-                priority=1
-            )
-            jobs_created.append('IOS processing')
-            # Execute processing in background
-            from threading import Thread
-            Thread(target=execute_ios_processing_command, args=(scan_pair,)).start()
-            
-        # Create CBCT processing job
-        if scan_pair.has_cbct_scan():
-            cbct_job = ProcessingJob.objects.create(
-                scanpair=scan_pair,
-                job_type='cbct_processing',
-                status='pending',
-                priority=1
-            )
-            jobs_created.append('CBCT processing')
-            # Execute processing in background
-            from threading import Thread
-            Thread(target=execute_cbct_processing_command, args=(scan_pair,)).start()
-            
-        # Reprocess voice captions
-        from .processing import execute_speech_to_text_command
-        for voice_caption in scan_pair.voice_captions.all():
-            voice_caption.processing_status = 'pending'
-            voice_caption.save()
-            
-            voice_job = ProcessingJob.objects.create(
-                scanpair=scan_pair,
-                voice_caption=voice_caption,
-                job_type='speech_to_text',
-                status='pending',
-                priority=2
-            )
-            jobs_created.append(f'Voice caption {voice_caption.id}')
-            # Execute processing in background
-            Thread(target=execute_speech_to_text_command, args=(voice_caption,)).start()
-            
-        message = f'Reprocessing initiated for scan {scanpair_id}. Jobs created: {", ".join(jobs_created)}'
-        messages.success(request, message)
-        return JsonResponse({'success': True, 'message': message, 'jobs': jobs_created})
-        
+
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            data = {}
+
+        requested_jobs = data.get('jobs')
+        if requested_jobs is None:
+            # Default to all if not specified
+            requested_jobs = ['ios', 'cbct', 'bite_classification', 'voice']
+
+        if not isinstance(requested_jobs, list) or not requested_jobs:
+            return JsonResponse({'success': False, 'error': 'No jobs selected'}, status=400)
+
+        updated = []
+        not_found = []
+
+        # IOS
+        if 'ios' in requested_jobs:
+            ios_job = scan_pair.processing_jobs.filter(job_type='ios').order_by('-created_at').first()
+            if ios_job:
+                ios_job.status = 'pending'
+                ios_job.started_at = None
+                ios_job.completed_at = None
+                ios_job.worker_id = ''
+                ios_job.error_logs = ''
+                ios_job.save()
+                if scan_pair.has_ios_scans():
+                    scan_pair.ios_processing_status = 'processing'
+                    scan_pair.save()
+                updated.append('ios')
+            else:
+                not_found.append('ios')
+
+        # CBCT
+        if 'cbct' in requested_jobs:
+            cbct_job = scan_pair.processing_jobs.filter(job_type='cbct').order_by('-created_at').first()
+            if cbct_job:
+                cbct_job.status = 'pending'
+                cbct_job.started_at = None
+                cbct_job.completed_at = None
+                cbct_job.worker_id = ''
+                cbct_job.error_logs = ''
+                cbct_job.save()
+                if scan_pair.has_cbct_scan():
+                    scan_pair.cbct_processing_status = 'processing'
+                    scan_pair.save()
+                updated.append('cbct')
+            else:
+                not_found.append('cbct')
+
+        # Bite Classification
+        if 'bite_classification' in requested_jobs:
+            bite_job = scan_pair.processing_jobs.filter(job_type='bite_classification').order_by('-created_at').first()
+            if bite_job:
+                bite_job.status = 'pending'
+                bite_job.started_at = None
+                bite_job.completed_at = None
+                bite_job.worker_id = ''
+                bite_job.error_logs = ''
+                bite_job.save()
+                # Adjust based on dependencies
+                bite_job.update_status_based_on_dependencies()
+                updated.append('bite_classification')
+            else:
+                not_found.append('bite_classification')
+
+        # Voice (audio for all captions in this scan)
+        if 'voice' in requested_jobs:
+            audio_jobs = scan_pair.processing_jobs.filter(job_type='audio')
+            if audio_jobs.exists():
+                for job in audio_jobs:
+                    job.status = 'pending'
+                    job.started_at = None
+                    job.completed_at = None
+                    job.worker_id = ''
+                    job.error_logs = ''
+                    job.save()
+                # Also reset related captions to pending
+                for vc in scan_pair.voice_captions.all():
+                    vc.processing_status = 'pending'
+                    vc.save()
+                updated.append('voice')
+            else:
+                not_found.append('voice')
+
+        msg_parts = []
+        if updated:
+            msg_parts.append(f"Updated: {', '.join(updated)}")
+        if not_found:
+            msg_parts.append(f"No existing job found for: {', '.join(not_found)}")
+        message = '; '.join(msg_parts) if msg_parts else 'No changes made'
+
+        if updated:
+            messages.success(request, f'Reprocessing queued. {message}')
+        else:
+            messages.warning(request, f'Nothing to rerun. {message}')
+
+        return JsonResponse({'success': True, 'message': message, 'updated': updated, 'not_found': not_found})
+
     except Exception as e:
         logger.error(f"Error rerunning processing for scan {scanpair_id}: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

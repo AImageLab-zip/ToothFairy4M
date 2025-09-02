@@ -436,4 +436,43 @@
         });
     });
 </script>
+
+<!-- Rerun Processing Modal -->
+<div class="modal fade" id="rerunProcessingModal" tabindex="-1" aria-labelledby="rerunProcessingModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rerunProcessingModalLabel">Rerun processing</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2"><small class="text-muted" id="rerunScanSubtitle"></small></div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="ios" id="rerunIos">
+          <label class="form-check-label" for="rerunIos">IOS processing</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="bite_classification" id="rerunBite">
+          <label class="form-check-label" for="rerunBite">Bite classification</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="cbct" id="rerunCbct">
+          <label class="form-check-label" for="rerunCbct">CBCT</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="voice" id="rerunVoice">
+          <label class="form-check-label" for="rerunVoice">All voice transcriptions</label>
+        </div>
+        <div class="mt-2"><small class="text-muted">This will set existing jobs to pending. No new jobs will be created.</small></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmRerunBtn">
+          <span class="label">Rerun selected</span>
+          <span class="spinner d-none"><i class="fas fa-spinner fa-spin"></i></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %} 
