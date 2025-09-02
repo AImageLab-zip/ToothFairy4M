@@ -10,8 +10,23 @@
     
     <div class="collapse show" id="vocalCaptionCollapse">
         <div class="vocal-caption-section">
+            <!-- Input Method Toggle -->
+            <div class="input-method-toggle mb-3">
+                <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="inputMethod" id="voiceInput" autocomplete="off" checked>
+                    <label class="btn btn-outline-primary" for="voiceInput">
+                        <i class="fas fa-microphone me-2"></i>Voice Recording
+                    </label>
+                    
+                    <input type="radio" class="btn-check" name="inputMethod" id="textInput" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="textInput">
+                        <i class="fas fa-keyboard me-2"></i>Text Input
+                    </label>
+                </div>
+            </div>
+            
             <!-- Audio Recording Interface -->
-            <div class="audio-recorder-card mb-3">
+            <div class="audio-recorder-card mb-3" id="audioRecorderCard">
                 <div class="recorder-controls-new">
                     <button type="button" class="btn btn-primary btn-record-round" id="startRecording">
                         <i class="fas fa-microphone"></i>
@@ -51,6 +66,37 @@
                 <audio id="audioPlayback" class="d-none" controls></audio>
             </div>
             
+            <!-- Text Input Interface -->
+            <div class="text-input-card mb-3" id="textInputCard" style="display: none;">
+                <div class="text-input-container">
+                    <div class="mb-3">
+                        <label for="captionTextArea" class="form-label">
+                            <i class="fas fa-keyboard me-2"></i>Describe your findings
+                        </label>
+                        <textarea 
+                            class="form-control" 
+                            id="captionTextArea" 
+                            rows="4" 
+                            placeholder="Enter your observations about the scan findings..."
+                            maxlength="2000"
+                        ></textarea>
+                        <div class="form-text">
+                            <small class="text-muted">
+                                <span id="textCharCount">0</span>/2000 characters
+                            </small>
+                        </div>
+                    </div>
+                    <div class="text-input-actions">
+                        <button type="button" class="btn btn-success" id="saveTextCaption">
+                            <i class="fas fa-save me-2"></i>Save Text Caption
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="clearTextCaption">
+                            <i class="fas fa-eraser me-2"></i>Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Existing Voice Captions - Compact List -->
             <div class="voice-captions-list">
                 {% if scan_pair.voice_captions.exists %}
@@ -61,7 +107,11 @@
                                     <div class="caption-info">
                                         <small class="text-primary me-2">{{ caption.user.username }}</small>
                                         <span class="badge bg-secondary me-1">{{ caption.get_modality_display }}</span>
-                                        <span class="badge bg-{{ caption.get_quality_status.color }} me-2">{{ caption.get_display_duration }}</span>
+                                        {% if caption.duration == 0 %}
+                                            <span class="badge bg-success me-2">Text</span>
+                                        {% else %}
+                                            <span class="badge bg-{{ caption.get_quality_status.color }} me-2">{{ caption.get_display_duration }}</span>
+                                        {% endif %}
                                         <small class="text-muted">{{ caption.created_at|date:"M d, H:i" }}</small>
                                     </div>
                                     <div class="caption-actions">
@@ -136,8 +186,8 @@
                 {% else %}
                     <div class="no-captions">
                         <p class="text-muted mb-0 text-center">
-                            <i class="fas fa-microphone me-1"></i>
-                            No voice captions yet. Click the record button to start!
+                            <i class="fas fa-comment me-1"></i>
+                            No captions yet. Record audio or write text to describe your findings!
                         </p>
                     </div>
                 {% endif %}

@@ -29,6 +29,16 @@ class VocalCaptionRecorder {
         this.audioPlayback = document.querySelector('.audio-playback');
         this.modalityIndicator = document.getElementById('modalityIndicator');
         
+        // Text input elements
+        this.voiceInputRadio = document.getElementById('voiceInput');
+        this.textInputRadio = document.getElementById('textInput');
+        this.audioRecorderCard = document.getElementById('audioRecorderCard');
+        this.textInputCard = document.getElementById('textInputCard');
+        this.captionTextArea = document.getElementById('captionTextArea');
+        this.textCharCount = document.getElementById('textCharCount');
+        this.saveTextBtn = document.getElementById('saveTextCaption');
+        this.clearTextBtn = document.getElementById('clearTextCaption');
+        
         if (!this.startBtn || !this.recordingTimer || !this.progressBar) {
             console.warn('Some recording UI elements not found');
         }
@@ -90,6 +100,9 @@ class VocalCaptionRecorder {
         
         // Initialize edit modal functionality
         this.initializeEditModal();
+        
+        // Initialize text input functionality
+        this.initializeTextInput();
     }
     
     getCurrentModality() {
@@ -454,13 +467,18 @@ class VocalCaptionRecorder {
                     <div class="caption-info">
                         <small class="text-primary me-2">${caption.user_username}</small>
                         <span class="badge bg-secondary me-1">${caption.modality_display}</span>
-                        <span class="badge bg-${caption.quality_color} me-2">${caption.display_duration}</span>
+                        <span class="badge bg-${caption.is_text_caption ? 'success' : caption.quality_color} me-2">${caption.is_text_caption ? 'Text' : caption.display_duration}</span>
                         <small class="text-muted">${caption.created_at}</small>
                     </div>
                     <div class="caption-actions">
                         ${caption.audio_url ? `
                             <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="${caption.audio_url}" title="Play">
                                 <i class="fas fa-play" style="font-size: 0.75rem;"></i>
+                            </button>
+                        ` : ''}
+                        ${caption.is_processed && caption.text_caption ? `
+                            <button class="btn btn-outline-secondary btn-sm btn-edit-caption" data-caption-id="${caption.id}" title="Edit">
+                                <i class="fas fa-edit" style="font-size: 0.75rem;"></i>
                             </button>
                         ` : ''}
                         <button class="btn btn-outline-danger btn-sm btn-delete-caption" data-caption-id="${caption.id}" title="Delete">
@@ -521,8 +539,8 @@ class VocalCaptionRecorder {
                     const noCaptionsHtml = `
                         <div class="no-captions">
                             <p class="text-muted mb-0 text-center">
-                                <i class="fas fa-microphone me-1"></i>
-                                No voice captions yet. Click the record button to start!
+                                <i class="fas fa-comment me-1"></i>
+                                No captions yet. Record audio or write text to describe your findings!
                             </p>
                         </div>
                     `;
@@ -562,8 +580,8 @@ class VocalCaptionRecorder {
                                     const noCaptionsHtml = `
                                         <div class="no-captions">
                                             <p class="text-muted mb-0 text-center">
-                                                <i class="fas fa-microphone me-1"></i>
-                                                No voice captions yet. Click the record button to start!
+                                                <i class="fas fa-comment me-1"></i>
+                                                No captions yet. Record audio or write text to describe your findings!
                                             </p>
                                         </div>
                                     `;
@@ -863,6 +881,132 @@ class VocalCaptionRecorder {
             setTimeout(() => {
                 indicator.style.display = 'none';
             }, 2000);
+        }
+    }
+    
+    initializeTextInput() {
+        // Handle input method toggle
+        if (this.voiceInputRadio && this.textInputRadio) {
+            this.voiceInputRadio.addEventListener('change', () => {
+                this.showAudioRecorder();
+            });
+            
+            this.textInputRadio.addEventListener('change', () => {
+                this.showTextInput();
+            });
+        }
+        
+        // Handle text input events
+        if (this.captionTextArea) {
+            this.captionTextArea.addEventListener('input', () => {
+                this.updateCharacterCount();
+            });
+            
+            // Handle Enter key (Ctrl+Enter to save)
+            this.captionTextArea.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    this.saveTextCaption();
+                }
+            });
+        }
+        
+        // Handle text input buttons
+        if (this.saveTextBtn) {
+            this.saveTextBtn.addEventListener('click', () => {
+                this.saveTextCaption();
+            });
+        }
+        
+        if (this.clearTextBtn) {
+            this.clearTextBtn.addEventListener('click', () => {
+                this.clearTextCaption();
+            });
+        }
+    }
+    
+    showAudioRecorder() {
+        if (this.audioRecorderCard) {
+            this.audioRecorderCard.style.display = 'block';
+        }
+        if (this.textInputCard) {
+            this.textInputCard.style.display = 'none';
+        }
+    }
+    
+    showTextInput() {
+        if (this.audioRecorderCard) {
+            this.audioRecorderCard.style.display = 'none';
+        }
+        if (this.textInputCard) {
+            this.textInputCard.style.display = 'block';
+        }
+    }
+    
+    updateCharacterCount() {
+        if (this.captionTextArea && this.textCharCount) {
+            const count = this.captionTextArea.value.length;
+            this.textCharCount.textContent = count;
+            
+            // Change color based on character count
+            if (count > 1800) {
+                this.textCharCount.style.color = '#dc3545'; // Red
+            } else if (count > 1500) {
+                this.textCharCount.style.color = '#fd7e14'; // Orange
+            } else {
+                this.textCharCount.style.color = '#6c757d'; // Default gray
+            }
+        }
+    }
+    
+    clearTextCaption() {
+        if (this.captionTextArea) {
+            this.captionTextArea.value = '';
+            this.updateCharacterCount();
+        }
+    }
+    
+    async saveTextCaption() {
+        if (!this.captionTextArea) return;
+        
+        const textContent = this.captionTextArea.value.trim();
+        if (!textContent) {
+            alert('Please enter some text before saving.');
+            return;
+        }
+        
+        if (textContent.length < 10) {
+            alert('Please enter at least 10 characters for a meaningful caption.');
+            return;
+        }
+        
+        try {
+            const modality = this.getCurrentModality();
+            
+            const response = await fetch(window.location.pathname + 'text-caption/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    text: textContent,
+                    modality: modality.value
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                this.addCaptionToList(result.caption);
+                this.clearTextCaption();
+                this.showSavedIndicator();
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || `Save failed (${response.status})`);
+            }
+        } catch (error) {
+            console.error('Error saving text caption:', error);
+            alert(`Failed to save text caption: ${error.message}`);
         }
     }
 }

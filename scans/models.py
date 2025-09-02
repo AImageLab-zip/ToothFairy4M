@@ -642,6 +642,10 @@ class VoiceCaption(models.Model):
     
     def get_display_duration(self):
         """Return a human-readable duration string"""
+        # For text-only captions (duration = 0), return "Text"
+        if self.duration == 0:
+            return "Text"
+        
         minutes = int(self.duration // 60)
         seconds = int(self.duration % 60)
         if minutes > 0:
@@ -649,8 +653,12 @@ class VoiceCaption(models.Model):
         return f"{seconds}s"
     
     def get_quality_status(self):
-        """Return quality status based on duration"""
-        if self.duration < 30:
+        """Return quality status based on duration or text content"""
+        # For text-only captions (duration = 0), always return good quality
+        if self.duration == 0:
+            return {'color': 'success', 'message': 'Text'}
+        
+        if self.duration <= 30:
             return {'color': 'danger', 'message': 'Short'}
         elif self.duration <= 45:
             return {'color': 'warning', 'message': 'Good'}
@@ -659,6 +667,10 @@ class VoiceCaption(models.Model):
     
     def is_processed(self):
         """Check if speech-to-text processing is complete"""
+        # For text-only captions (duration = 0), they are immediately processed
+        if self.duration == 0:
+            return self.processing_status == 'completed' and self.text_caption
+        
         return self.processing_status == 'completed' and self.text_caption and self.text_caption != "[Audio processed but no transcription available]"
     
     def get_processing_display_text(self):

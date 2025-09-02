@@ -949,6 +949,68 @@ def delete_voice_caption(request, scanpair_id, caption_id):
 
 @login_required
 @require_POST
+def upload_text_caption(request, scanpair_id):
+    """Handle text caption submission (alternative to voice recording)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    scan_pair = get_object_or_404(ScanPair, scanpair_id=scanpair_id)
+    
+    # Check permissions
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        text_content = data.get('text', '').strip()
+        modality = data.get('modality', 'cbct')  # Default to CBCT
+        
+        if not text_content:
+            return JsonResponse({'error': 'Text content cannot be empty'}, status=400)
+        
+        # Validate modality
+        if modality not in ['ios', 'cbct']:
+            modality = 'cbct'  # Default fallback
+        
+        # Create VoiceCaption instance for text-only caption
+        voice_caption = VoiceCaption.objects.create(
+            scanpair=scan_pair,
+            user=request.user,
+            modality=modality,
+            duration=0.0,  # No duration for text captions
+            text_caption=text_content,
+            original_text_caption=text_content,
+            processing_status='completed',  # Text is already processed
+            is_edited=False
+        )
+        
+        # Return caption data for the UI
+        quality_status = voice_caption.get_quality_status()
+        
+        return JsonResponse({
+            'success': True,
+            'caption': {
+                'id': voice_caption.id,
+                'user_username': voice_caption.user.username,
+                'modality_display': voice_caption.get_modality_display(),
+                'display_duration': 'Text',  # Special display for text captions
+                'quality_color': 'success',  # Text captions are always "good quality"
+                'created_at': voice_caption.created_at.strftime('%b %d, %H:%M'),
+                'audio_url': None,  # No audio for text captions
+                'is_processed': True,  # Text is immediately processed
+                'text_caption': voice_caption.text_caption,
+                'is_text_caption': True  # Flag to identify text captions
+            }
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
 def edit_voice_caption_transcription(request, scanpair_id, caption_id):
     """Edit the transcription of a voice caption"""
     if request.method != 'POST':

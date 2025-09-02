@@ -10,6 +10,7 @@ urlpatterns = [
     path('scan/<int:scanpair_id>/update/', views.update_classification, name='update_classification'),
     path('scan/<int:scanpair_id>/update-name/', views.update_scan_name, name='update_scan_name'),
     path('scan/<int:scanpair_id>/voice-caption/', views.upload_voice_caption, name='upload_voice_caption'),
+    path('scan/<int:scanpair_id>/text-caption/', views.upload_text_caption, name='upload_text_caption'),
     path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/delete/', views.delete_voice_caption, name='delete_voice_caption'),
     path('scan/<int:scanpair_id>/voice-caption/<int:caption_id>/edit/', views.edit_voice_caption_transcription, name='edit_voice_caption_transcription'),
     path('scan/<int:scanpair_id>/tags/add/', views.add_scan_tag, name='add_scan_tag'),
