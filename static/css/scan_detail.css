@@ -935,6 +935,17 @@
     margin: 0 5px;
 }
 
+/* CBCT Windowing dropdown */
+.windowing-menu {
+    position: fixed!important;
+}
+.dropdown-menu.p-3 .form-range {
+    height: 1.25rem;
+}
+.dropdown-menu.p-3 .form-label-sm {
+    color: #6c757d;
+}
+
 /* Viewer Help Modal Styles */
 .viewer-instructions-card {
     border: 1px solid #dee2e6;

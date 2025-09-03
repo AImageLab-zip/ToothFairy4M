@@ -68,13 +68,18 @@
                     </button>
                     <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-                            Rendering
+                            Windowing
                         </button>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" data-render-mode="mip">Maximum Intensity</a></li>
-                            <li><a class="dropdown-item" href="#" data-render-mode="translucent">Translucent</a></li>
-                            <li><a class="dropdown-item" href="#" data-render-mode="attenuated">Attenuated MIP</a></li>
-                        </ul>
+                        <div class="dropdown-menu p-3 windowing-menu" style="min-width: 260px;">
+                            <div class="mb-2">
+                                <label class="form-label-sm mb-1">Min (%) <span id="windowMinValue" class="ms-1">0</span></label>
+                                <input type="range" class="form-range" id="windowMinRange" min="0" max="100" step="1" value="0">
+                            </div>
+                            <div>
+                                <label class="form-label-sm mb-1">Max (%) <span id="windowMaxValue" class="ms-1">100</span></label>
+                                <input type="range" class="form-range" id="windowMaxRange" min="0" max="100" step="1" value="100">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

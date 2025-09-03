@@ -39,10 +39,14 @@ window.CBCTViewer = {
     
     panoramicZoom: 1.0,
     panoramicPan: { x: 0, y: 0 },
+    panoramicCanvas: null,
+    panoramicSourceCanvas: null,
     
     renderMode: 'mip', // 'mip', 'translucent', 'attenuated'
     windowLevel: 0.5,
     windowWidth: 1.0,
+    windowPercentMin: 0,
+    windowPercentMax: 100,
     
     loading: false,
     panoramicLoaded: false,
@@ -80,6 +84,12 @@ window.CBCTViewer = {
             this.panoramicLoaded = true;
             
             this.initPanoramicInteraction();
+            try {
+                this.initPanoramicCanvases(testImg);
+                this.updatePanoramicWindowing();
+            } catch (e) {
+                console.warn('Panoramic canvas init failed:', e);
+            }
         };
         
         testImg.onerror = () => {
@@ -855,11 +865,12 @@ window.CBCTViewer = {
     
     updatePanoramicTransform: function() {
         const panoramicImg = document.getElementById('panoramicImage');
-        if (!panoramicImg) return;
-        
+        const canvas = this.panoramicCanvas;
+        const target = (canvas && canvas.style.display !== 'none') ? canvas : panoramicImg;
+        if (!target) return;
         const transform = `scale(${this.panoramicZoom}) translate(${this.panoramicPan.x}px, ${this.panoramicPan.y}px)`;
-        panoramicImg.style.transform = transform;
-        panoramicImg.style.transformOrigin = 'center center';
+        target.style.transform = transform;
+        target.style.transformOrigin = 'center center';
     },
     
     resetPanoramicView: function() {
@@ -869,11 +880,14 @@ window.CBCTViewer = {
     },
     
     applyWindowing: function(huValue) {       
-        const windowCenter = 1500; // Center of the window
-        const windowWidth = 5000;  // Width of the window
-        
-        const windowMin = windowCenter - windowWidth / 2; // -1000
-        const windowMax = windowCenter + windowWidth / 2; // 3000
+        const histMin = (this.histogram && isFinite(this.histogram.min)) ? this.histogram.min : -1000;
+        const histMax = (this.histogram && isFinite(this.histogram.max)) ? this.histogram.max : 3000;
+        const pMin = Math.max(0, Math.min(100, this.windowPercentMin));
+        const pMax = Math.max(0, Math.min(100, this.windowPercentMax));
+        const lowP = Math.min(pMin, pMax);
+        const highP = Math.max(pMin, pMax);
+        const windowMin = histMin + (histMax - histMin) * (lowP / 100.0);
+        const windowMax = histMin + (histMax - histMin) * (highP / 100.0);
         
         // Clamp values to window range
         const clampedValue = Math.max(windowMin, Math.min(windowMax, huValue));
@@ -984,6 +998,44 @@ window.CBCTViewer = {
             });
         }
         
+        // Windowing sliders (percent-based)
+        const minRange = document.getElementById('windowMinRange');
+        const maxRange = document.getElementById('windowMaxRange');
+        const minLabel = document.getElementById('windowMinValue');
+        const maxLabel = document.getElementById('windowMaxValue');
+        const updateFromUI = () => {
+            if (!minRange || !maxRange) return;
+            let minVal = parseInt(minRange.value || '0', 10);
+            let maxVal = parseInt(maxRange.value || '100', 10);
+            if (minVal > maxVal) {
+                if (this._lastWindowSlider === 'min') {
+                    maxVal = minVal; maxRange.value = String(maxVal);
+                } else {
+                    minVal = maxVal; minRange.value = String(minVal);
+                }
+            }
+            this.windowPercentMin = minVal;
+            this.windowPercentMax = maxVal;
+            if (minLabel) minLabel.textContent = String(minVal);
+            if (maxLabel) maxLabel.textContent = String(maxVal);
+            if (this.initialized) {
+                this.updateSlice('axial');
+                this.updateSlice('sagittal');
+                this.updateSlice('coronal');
+            }
+            if (this.panoramicLoaded) {
+                this.updatePanoramicWindowing();
+            }
+        };
+        if (minRange) {
+            minRange.addEventListener('input', () => { this._lastWindowSlider = 'min'; updateFromUI(); });
+            if (minLabel) minLabel.textContent = String(parseInt(minRange.value || '0', 10));
+        }
+        if (maxRange) {
+            maxRange.addEventListener('input', () => { this._lastWindowSlider = 'max'; updateFromUI(); });
+            if (maxLabel) maxLabel.textContent = String(parseInt(maxRange.value || '100', 10));
+        }
+
         // Window resize for 2D views
         window.addEventListener('resize', () => {
             this.handleResize();
@@ -1098,10 +1150,73 @@ window.CBCTViewer = {
         if (panoramicError) panoramicError.style.display = 'none';
         if (panoramicLoading) panoramicLoading.style.display = 'block';
         
+        // Remove and reset canvases
+        if (this.panoramicCanvas && this.panoramicCanvas.parentElement) {
+            this.panoramicCanvas.parentElement.removeChild(this.panoramicCanvas);
+        }
+        this.panoramicCanvas = null;
+        this.panoramicSourceCanvas = null;
+        
         // Reload the panoramic image
         this.loadPanoramicImage();
     }
-    
+    ,
+    // Initialize panoramic canvases
+    initPanoramicCanvases: function(loadedImg) {
+        const panoramicView = document.getElementById('panoramicView');
+        const imgEl = document.getElementById('panoramicImage');
+        if (!panoramicView || !imgEl || !loadedImg) return;
+        if (!this.panoramicSourceCanvas) {
+            this.panoramicSourceCanvas = document.createElement('canvas');
+        }
+        const srcCanvas = this.panoramicSourceCanvas;
+        srcCanvas.width = loadedImg.naturalWidth || loadedImg.width;
+        srcCanvas.height = loadedImg.naturalHeight || loadedImg.height;
+        const srcCtx = srcCanvas.getContext('2d');
+        srcCtx.drawImage(loadedImg, 0, 0, srcCanvas.width, srcCanvas.height);
+        if (!this.panoramicCanvas) {
+            this.panoramicCanvas = document.createElement('canvas');
+            this.panoramicCanvas.id = 'panoramicCanvas';
+            this.panoramicCanvas.className = 'panoramic-image';
+            this.panoramicCanvas.style.maxWidth = '100%';
+            this.panoramicCanvas.style.maxHeight = '100%';
+            this.panoramicCanvas.style.objectFit = 'contain';
+            panoramicView.appendChild(this.panoramicCanvas);
+        }
+        const canvas = this.panoramicCanvas;
+        canvas.width = srcCanvas.width;
+        canvas.height = srcCanvas.height;
+        imgEl.style.display = 'none';
+        canvas.style.display = 'block';
+        this.updatePanoramicTransform();
+    }
+    ,
+    updatePanoramicWindowing: function() {
+        if (!this.panoramicCanvas || !this.panoramicSourceCanvas) return;
+        const dst = this.panoramicCanvas;
+        const src = this.panoramicSourceCanvas;
+        const srcCtx = src.getContext('2d');
+        const dstCtx = dst.getContext('2d');
+        const imgData = srcCtx.getImageData(0, 0, src.width, src.height);
+        const data = imgData.data;
+        const pMin = Math.max(0, Math.min(100, this.windowPercentMin));
+        const pMax = Math.max(0, Math.min(100, this.windowPercentMax));
+        const lowP = Math.min(pMin, pMax);
+        const highP = Math.max(pMin, pMax);
+        const vMin = Math.round(255 * (lowP / 100));
+        const vMax = Math.round(255 * (highP / 100));
+        const range = Math.max(1, vMax - vMin);
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const intensity = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+            const clamped = Math.max(vMin, Math.min(vMax, intensity));
+            const mapped = Math.round(((clamped - vMin) / range) * 255);
+            data[i] = data[i + 1] = data[i + 2] = mapped;
+        }
+        dstCtx.putImageData(imgData, 0, 0);
+    }
 
 };
 
