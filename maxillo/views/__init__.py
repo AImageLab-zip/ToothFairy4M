@@ -1,0 +1,104 @@
+"""
+Views package for maxillo app.
+
+This package re-exports all views from submodules for backwards compatibility.
+"""
+
+# Helper functions
+from .helpers import render_with_fallback, redirect_with_namespace
+
+# Authentication and invitations
+from .auth import register, invitation_list, delete_invitation
+
+# Patient list and project selection
+from .patient_list import home, select_project, patient_list
+
+# Patient upload
+from .patient_upload import upload_patient
+
+# Classification
+from .classification import update_classification
+
+# Folder and tag management
+from .folders_tags import create_folder, move_patients_to_folder, add_patient_tag, remove_patient_tag
+
+# Deletion
+from .deletion import delete_patient, bulk_delete_patients
+
+# Patient detail and management
+from .patient_detail import patient_detail, update_patient_name
+
+# Patient data API endpoints
+from .patient_data import (
+    patient_viewer_data,
+    patient_cbct_data,
+    patient_volume_data,
+    patient_panoramic_data,
+    patient_intraoral_data,
+    patient_teleradiography_data,
+    patient_panoramic_data,
+)
+
+# Voice captions
+from .voice_captions import (
+    upload_voice_caption,
+    delete_voice_caption,
+    upload_text_caption,
+    edit_voice_caption_transcription,
+)
+
+# Admin
+from .admin import rerun_processing, admin_control_panel
+
+# Metadata
+from .metadata import get_nifti_metadata, update_nifti_metadata
+
+# Export all functions
+__all__ = [
+    # Helpers
+    'render_with_fallback',
+    'redirect_with_namespace',
+    # Auth
+    'register',
+    'invitation_list',
+    'delete_invitation',
+    # Patient list
+    'home',
+    'select_project',
+    'patient_list',
+    # Upload
+    'upload_patient',
+    # Detail
+    'patient_detail',
+    'update_patient_name',
+    # Classification
+    'update_classification',
+    # Data APIs
+    'patient_viewer_data',
+    'patient_cbct_data',
+    'patient_volume_data',
+    'patient_panoramic_data',
+    'patient_intraoral_data',
+    'patient_teleradiography_data',
+    'patient_panoramic_data',
+    # Voice captions
+    'upload_voice_caption',
+    'delete_voice_caption',
+    'upload_text_caption',
+    'edit_voice_caption_transcription',
+    # Deletion
+    'delete_patient',
+    'bulk_delete_patients',
+    # Admin
+    'rerun_processing',
+    'admin_control_panel',
+    # Metadata
+    'get_nifti_metadata',
+    'update_nifti_metadata',
+    # Folders and tags
+    'create_folder',
+    'move_patients_to_folder',
+    'add_patient_tag',
+    'remove_patient_tag',
+]
+

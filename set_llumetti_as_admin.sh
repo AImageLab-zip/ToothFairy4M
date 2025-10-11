@@ -1,0 +1,2 @@
+docker exec -it toothfairy4m-dev-web-dev-llumetti-1 python manage.py createsuperuser
+docker exec toothfairy4m-dev-db-1 sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -D "$MYSQL_DATABASE" -e "UPDATE scans_userprofile p JOIN auth_user u ON p.user_id=u.id SET p.role=\"admin\" WHERE u.username=\"llumetti\"; UPDATE auth_user SET is_staff=1 WHERE username=\"llumetti\";"'

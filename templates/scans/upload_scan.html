@@ -9,7 +9,7 @@
         <div class="col-lg-8">
             <div class="card">
                 <div class="card-header">
-                    <h3><i class="fas fa-upload me-2"></i>Upload New IOS/CBCT Scan</h3>
+                    <h3><i class="fas fa-upload me-2"></i>Upload New Patient Data</h3>
                 </div>
                 <div class="card-body">
                     <form method="post" enctype="multipart/form-data">
@@ -19,10 +19,10 @@
                         <!-- Scan Information -->
                         <h5 class="mb-3"><i class="fas fa-info-circle me-2"></i>Scan Information</h5>
                         <div class="mb-4">
-                            <label for="{{ scan_form.name.id_for_label }}" class="form-label">{{ scan_form.name.label }}</label>
-                            {{ scan_form.name }}
-                            {% if scan_form.name.errors %}
-                                <div class="text-danger">{{ scan_form.name.errors }}</div>
+                            <label for="{{ patient_upload_form.name.id_for_label }}" class="form-label">{{ patient_upload_form.name.label }}</label>
+                            {{ patient_upload_form.name }}
+                            {% if patient_upload_form.name.errors %}
+                                <div class="text-danger">{{ patient_upload_form.name.errors }}</div>
                             {% endif %}
                             <div class="form-text">(Optional) Enter name for this scan</div>
                         </div>
@@ -30,72 +30,15 @@
                         <!-- Scan Files -->
                         <h5 class="mb-3"><i class="fas fa-file-medical me-2"></i>Scan Files</h5>
                         
-                        <!-- IOS Section -->
-                        <div class="mb-4">
-                            <h6 class="mb-2"><i class="fas fa-tooth me-2"></i>Intra-Oral Scans (IOS)</h6>
-                            <div class="mb-3">
-                                <label for="{{ scan_form.upper_scan_raw.id_for_label }}" class="form-label">{{ scan_form.upper_scan_raw.label }}</label>
-                                {{ scan_form.upper_scan_raw }}
-                                {% if scan_form.upper_scan_raw.errors %}
-                                    <div class="text-danger">{{ scan_form.upper_scan_raw.errors }}</div>
-                                {% endif %}
-                                <div class="form-text">Upload STL file for upper jaw scan</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="{{ scan_form.lower_scan_raw.id_for_label }}" class="form-label">{{ scan_form.lower_scan_raw.label }}</label>
-                                {{ scan_form.lower_scan_raw }}
-                                {% if scan_form.lower_scan_raw.errors %}
-                                    <div class="text-danger">{{ scan_form.lower_scan_raw.errors }}</div>
-                                {% endif %}
-                                <div class="form-text">Upload STL file for lower jaw scan</div>
-                            </div>
-                        </div>
-                        
-                        <!-- CBCT Section -->
-                        <div class="mb-4">
-                            <h6 class="mb-2"><i class="fas fa-cube me-2"></i>CBCT Scan</h6>
-                            
-                            <!-- Upload Type Selection -->
-                            <div class="mb-3">
-                                <label class="form-label">Upload Type</label>
-                                <div class="btn-group w-100" role="group" aria-label="CBCT upload type">
-                                    <input type="radio" class="btn-check" name="cbct_upload_type" id="cbct_file_upload" value="file" checked>
-                                    <label class="btn btn-outline-primary" for="cbct_file_upload">
-                                        <i class="fas fa-file me-1"></i>Single File
-                                    </label>
-                                    <input type="radio" class="btn-check" name="cbct_upload_type" id="cbct_folder_upload" value="folder">
-                                    <label class="btn btn-outline-primary" for="cbct_folder_upload">
-                                        <i class="fas fa-folder me-1"></i>DICOM Folder
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <!-- File Upload -->
-                            <div class="mb-3" id="cbct_file_section">
-                                <label for="{{ scan_form.cbct.id_for_label }}" class="form-label">{{ scan_form.cbct.label }}</label>
-                                {{ scan_form.cbct }}
-                                {% if scan_form.cbct.errors %}
-                                    <div class="text-danger">{{ scan_form.cbct.errors }}</div>
-                                {% endif %}
-                                <div class="form-text">Upload single CBCT file: DICOM (.dcm), NIfTI (.nii, .nii.gz), MetaImage (.mha, .mhd), NRRD (.nrrd, .nhdr), or archives (.zip, .tar)</div>
-                            </div>
-                            
-                            <!-- Folder Upload -->
-                            <div class="mb-3" id="cbct_folder_section" style="display: none;">
-                                <label for="cbct_folder" class="form-label">CBCT Folder</label>
-                                <input type="file" name="cbct_folder_files" id="cbct_folder" class="form-control" 
-                                       webkitdirectory directory multiple 
-                                       accept=".dcm,.dicom,application/dicom">
-                                <div class="form-text">Select a folder containing DICOM files (.dcm, .dicom, or no extension) and/or a DICOMDIR file. Maximum 1000 files, 500MB total.</div>
-                            </div>
-                        </div>
+                        {% include 'common/upload/modalities/ios.html' %}
+                        {% include 'common/upload/modalities/cbct.html' %}
+                        {% include 'common/upload/modalities/rgb.html' %}
 
                         <div class="mb-3">
-                            <label for="{{ scan_form.visibility.id_for_label }}" class="form-label">{{ scan_form.visibility.label }}</label>
-                            {{ scan_form.visibility }}
-                            {% if scan_form.visibility.errors %}
-                                <div class="text-danger">{{ scan_form.visibility.errors }}</div>
+                            <label for="{{ patient_upload_form.visibility.id_for_label }}" class="form-label">{{ patient_upload_form.visibility.label }}</label>
+                            {{ patient_upload_form.visibility }}
+                            {% if patient_upload_form.visibility.errors %}
+                                <div class="text-danger">{{ patient_upload_form.visibility.errors }}</div>
                             {% endif %}
                             <div class="form-text">
                                 <strong>Public:</strong> Visible to all users<br>
@@ -109,28 +52,28 @@
                         
                         <!-- Folder Selection -->
                         <div class="mb-3">
-                            <label for="{{ scan_form.folder.id_for_label }}" class="form-label">{{ scan_form.folder.label }}</label>
-                            {{ scan_form.folder }}
-                            {% if scan_form.folder.errors %}
-                                <div class="text-danger">{{ scan_form.folder.errors }}</div>
+                            <label for="{{ patient_upload_form.folder.id_for_label }}" class="form-label">{{ patient_upload_form.folder.label }}</label>
+                            {{ patient_upload_form.folder }}
+                            {% if patient_upload_form.folder.errors %}
+                                <div class="text-danger">{{ patient_upload_form.folder.errors }}</div>
                             {% endif %}
                             <div class="form-text">Select a folder to organize this scan (optional)</div>
                         </div>
                         
                         <!-- Tags -->
                         <div class="mb-3">
-                            <label for="{{ scan_form.tags_text.id_for_label }}" class="form-label">{{ scan_form.tags_text.label }}</label>
-                            {{ scan_form.tags_text }}
-                            {% if scan_form.tags_text.errors %}
-                                <div class="text-danger">{{ scan_form.tags_text.errors }}</div>
+                            <label for="{{ patient_upload_form.tags_text.id_for_label }}" class="form-label">{{ patient_upload_form.tags_text.label }}</label>
+                            {{ patient_upload_form.tags_text }}
+                            {% if patient_upload_form.tags_text.errors %}
+                                <div class="text-danger">{{ patient_upload_form.tags_text.errors }}</div>
                             {% endif %}
                             <div class="form-text">Enter comma-separated tags to help organize and find this scan later</div>
                         </div>
 
                         <!-- Show form-level errors -->
-                        {% if scan_form.non_field_errors %}
+                        {% if patient_upload_form.non_field_errors %}
                             <div class="alert alert-danger">
-                                {% for error in scan_form.non_field_errors %}
+                                {% for error in patient_upload_form.non_field_errors %}
                                     <div>{{ error }}</div>
                                 {% endfor %}
                             </div>
@@ -138,7 +81,8 @@
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                            <a href="{% url 'scan_list' %}" class="btn btn-secondary me-md-2">
+                            {% firstof request.resolver_match.namespace 'maxillo' as ns %}
+                            <a href="{% url ns|add:':patient_list' %}" class="btn btn-secondary me-md-2">
                                 <i class="fas fa-times me-2"></i>Cancel
                             </a>
                             <button type="submit" class="btn btn-primary">

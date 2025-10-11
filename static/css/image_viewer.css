@@ -1,0 +1,85 @@
+/* Image Modalities Viewer Styles */
+
+/* Intraoral Photos Grid */
+.intraoral-content .card {
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.intraoral-content .card:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+    transform: translateY(-2px);
+}
+
+.intraoral-content .card-img-top {
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+
+/* Single Image Viewers (Teleradiography, panoramic) */
+.teleradiography-content img,
+.panoramic-content img {
+    border-radius: 0.375rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    cursor: pointer;
+}
+
+.teleradiography-content img:hover,
+.panoramic-content img:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+/* Fullscreen Modal Styles */
+#fullscreenImageModal .modal-content {
+    background-color: rgba(0,0,0,0.95) !important;
+}
+
+#fullscreenImageModal .modal-body {
+    min-height: 90vh;
+}
+
+#fullscreenImageModal img {
+    cursor: zoom-in;
+}
+
+/* Loading and Error States */
+.intraoral-loading,
+.teleradiography-loading,
+.panoramic-loading {
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.intraoral-error,
+.teleradiography-error,
+.panoramic-error {
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Responsive Grid for Intraoral Photos */
+@media (max-width: 576px) {
+    .intraoral-content .col-lg-3,
+    .intraoral-content .col-md-4,
+    .intraoral-content .col-sm-6 {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Viewer Container Heights */
+.viewer-container {
+    min-height: 500px;
+}
+
+#intraoral-viewer {
+    min-height: 400px;
+}
+
+#teleradiography-viewer,
+#panoramic-viewer {
+    min-height: 500px;
+}

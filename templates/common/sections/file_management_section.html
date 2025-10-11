@@ -1,0 +1,142 @@
+{% load file_utils %}
+<!-- File Management Section -->
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2" data-bs-toggle="collapse" data-bs-target="#fileManagementCollapse" aria-expanded="false" aria-controls="fileManagementCollapse" style="cursor: pointer;">
+        <h6 class="mb-0"><i class="fas fa-folder me-2"></i>File Management</h6>
+        <i class="fas fa-chevron-right collapse-indicator"></i>
+    </div>
+    
+    <div class="collapse" id="fileManagementCollapse">
+        <div class="scan-management-box">
+            {% if patient_files %}
+                <div class="mb-3">
+                    <small class="text-muted d-block mb-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        All files associated with patient {{ scan_pair.patient_id }}
+                    </small>
+                    
+                    <!-- Raw Files Section -->
+                    {% if patient_files.raw %}
+                    <div class="mb-3">
+                        <h6 class="text-primary mb-2 small">
+                            <i class="fas fa-file-import me-1"></i>Raw Files
+                        </h6>
+                        <div class="list-group list-group-flush">
+                            {% for file in patient_files.raw %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-0">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold small">
+                                            {{ file.file_type_display_name }}
+                                        </div>
+                                        <div class="text-muted small">
+                                            {{ file.original_filename|default:file.filename }}
+                                            {% if file.file_size %} • {{ file.file_size_mb }} MB{% endif %}
+                                            {% if file.created_at %} • {{ file.created_at|date:"M d, Y H:i" }}{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                   class="btn btn-outline-primary btn-sm" 
+                                   title="Download file"
+                                   download>
+                                    <i class="fas fa-download"></i>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Processed Files Section -->
+                    {% if patient_files.processed %}
+                    <div class="mb-3">
+                        <h6 class="text-success mb-2 small">
+                            <i class="fas fa-file-export me-1"></i>Processed Files
+                        </h6>
+                        <div class="list-group list-group-flush">
+                            {% for file in patient_files.processed %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-0">
+                                <div class="d-flex align-items-center">
+                                    <div class="me-2">
+                                        {% if file.file_type == 'cbct_processed' %}
+                                            <i class="fas fa-skull text-success"></i>
+                                        {% elif file.file_type == 'ios_processed_upper' %}
+                                            <i class="fas fa-cube text-success"></i>
+                                        {% elif file.file_type == 'ios_processed_lower' %}
+                                            <i class="fas fa-cube text-success"></i>
+                                        {% elif file.file_type == 'audio_processed' %}
+                                            <i class="fas fa-file-text text-success"></i>
+                                        {% elif file.file_type == 'bite_classification' %}
+                                            <i class="fas fa-brain text-purple"></i>
+                                        {% else %}
+                                            <i class="fas fa-file text-success"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold small">
+                                            {{ file.file_type_display_name }}
+                                        </div>
+                                        <div class="text-muted small">
+                                            {{ file.original_filename|default:file.filename }}
+                                            {% if file.file_size %} • {{ file.file_size_mb }} MB{% endif %}
+                                            {% if file.created_at %} • {{ file.created_at|date:"M d, Y H:i" }}{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                   class="btn btn-outline-success btn-sm" 
+                                   title="Download file"
+                                   download>
+                                    <i class="fas fa-download"></i>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Other Files Section -->
+                    {% if patient_files.other %}
+                    <div class="mb-3">
+                        <h6 class="text-secondary mb-2 small">
+                            <i class="fas fa-file me-1"></i>Other Files
+                        </h6>
+                        <div class="list-group list-group-flush">
+                            {% for file in patient_files.other %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-0">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold small">{{ file.file_type|title }}</div>
+                                        <div class="text-muted small">
+                                            {{ file.original_filename|default:file.filename }}
+                                            {% if file.file_size %} • {{ file.file_size_mb }} MB{% endif %}
+                                            {% if file.created_at %} • {{ file.created_at|date:"M d, Y H:i" }}{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                   class="btn btn-outline-secondary btn-sm" 
+                                   title="Download file"
+                                   download>
+                                    <i class="fas fa-download"></i>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="text-center py-3">
+                    <div class="mb-2">
+                        <i class="fas fa-folder-open fa-2x text-muted"></i>
+                    </div>
+                    <p class="text-muted small mb-0">No files found for this patient</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+

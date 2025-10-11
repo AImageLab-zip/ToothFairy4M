@@ -63,7 +63,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
-    "scans",
+    "common",
+    "maxillo",
+    "brain",
 ]
 
 MIDDLEWARE = [
@@ -90,6 +92,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "maxillo.context_processors.current_project",
             ],
         },
     },
@@ -244,7 +247,7 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
-        'scans': {
+        'maxillo': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False,
@@ -273,7 +276,7 @@ if not DEBUG:
     LOGGING['loggers']['django.request']['level'] = 'ERROR'
     LOGGING['loggers']['django.server']['level'] = 'ERROR'
     # But keep our app logs at DEBUG level
-    LOGGING['loggers']['scans']['level'] = 'DEBUG'
+    LOGGING['loggers']['maxillo']['level'] = 'DEBUG'
     LOGGING['loggers']['toothfairy']['level'] = 'DEBUG'
     LOGGING['loggers']['toothfairy.middleware']['level'] = 'DEBUG'
 

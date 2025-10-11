@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Choose App - ToothFairy4M{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/landing.css' %}">
+{% endblock %}
+
+{% block navbar %}{% endblock %}
+{% block footer %}{% endblock %}
+{% block messages %}{% endblock %}
+
+{% block content %}
+<section class="landing-wrapper">
+    <div class="user-fab">
+        {% if user.is_authenticated %}
+            <div class="user-chip dropdown">
+                <a class="btn btn-light btn-sm dropdown-toggle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-user-circle me-1"></i>{{ user.username }}
+                    <span class="badge bg-secondary ms-2">{{ user.profile.get_role_display }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li class="px-3 py-2 text-muted small">Signed in as <strong>{{ user.username }}</strong></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <form method="post" action="{% url 'logout' %}" class="px-3 py-1 m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                                <i class="fas fa-sign-out-alt me-1"></i>Logout
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        {% else %}
+            <div class="auth-actions">
+                <a href="{% url 'login' %}" class="btn btn-primary btn-sm shadow-sm me-2">
+                    <i class="fas fa-sign-in-alt me-1"></i>Login
+                </a>
+                <a href="{% url 'register' %}" class="btn btn-outline-light btn-sm shadow-sm">
+                    <i class="fas fa-user-plus me-1"></i>Register
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="brand text-center">
+        <div class="logo-wrap">
+            <i class="fas fa-tooth"></i>
+        </div>
+        <h1 class="title">ToothFairy4M</h1>
+        <p class="subtitle">Choose your workspace</p>
+    </div>
+
+    {% if user.is_authenticated and projects %}
+        <div class="split-grid container">
+            {% for project in projects %}
+                <a class="app-card app-card--{{ project.slug|default:'default' }}" href="/{{ project.slug }}/">
+                    <div class="card-inner">
+                        <div class="icon-wrap">
+                            {% if project.slug == 'maxillo' %}
+                                <i class="fas fa-tooth"></i>
+                            {% elif project.slug == 'brain' %}
+                                <i class="fas fa-brain"></i>
+                            {% else %}
+                                <i class="fas {{ project.icon|default:'fa-folder' }}"></i>
+                            {% endif %}
+                        </div>
+                        <h2 class="app-title">{{ project.name }}</h2>
+                        <p class="app-desc">{{ project.description|default:"Access your project data and workflows." }}</p>
+                        <span class="action-btn">Enter<i class="fas fa-arrow-right ms-2"></i></span>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+
+        {% if continue_url and current_project_name %}
+        <div class="continue-cta text-center">
+            <a href="{{ continue_url }}" class="btn btn-link text-light text-decoration-none">
+                Continue to {{ current_project_name }} <i class="fas fa-arrow-right ms-1"></i>
+            </a>
+        </div>
+        {% endif %}
+    {% elif user.is_authenticated %}
+        <div class="container text-center py-5">
+            <div class="alert alert-warning d-inline-block shadow-lg" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>You are not allowed in any project of ToothFairy4M, contact the administrator if you think this is an error</strong>
+            </div>
+        </div>
+    {% else %}
+        <div class="container text-center py-5">
+            <div class="card shadow-lg" style="max-width: 500px; margin: 0 auto; background: rgba(255, 255, 255, 0.95);">
+                <div class="card-body p-5">
+                    <i class="fas fa-lock fa-3x text-primary mb-3"></i>
+                    <h3 class="mb-3">Authentication Required</h3>
+                    <p class="text-muted mb-4">Please log in to access ToothFairy4M projects.</p>
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'login' %}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                        <a href="{% url 'register' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-user-plus me-2"></i>Register
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}
+

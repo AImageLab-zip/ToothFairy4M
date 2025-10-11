@@ -9,6 +9,9 @@ window.VolumeRenderer = {
     camera: null,
     renderer: null,
     controls: null,
+    animationId: null,
+    isRunning: false,
+    _boundResizeHandler: null,
     
     // Volume data
     volumeTexture: null,
@@ -23,8 +26,8 @@ window.VolumeRenderer = {
     fragmentShader: null,
     
     init: function(containerId, volumeTexture, volumeAtlas, dimensions) {
-        console.log('Initializing Volume Renderer...');
-        console.log('Volume data received:', {
+        console.debug('Initializing Volume Renderer...');
+        console.debug('Volume data received:', {
             hasTexture: !!volumeTexture,
             textureSize: volumeTexture ? `${volumeTexture.image.width}x${volumeTexture.image.height}` : 'none',
             atlasSize: volumeAtlas ? volumeAtlas.atlasSize : 'none',
@@ -36,11 +39,19 @@ window.VolumeRenderer = {
         this.dimensions = dimensions;
         
         this.setupScene(containerId);
+        // If scene is not ready yet (container had zero size), wait and retry init
+        if (!this.scene || !this.camera || !this.renderer) {
+            console.debug('Volume renderer scene not ready yet, retrying init...');
+            setTimeout(() => {
+                this.init(containerId, volumeTexture, volumeAtlas, dimensions);
+            }, 120);
+            return;
+        }
         this.loadShaders().then(() => {
             this.createVolumeCube();
             this.setupEventListeners();
             this.startRenderLoop();
-            console.log('Volume Renderer initialized successfully');
+            console.debug('Volume Renderer initialized successfully');
         });
     },
     
@@ -57,7 +68,7 @@ window.VolumeRenderer = {
         
         // If container has zero dimensions, wait a bit and try again
         if (width === 0 || height === 0) {
-            console.log(`Container ${containerId} has zero dimensions, waiting for proper sizing...`);
+            console.debug(`Container ${containerId} has zero dimensions, waiting for proper sizing...`);
             setTimeout(() => {
                 this.setupScene(containerId);
             }, 100);
@@ -66,7 +77,7 @@ window.VolumeRenderer = {
         
         const rect = container.getBoundingClientRect();
         
-        console.log(`Setting up volume scene in container: ${containerId}`, {
+        console.debug(`Setting up volume scene in container: ${containerId}`, {
             clientSize: `${width}x${height}`,
             boundingRect: `${rect.width}x${rect.height}`,
             offsetSize: `${container.offsetWidth}x${container.offsetHeight}`,
@@ -103,7 +114,7 @@ window.VolumeRenderer = {
         this.controls.panSpeed = 0.6;
         this.controls.target.set(0, 0, 0); // Look at center of volume
         
-        console.log('Volume renderer scene setup complete:', {
+        console.debug('Volume renderer scene setup complete:', {
             containerFound: !!container,
             sceneCreated: !!this.scene,
             cameraCreated: !!this.camera,
@@ -150,7 +161,7 @@ window.VolumeRenderer = {
             .then(response => response.text())
             .then(shaderCode => {
                 this.fragmentShader = shaderCode;
-                console.log('Fragment shader loaded from external file');
+                console.debug('Fragment shader loaded from external file');
                 return shaderCode;
             })
             .catch(error => {
@@ -228,7 +239,7 @@ window.VolumeRenderer = {
             });
             
             shaderSuccess = true;
-            console.log('Volume shader material created with screen quad');
+            console.debug('Volume shader material created with screen quad');
             
         } catch (error) {
             console.error('Volume shader compilation failed:', error);
@@ -250,7 +261,7 @@ window.VolumeRenderer = {
         quad.position.set(0, 0, 0); // Center the quad
         this.scene.add(quad);
         
-        console.log('Volume quad created:', {
+        console.debug('Volume quad created:', {
             hasUniforms: !!material.uniforms,
             hasRenderMode: !!(material.uniforms && material.uniforms.renderMode),
             materialType: material.type,
@@ -270,7 +281,7 @@ window.VolumeRenderer = {
         // Force an immediate render to see if the quad appears
         if (this.renderer && this.scene && this.camera) {
             this.renderer.render(this.scene, this.camera);
-            console.log('Volume quad render completed');
+            console.debug('Volume quad render completed');
         }
     },
     
@@ -285,7 +296,7 @@ window.VolumeRenderer = {
                 quad.material.uniforms.renderMode.value = 
                     this.renderMode === 'mip' ? 0 : 
                     this.renderMode === 'translucent' ? 1 : 2;
-                console.log(`Volume render mode changed to: ${this.renderMode} (${quad.material.uniforms.renderMode.value})`);
+                console.debug(`Volume render mode changed to: ${this.renderMode} (${quad.material.uniforms.renderMode.value})`);
             } else {
                 console.warn('Volume material does not support render mode changes');
             }
@@ -310,9 +321,11 @@ window.VolumeRenderer = {
         }
         
         // Window resize
-        window.addEventListener('resize', () => {
-            this.handleResize();
-        });
+        if (this._boundResizeHandler) {
+            window.removeEventListener('resize', this._boundResizeHandler);
+        }
+        this._boundResizeHandler = () => { this.handleResize(); };
+        window.addEventListener('resize', this._boundResizeHandler);
     },
     
     resetView: function() {
@@ -320,7 +333,7 @@ window.VolumeRenderer = {
             this.camera.position.set(150, 150, 150);
             this.controls.target.set(0, 0, 0);
             this.controls.reset();
-            console.log('Volume view reset');
+            console.debug('Volume view reset');
         }
     },
     
@@ -337,8 +350,10 @@ window.VolumeRenderer = {
     },
     
     startRenderLoop: function() {
+        this.isRunning = true;
         const animate = () => {
-            requestAnimationFrame(animate);
+            if (!this.isRunning) return;
+            this.animationId = requestAnimationFrame(animate);
             if (this.controls) {
                 this.controls.update();
             }
@@ -346,16 +361,16 @@ window.VolumeRenderer = {
                 try {
                     this.renderer.render(this.scene, this.camera);
                 } catch (error) {
-                    // Stop render loop if there are persistent WebGL errors
                     if (error.message && error.message.includes('WebGL')) {
                         console.error('WebGL error in volume renderer, stopping render loop:', error);
-                        return; // Stop the animation loop
+                        this.isRunning = false;
+                        return;
                     }
                 }
             }
         };
-        animate();
-        console.log('Volume render loop started');
+        this.animationId = requestAnimationFrame(animate);
+        console.debug('Volume render loop started');
     },
     
     // Public method to refresh the volume rendering
@@ -370,12 +385,51 @@ window.VolumeRenderer = {
     
     // Cleanup method
     dispose: function() {
+        // stop loop
+        this.isRunning = false;
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        // remove listeners
+        if (this._boundResizeHandler) {
+            window.removeEventListener('resize', this._boundResizeHandler);
+            this._boundResizeHandler = null;
+        }
+        // dispose scene objects
+        if (this.scene) {
+            try {
+                this.scene.traverse(obj => {
+                    if (obj.isMesh) {
+                        if (obj.geometry) { obj.geometry.dispose(); }
+                        if (obj.material) {
+                            if (Array.isArray(obj.material)) {
+                                obj.material.forEach(m => m && m.dispose && m.dispose());
+                            } else if (obj.material.dispose) {
+                                obj.material.dispose();
+                            }
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
         if (this.controls) {
-            this.controls.dispose();
+            try { this.controls.dispose(); } catch (e) {}
+            this.controls = null;
         }
         if (this.renderer) {
-            this.renderer.dispose();
+            try { this.renderer.forceContextLoss && this.renderer.forceContextLoss(); } catch (e) {}
+            try { this.renderer.dispose(); } catch (e) {}
+            if (this.renderer.domElement && this.renderer.domElement.parentElement) {
+                this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
+            }
+            this.renderer = null;
         }
-        console.log('Volume renderer disposed');
+        this.scene = null;
+        this.camera = null;
+        this.volumeTexture = null;
+        this.volumeAtlas = null;
+        this.dimensions = null;
+        console.debug('Volume renderer disposed');
     }
 }; 

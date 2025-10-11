@@ -1,0 +1,409 @@
+{% load static %}
+<div class="container-fluid">
+
+    <div class="row">
+        <!-- 3D Viewer Column -->
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                    <h4 class="me-3"><i class="fas fa-cube me-2"></i>{{ scan_pair.name }}</h4>
+                    <div class="btn-group" role="group" id="modalityToggleGroup">
+                        {# Dynamic modality toggles #}
+                        {% if patient_modalities %}
+                            {% for m in patient_modalities %}
+                                {% if m.slug != 'rawzip' %}
+                                {% with rid='modality_'|add:m.slug %}
+                                <input type="radio" class="btn-check" name="viewerType" id="{{ rid }}" autocomplete="off"
+                                       {% if default_modality_slug == m.slug %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary btn-sm modality-toggle" data-modality="{{ m.slug }}" for="{{ rid }}">
+                                    {% if m.label %}{{ m.label }}{% elif m.name %}{{ m.name %}{% else %}{{ m.slug|upper }}{% endif %}
+                                </label>
+                                {% endwith %}
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted small">No modalities configured for this patient</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="btn-group" role="group" id="iosControls" {% if not scan_pair.has_ios_scans and scan_pair.has_cbct_scan %}style="display: none;"{% endif %}>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="resetView">
+                        <i class="fas fa-home me-1"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="toggleWireframe">
+                        <i class="fas fa-project-diagram me-1"></i>Wireframe
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="toggleGrid">
+                        <i class="fas fa-th me-1"></i>Grid
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                            Grid Size
+                        </button>
+                        <div class="dropdown-menu">
+                            <button class="dropdown-item" onclick="IOSViewer.updateGridSize(3); document.getElementById('gridSize').value='3';">3x3</button>
+                            <button class="dropdown-item" onclick="IOSViewer.updateGridSize(9); document.getElementById('gridSize').value='9';">9x9</button>
+                            <button class="dropdown-item" onclick="IOSViewer.updateGridSize(15); document.getElementById('gridSize').value='15';">15x15</button>
+                            <button class="dropdown-item" onclick="IOSViewer.updateGridSize(20); document.getElementById('gridSize').value='20';">20x20</button>
+                        </div>
+                        <select id="gridSize" style="display: none;">
+                            <option value="3">3x3</option>
+                            <option value="9" selected>9x9</option>
+                            <option value="15">15x15</option>
+                            <option value="20">20x20</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="btn-group" role="group" id="cbctControls" {% if scan_pair.has_ios_scans %}style="display: none;"{% endif %}>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="resetCBCTView">
+                        <i class="fas fa-home me-1"></i>Reset
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                            Windowing
+                        </button>
+                        <div class="dropdown-menu p-3 windowing-menu" style="min-width: 260px;">
+                            <div class="mb-2">
+                                <label class="form-label-sm mb-1">Min (%) <span id="windowMinValue" class="ms-1">0</span></label>
+                                <input type="range" class="form-range" id="windowMinRange" min="0" max="100" step="1" value="0">
+                            </div>
+                            <div>
+                                <label class="form-label-sm mb-1">Max (%) <span id="windowMaxValue" class="ms-1">100</span></label>
+                                <input type="range" class="form-range" id="windowMaxRange" min="0" max="100" step="1" value="100">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Viewer Help Button -->
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-outline-info btn-sm" id="viewerHelpBtn" data-bs-toggle="modal" data-bs-target="#viewerHelpModal">
+                    <i class="fas fa-question-circle me-1"></i>How to use the Viewer
+                </button>
+            </div>
+            
+            <div class="position-relative">
+                <!-- IOS Viewer -->
+                <div id="ios-viewer" class="viewer-container" {% if default_modality_slug and default_modality_slug != 'ios' %}style="display: none;"{% endif %}>
+                    {% if scan_pair.ios_processing_status == 'processing' %}
+                        <!-- Processing State -->
+                        <div class="ios-status-display">
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="fas fa-cog fa-spin fa-3x text-primary"></i>
+                                </div>
+                                <h5 class="text-primary mb-2">Processing Scans</h5>
+                                <p class="text-muted">
+                                    Analyzing upper and lower jaw scans...<br>
+                                    <small>This usually takes 1-2 minutes</small>
+                                </p>
+                                <div class="progress mx-auto" style="width: 200px; height: 8px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                         role="progressbar" style="width: 100%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    {% elif scan_pair.ios_processing_status == 'failed' %}
+                        <!-- Error State -->
+                        <div class="ios-status-display">
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="fas fa-exclamation-triangle fa-3x text-danger"></i>
+                                </div>
+                                <h5 class="text-danger mb-2">Processing Failed</h5>
+                                <p class="text-muted">
+                                    Unable to process the uploaded scans.<br>
+                                    <small>Please re-upload the files using the File Management section.</small>
+                                </p>
+                            </div>
+                        </div>
+                    {% elif not scan_pair.has_ios_scans %}
+                        <!-- No Scans State -->
+                        <div class="ios-status-display">
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="fas fa-upload fa-3x text-secondary"></i>
+                                </div>
+                                <h5 class="text-secondary mb-2">No IOS Scans</h5>
+                                <p class="text-muted">
+                                    Upload upper and lower jaw scans to view them here.
+                                </p>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- 3D Viewer Canvas (only when processed successfully) -->
+                        <div id="scan-viewer"></div>
+                        <div class="viewer-controls">
+                            <div class="btn-group-vertical">
+                                <button class="btn btn-light btn-sm active" id="showUpper" title="Upper Jaw">
+                                    <i class="fas fa-eye me-1"></i>U
+                                </button>
+                                <button class="btn btn-light btn-sm active" id="showLower" title="Lower Jaw">
+                                    <i class="fas fa-eye me-1"></i>L
+                                </button>
+                                <hr class="my-1" style="border-color: #dee2e6;">
+                                <button class="btn btn-light btn-sm" id="viewRight" title="View from Right">
+                                    <i class="fas fa-arrow-right me-1"></i>R
+                                </button>
+                                <button class="btn btn-light btn-sm" id="viewLeft" title="View from Left">
+                                    <i class="fas fa-arrow-left me-1"></i>L
+                                </button>
+                                <button class="btn btn-light btn-sm" id="viewFront" title="View from Front">
+                                    <i class="fas fa-arrow-up me-1"></i>F
+                                </button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <!-- CBCT Viewer -->
+                <div id="cbct-viewer" class="viewer-container" {% if default_modality_slug != 'cbct' %}style="display: none;"{% endif %}>
+                    {% if not scan_pair.has_cbct_scan %}
+                        <!-- No CBCT Data State -->
+                        <div class="ios-status-display">
+                            <div class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="fas fa-cube fa-3x text-secondary"></i>
+                                </div>
+                                <h5 class="text-secondary mb-2">No CBCT Data</h5>
+                                <p class="text-muted">
+                                    Upload CBCT scan to view volumetric data here.
+                                </p>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- CBCT Loading and Views -->
+                        <div class="cbct-loading" id="cbctLoading">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 text-muted">Loading CBCT data...</p>
+                            </div>
+                        </div>
+                        <div class="cbct-views" id="cbctViews" style="display: none;">
+                            <!-- Top 4 views in a 2x2 grid - 2/3 height -->
+                            <div class="row g-2" style="aspect-ratio: 1/1;">
+                                <div class="col-6" style="height: 50%;">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Axial</div>
+                                        <div id="axialView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6" style="height: 50%;">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Sagittal</div>
+                                        <div id="sagittalView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6" style="height: 50%;">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Coronal</div>
+                                        <div id="coronalView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                                <div class="col-6" style="height: 50%;">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">3D Volume</div>
+                                        <div id="volumeView" class="cbct-view"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Panoramic view in its own row - 1/3 height, full width -->
+                            <div class="row g-2" style="height: 33.33%;">
+                                <div class="col-12">
+                                    <div class="cbct-view-container">
+                                        <div class="cbct-view-label">Panoramic</div>
+                                        <div id="panoramicView" class="cbct-view d-flex align-items-center justify-content-center">
+                                            <div class="panoramic-loading" id="panoramicLoading">
+                                                <div class="text-center">
+                                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <p class="mt-2 text-muted small">Loading panoramic...</p>
+                                                </div>
+                                            </div>
+                                            <img id="panoramicImage" class="panoramic-image" style="display: none; max-width: 100%; max-height: 100%; object-fit: contain;" alt="Panoramic view">
+                                            <div class="panoramic-error" id="panoramicError" style="display: none;">
+                                                <div class="text-center">
+                                                    <i class="fas fa-exclamation-triangle"></i>
+                                                    <p class="mt-1 small">Panoramic view not available</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                {# Generic placeholders for other modalities #}
+                {% if patient_modalities %}
+                {% for m in patient_modalities %}
+                {% if m.slug != 'ios' and m.slug != 'cbct' and m.slug != 'rawzip' %}
+                <div id="{{ m.slug }}-viewer" class="viewer-container" {% if default_modality_slug != m.slug %}style="display: none;"{% endif %}>
+                    <!-- Reuse CBCT layout without panoramic row -->
+                    <div class="cbct-loading" id="{{ m.slug }}Loading">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading {% if m.label %}{{ m.label }}{% elif m.name %}{{ m.name }}{% else %}{{ m.slug|upper }}{% endif %} data...</p>
+                        </div>
+                    </div>
+                    <div class="cbct-views" id="{{ m.slug }}Views" style="display: none;">
+                        <div class="row g-2" style="aspect-ratio: 1/1;">
+                            <div class="col-6" style="height: 50%;">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Axial</div>
+                                    <div id="{{ m.slug }}_axialView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6" style="height: 50%;">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Sagittal</div>
+                                    <div id="{{ m.slug }}_sagittalView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6" style="height: 50%;">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">Coronal</div>
+                                    <div id="{{ m.slug }}_coronalView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                            <div class="col-6" style="height: 50%;">
+                                <div class="cbct-view-container">
+                                    <div class="cbct-view-label">3D Volume</div>
+                                    <div id="{{ m.slug }}_volumeView" class="cbct-view"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Classification Column -->
+        <div class="col-lg-4">
+            {% include 'common/sections/vocal_caption_section.html' %}
+            {% include 'common/sections/scan_settings_section.html' %}
+            {% include 'common/sections/nifti_metadata_section.html' %}
+            {% include 'common/sections/file_management_section.html' %}
+        </div>
+    </div>
+
+    <!-- Back Button -->
+    <div class="row mt-3">
+        <div class="col-12">
+            {% firstof request.resolver_match.namespace 'maxillo' as ns %}
+            <a href="{% url ns|add:':patient_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Scan List
+            </a>
+        </div>
+    </div>
+</div>
+<!-- Saving Indicator -->
+<div class="saving-indicator" id="savingIndicator">
+    <i class="fas fa-check me-1"></i>Saved!
+ </div>
+
+<!-- Viewer Help Modal -->
+<div class="modal fade" id="viewerHelpModal" tabindex="-1" aria-labelledby="viewerHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewerHelpModalLabel">
+                    <i class="fas fa-cube me-2"></i>3D Viewer Instructions
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- IOS Viewer Instructions -->
+                    <div class="col-md-6">
+                        <div class="viewer-instructions-card">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-mobile-alt me-2"></i>IOS Scanner Viewer
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-mouse me-1"></i>Mouse Controls
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Left-click + drag:</strong> Rotate the view</li>
+                                        <li><strong>Scroll wheel:</strong> Zoom in/out</li>
+                                        <li><strong>Right-click + drag:</strong> Pan the view</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-eye me-1"></i>Jaw Visibility
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>U button:</strong> Toggle upper jaw visibility</li>
+                                        <li><strong>L button:</strong> Toggle lower jaw visibility</li>
+                                        <li><strong>Reset button:</strong> Return to default view</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-project-diagram me-1"></i>Display Options
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Wireframe:</strong> Toggle wireframe mode for better detail</li>
+                                        <li><strong>Solid:</strong> Default shaded view</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CBCT Viewer Instructions -->
+                    <div class="col-md-6">
+                        <div class="viewer-instructions-card">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-cube me-2"></i>CBCT Volume Viewer
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="instruction-group">
+                                    <h6 class="text-success mb-2">
+                                        <i class="fas fa-mouse me-1"></i>Mouse Controls
+                                    </h6>
+                                    <ul class="list-unstyled instruction-list">
+                                        <li><strong>Left-click + drag:</strong> Pan/move the view</li>
+                                        <li><strong>Scroll wheel:</strong> Scroll through slices</li>
+                                        <li><strong>Shift + scroll:</strong> Faster scrolling</li>
+                                        <li><strong>Ctrl + scroll:</strong> Zoom in/out</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="instruction-group">
+                                    <h6 class="text-success mb-2">
+                                        <i class="fas fa-palette me-1"></i>Rendering Options
+                                    </h6>
+                                    This is still a work in progress and the rendering options are not yet implemented.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+ </div>

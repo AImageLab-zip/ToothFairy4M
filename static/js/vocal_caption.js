@@ -106,16 +106,55 @@ class VocalCaptionRecorder {
     }
     
     getCurrentModality() {
-        const cbctTab = document.querySelector('#cbctViewer');
-        const iosTab = document.querySelector('#iosViewer');
-        
-        if (cbctTab && cbctTab.checked) {
-            return { value: 'cbct', display: 'CBCT' };
-        } else if (iosTab && iosTab.checked) {
-            return { value: 'ios', display: 'Intra-Oral Scans' };
+        // Prefer the modality toggle group rendered in patient detail
+        const toggleGroup = document.getElementById('modalityToggleGroup');
+        if (toggleGroup) {
+            const checked = toggleGroup.querySelector('input[name="viewerType"]:checked');
+            if (checked) {
+                const label = toggleGroup.querySelector(`label[for="${checked.id}"]`);
+                const value = (label && label.dataset && label.dataset.modality) || checked.id.replace(/^modality_/, '');
+                const display = label ? (label.textContent.trim() || value.toUpperCase()) : value.toUpperCase();
+                return { value, display };
+            }
         }
-        
-        return { value: 'undefined', display: 'Undefined' };
+
+        // Secondary fallback: any checked viewerType radio anywhere
+        const anyChecked = document.querySelector('input[name="viewerType"]:checked');
+        if (anyChecked) {
+            const fallbackLabel = document.querySelector(`label[for="${anyChecked.id}"]`);
+            const value = (fallbackLabel && fallbackLabel.dataset && fallbackLabel.dataset.modality) || anyChecked.id.replace(/^modality_/, '');
+            const display = fallbackLabel ? (fallbackLabel.textContent.trim() || value.toUpperCase()) : value.toUpperCase();
+            return { value, display };
+        }
+
+        // Fallback: infer from visible viewer container (e.g., ios-viewer, cbct-viewer, <slug>-viewer)
+        const visibleContainer = document.querySelector('.viewer-container:not([style*="display: none"])');
+        if (visibleContainer && visibleContainer.id) {
+            const value = visibleContainer.id.replace(/-viewer$/, '');
+            // Try finding its toggle label for display text
+            let display = value.toUpperCase();
+            const tg = document.getElementById('modalityToggleGroup');
+            if (tg) {
+                const input = tg.querySelector(`#modality_${value}`);
+                if (input) {
+                    const label = tg.querySelector(`label[for="modality_${value}"]`);
+                    if (label) display = label.textContent.trim() || display;
+                }
+            }
+            return { value, display };
+        }
+
+        // Global default from Django JSON
+        if (window.defaultModality) {
+            const slug = window.defaultModality;
+            const list = (window.modalities || []);
+            const found = Array.isArray(list) ? list.find(m => m.slug === slug) : null;
+            const display = found ? (found.label || found.name || slug.toUpperCase()) : slug.toUpperCase();
+            return { value: slug, display };
+        }
+
+        // Last resort fallback
+        return { value: "Undefined", display: "None" };
     }
     
     async startRecording() {
@@ -735,7 +774,7 @@ class VocalCaptionRecorder {
         }
         
         try {
-            const response = await fetch(`/scan/${window.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
+            const response = await fetch(`/${window.projectNamespace}/patient/${window.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -777,7 +816,7 @@ class VocalCaptionRecorder {
         }
         
         try {
-            const response = await fetch(`/scan/${window.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
+            const response = await fetch(`/${window.projectNamespace}/patient/${this.scanId}/voice-caption/${this.currentCaptionId}/edit/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

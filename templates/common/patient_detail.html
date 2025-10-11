@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Patient {{ scan_pair.name }} - ToothFairy4M{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/patient_detail.css' %}">
+<link rel="stylesheet" href="{% static 'css/image_viewer.css' %}">
+{% endblock %}
+
+{% block content %}
+{% firstof request.resolver_match.namespace 'maxillo' as ns %}
+{% with content_path=ns|add:'/patient_detail_content.html' %}
+{% include content_path %}
+{% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script id="django-data" type="application/json">
+{
+    "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
+    "scanId": {{ scan_pair.patient_id }},
+    "hasIOS": {{ scan_pair.has_ios_scans|yesno:"true,false" }},
+    "hasCBCT": {{ has_cbct|yesno:"true,false" }},
+    "isCBCTProcessed": {{ scan_pair.is_cbct_processed|yesno:"true,false" }},
+    "modalities": {{ patient_modalities_json|safe }},
+    "defaultModality": {{ default_modality_json|safe }}
+}
+</script>
+{# Core volume rendering #}
+<script src="{% static 'js/volume_renderer.js' %}"></script>
+
+{# Modality-specific viewers #}
+<script src="{% static 'js/modality_viewers/ios.js' %}"></script>
+<script src="{% static 'js/modality_viewers/cbct.js' %}"></script>
+<script src="{% static 'js/modality_viewers/intraoral.js' %}"></script>
+<script src="{% static 'js/modality_viewers/teleradiography.js' %}"></script>
+<script src="{% static 'js/modality_viewers/panoramic.js' %}"></script>
+
+{# Main patient detail controller #}
+<script src="{% static 'js/patient_detail.js' %}"></script>
+
+{# Additional features #}
+<script src="{% static 'js/vocal_caption.js' %}"></script>
+<script src="{% static 'js/nifti_metadata.js' %}"></script>
+<script src="{% static 'js/collapse_sections.js' %}"></script>
+<script src="{% static 'js/cbct_upload.js' %}"></script>
+{% endblock %}
+
+

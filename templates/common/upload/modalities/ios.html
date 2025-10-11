@@ -1,0 +1,21 @@
+<div class="mb-4">
+	<h6 class="mb-2"><i class="fas fa-tooth me-2"></i>Intra-Oral Scans (IOS)</h6>
+	<div class="mb-3">
+		<label for="{{ patient_upload_form.ios_upper.id_for_label }}" class="form-label">{{ patient_upload_form.ios_upper.label }}</label>
+		{{ patient_upload_form.ios_upper }}
+		{% if patient_upload_form.ios_upper.errors %}
+			<div class="text-danger">{{ patient_upload_form.ios_upper.errors }}</div>
+		{% endif %}
+		<div class="form-text">Upload STL file for upper jaw scan</div>
+	</div>
+	<div class="mb-3">
+		<label for="{{ patient_upload_form.ios_lower.id_for_label }}" class="form-label">{{ patient_upload_form.ios_lower.label }}</label>
+		{{ patient_upload_form.ios_lower }}
+		{% if patient_upload_form.ios_lower.errors %}
+			<div class="text-danger">{{ patient_upload_form.ios_lower.errors }}</div>
+		{% endif %}
+		<div class="form-text">Upload STL file for lower jaw scan</div>
+	</div>
+</div>
+
+

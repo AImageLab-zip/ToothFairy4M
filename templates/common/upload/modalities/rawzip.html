@@ -1,0 +1,11 @@
+<div class="mb-4">
+	<h6 class="mb-2"><i class="fas fa-file-archive me-2"></i>RawZip</h6>
+	<div class="mb-3">
+		<label for="{{ patient_upload_form.rawzip.id_for_label }}" class="form-label">{{ patient_upload_form.rawzip.label }}</label>
+		{{ patient_upload_form.rawzip }}
+		{% if patient_upload_form.rawzip.errors %}
+			<div class="text-danger">{{ patient_upload_form.rawzip.errors }}</div>
+		{% endif %}
+		<div class="form-text">Upload RawZip file (ZIP format)</div>
+	</div>
+</div>

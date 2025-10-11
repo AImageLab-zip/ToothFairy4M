@@ -1,0 +1,206 @@
+"""Admin control panel and processing management views."""
+from django.shortcuts import render, get_object_or_404
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+from django.db.models import Count, Sum, Q
+from django.conf import settings
+import json
+import os
+import shutil
+import logging
+
+from ..models import Patient
+
+logger = logging.getLogger(__name__)
+
+def rerun_processing(request, patient_id):
+    """Set selected existing jobs to pending so workers can pick them up (admin only).
+
+    Accepts JSON body: { "jobs": ["modality_slug1", "modality_slug2", ...] }
+    Marks the latest job for each modality as pending and resets processing status.
+    """
+    try:
+        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        from common.models import ProcessingJob, Job
+        from ..modality_helpers import get_all_modalities, get_modality_slugs
+
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            data = {}
+
+        requested_jobs = data.get('jobs')
+        if requested_jobs is None:
+            # Default to all modalities if not specified
+            requested_jobs = list(get_modality_slugs())
+
+        if not isinstance(requested_jobs, list) or not requested_jobs:
+            return JsonResponse({'success': False, 'error': 'No jobs selected'}, status=400)
+
+        updated = []
+        not_found = []
+
+        # Process each requested modality dynamically
+        for modality_slug in requested_jobs:
+            # Handle both old-style ProcessingJob and new-style Job
+            jobs_found = False
+            
+            # Try new Job model first
+            try:
+                job = Job.objects.filter(patient=scan_pair, modality_slug=modality_slug).order_by('-created_at').first()
+                if job:
+                    job.status = 'pending'
+                    job.started_at = None
+                    job.completed_at = None
+                    job.worker_id = ''
+                    job.error_logs = ''
+                    job.save()
+                    jobs_found = True
+                    
+                    # Update patient status fields if they exist (for backward compatibility)
+                    status_field = f'{modality_slug}_processing_status'
+                    if hasattr(scan_pair, status_field):
+                        setattr(scan_pair, status_field, 'processing')
+                        scan_pair.save()
+                    
+                    # Special handling for dependencies
+                    if hasattr(job, 'update_status_based_on_dependencies'):
+                        job.update_status_based_on_dependencies()
+                    
+                    updated.append(modality_slug)
+            except Exception as e:
+                logger.error(f"Error processing job for modality {modality_slug}: {e}")
+            
+            # Handle special case for audio/voice captions (check via modality metadata)
+            from ..modality_helpers import get_modality_by_slug
+            modality_obj = get_modality_by_slug(modality_slug)
+            is_audio_modality = False
+            if modality_obj:
+                metadata = getattr(modality_obj, 'metadata', {}) or {}
+                is_audio_modality = metadata.get('is_audio_modality', False) or modality_slug in ['audio', 'voice']
+            
+            if is_audio_modality:
+                # Use 'audio' as the canonical slug for job lookups
+                actual_slug = 'audio' if modality_slug == 'voice' else modality_slug
+                audio_jobs = Job.objects.filter(patient=scan_pair, modality_slug=actual_slug)
+                if audio_jobs.exists():
+                    for job in audio_jobs:
+                        job.status = 'pending'
+                        job.started_at = None
+                        job.completed_at = None
+                        job.worker_id = ''
+                        job.error_logs = ''
+                        job.save()
+                    # Also reset related captions to pending
+                    for vc in scan_pair.voice_captions.all():
+                        vc.processing_status = 'pending'
+                        vc.save()
+                    if modality_slug not in updated:
+                        updated.append(modality_slug)
+                    jobs_found = True
+            
+            if not jobs_found and modality_slug not in updated:
+                not_found.append(modality_slug)
+
+        msg_parts = []
+        if updated:
+            msg_parts.append(f"Updated: {', '.join(updated)}")
+        if not_found:
+            msg_parts.append(f"No existing job found for: {', '.join(not_found)}")
+        message = '; '.join(msg_parts) if msg_parts else 'No changes made'
+
+        if updated:
+            messages.success(request, f'Reprocessing queued. {message}')
+        else:
+            messages.warning(request, f'Nothing to rerun. {message}')
+
+        return JsonResponse({'success': True, 'message': message, 'updated': updated, 'not_found': not_found})
+
+    except Exception as e:
+        logger.error(f"Error rerunning processing for scan {patient_id}: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def admin_control_panel(request):
+    """Admin control panel showing job stats and disk usage"""
+    from common.models import Job, FileRegistry
+    from django.db.models import Count, Sum, Q
+    import shutil
+    
+    # Get job statistics
+    job_stats = Job.objects.aggregate(
+        total_jobs=Count('id'),
+        pending_jobs=Count('id', filter=Q(status='pending')),
+        processing_jobs=Count('id', filter=Q(status='processing')),
+        completed_jobs=Count('id', filter=Q(status='completed')),
+        failed_jobs=Count('id', filter=Q(status='failed'))
+    )
+    
+    # Get job breakdown by type
+    job_type_stats = Job.objects.values('modality_slug').annotate(
+        total=Count('id'),
+        pending=Count('id', filter=Q(status='pending')),
+        processing=Count('id', filter=Q(status='processing')),
+        completed=Count('id', filter=Q(status='completed')),
+        failed=Count('id', filter=Q(status='failed'))
+    ).order_by('modality_slug')
+    
+    # Get recent failed jobs
+    recent_failed_jobs = Job.objects.filter(
+        status='failed'
+    ).select_related('patient', 'voice_caption').order_by('-created_at')[:10]
+    
+    # Get disk usage statistics
+    disk_usage = {}
+    
+    # Check dataset directory
+    dataset_path = settings.DATASET_PATH
+    if os.path.exists(dataset_path):
+        total, used, free = shutil.disk_usage(dataset_path)
+        disk_usage['dataset'] = {
+            'total': total,
+            'used': used,
+            'free': free,
+            'percent': (used / total * 100) if total > 0 else 0
+        }
+        
+        # Get breakdown by file type
+        file_type_usage = FileRegistry.objects.values('file_type').annotate(
+            total_size=Sum('file_size'),
+            file_count=Count('id')
+        ).order_by('-total_size')
+        
+        disk_usage['by_type'] = file_type_usage
+    
+    # Check media/storage directory
+    storage_path = settings.MEDIA_ROOT
+    if os.path.exists(storage_path):
+        total, used, free = shutil.disk_usage(storage_path)
+        disk_usage['storage'] = {
+            'total': total,
+            'used': used,
+            'free': free,
+            'percent': (used / total * 100) if total > 0 else 0
+        }
+    
+    # Get processing queue info (dynamic by modality)
+    from django.utils.text import slugify as _slugify
+    from common.models import Modality as _Modality
+    processing_queue = {}
+    for _m in _Modality.objects.order_by('name'):
+        _slug = _m.slug or _slugify(_m.name)
+        processing_queue[_slug] = Job.objects.filter(modality_slug=_slug, status='pending').count()
+    
+    context = {
+        'job_stats': job_stats,
+        'job_type_stats': job_type_stats,
+        'recent_failed_jobs': recent_failed_jobs,
+        'disk_usage': disk_usage,
+        'processing_queue': processing_queue,
+    }
+    
+    return render(request, 'maxillo/admin_control_panel.html', context)
+
+

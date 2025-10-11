@@ -19,11 +19,18 @@ from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
-from scans import views as scans_views
+from maxillo import views as scans_views
+from common import views as common_views
 
 urlpatterns = [
+    # App-agnostic admin control panel (must come before Django admin route)
+    path('admin/control-panel/', common_views.admin_control_panel, name='admin_control_panel'),
     path('admin/', admin.site.urls),
-    path('', include('scans.urls')),
+    path('', scans_views.home, name='home'),
+    path('maxillo/', include('maxillo.urls')),
+    path('brain/', include('brain.urls')),
+    # API root
+    path('api/', include(('maxillo.api_urls', 'api'), namespace='api')),
     path('login/', auth_views.LoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(template_name='registration/logged_out.html'), name='logout'),
     path('register/', scans_views.register, name='register'),

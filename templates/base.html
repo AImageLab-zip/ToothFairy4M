@@ -40,12 +40,51 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% firstof request.resolver_match.namespace 'maxillo' as ns %}
+    {% block navbar %}
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="{% url 'scan_list' %}">
-                <i class="fas fa-tooth me-2"></i>ToothFairy4M
-            </a>
+            <div class="d-flex align-items-center text-white">
+                {% if user.is_authenticated %}
+                    {% if user.is_staff %}
+                        {% if all_projects %}
+                            <div class="dropdown me-2">
+                                <a class="nav-link p-0 text-white" href="#" id="projectDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Select project">
+                                    <i class="fas {{ current_project_icon|default:'fa-tooth' }}"></i>
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="projectDropdown">
+                                    {% for p in all_projects %}
+                                        {% firstof request.resolver_match.namespace 'maxillo' as ns %}
+                                        <li>
+                                            {% if p.slug == 'maxillo' %}
+                                                <a class="dropdown-item text-center {% if p.id == current_project_id %}active{% endif %}" href="{% url 'maxillo_home' %}" title="{{ p.name }}">
+                                                    <i class="fas {{ p.icon|default:'fa-tooth' }}"></i>
+                                                </a>
+                                            {% elif p.slug == 'brain' %}
+                                                <a class="dropdown-item text-center {% if p.id == current_project_id %}active{% endif %}" href="{% url 'brain_home' %}" title="{{ p.name }}">
+                                                    <i class="fas {{ p.icon|default:'fa-tooth' }}"></i>
+                                                </a>
+                                            {% else %}
+                                                <a class="dropdown-item text-center {% if p.id == current_project_id %}active{% endif %}" href="{% url ns|add:':select_project' p.id %}" title="{{ p.name }}">
+                                                    <i class="fas {{ p.icon|default:'fa-tooth' }}"></i>
+                                                </a>
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% else %}
+                            <i class="fas {{ current_project_icon|default:'fa-tooth' }} me-2"></i>
+                        {% endif %}
+                    {% else %}
+                        <i class="fas {{ current_project_icon|default:'fa-tooth' }} me-2"></i>
+                    {% endif %}
+                {% else %}
+                    <i class="fas {{ current_project_icon|default:'fa-tooth' }} me-2"></i>
+                {% endif %}
+                <a class="navbar-brand ms-1" href="{% url ns|add:':patient_list' %}">{{ current_project_name|default:'ToothFairy4M' }}</a>
+            </div>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -55,13 +94,13 @@
                 <ul class="navbar-nav me-auto">
                     {% if user.is_authenticated %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'scan_list' %}">
+                            <a class="nav-link" href="{% url ns|add:':patient_list' %}">
                                 <i class="fas fa-list me-1"></i>Scans
                             </a>
                         </li>
                         {% if user.profile.can_upload_scans %}
                             <li class="nav-item">
-                                <a class="nav-link" href="{% url 'upload_scan' %}">
+                                <a class="nav-link" href="{% url ns|add:':upload_patient' %}">
                                     <i class="fas fa-upload me-1"></i>Upload
                                 </a>
                             </li>
@@ -113,7 +152,9 @@
             </div>
         </div>
     </nav>
+    {% endblock %}
 
+    {% block messages %}
     <!-- Messages -->
     {% if messages %}
         <div class="container mt-3">
@@ -125,21 +166,42 @@
             {% endfor %}
         </div>
     {% endif %}
+    {% endblock %}
 
     <!-- Main Content -->
     <main class="container-fluid mt-4">
         {% block content %}{% endblock %}
     </main>
 
+    {% block footer %}
     <!-- Footer -->
     <footer class="bg-light mt-5 py-4">
         <div class="container text-center">
-            <p class="mb-0">&copy; 2024 ToothFairy4M</p>
+            <p class="mb-0">&copy; 2024 ToothFairy4M — developed by <a href="https://lucalumetti.it" target="_blank" rel="noopener">Luca Lumetti</a> <a href="https://github.com/AImagelab-Zip/ToothFairy4M" target="_blank" rel="noopener" class="text-dark ms-2" aria-label="GitHub repository"><i class="fa-brands fa-github"></i></a></p>
         </div>
     </footer>
+    {% endblock %}
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}
+    <script>
+        (function(){
+            try {
+                window.projectNamespace = "{% firstof request.resolver_match.namespace 'maxillo' %}";
+            } catch (e) {
+                window.projectNamespace = 'maxillo';
+            }
+        })();
+        // Enable Bootstrap tooltips globally
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.bootstrap && document.querySelector('[data-bs-toggle="tooltip"]')) {
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+                tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+                    new window.bootstrap.Tooltip(tooltipTriggerEl)
+                })
+            }
+        });
+    </script>
 </body>
 </html> 

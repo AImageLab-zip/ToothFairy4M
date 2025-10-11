@@ -22,10 +22,10 @@ function loadNiftiMetadata() {
     displayDiv.style.display = 'none';
     errorDiv.style.display = 'none';
     
-    fetch(`/api/scan/${scanId}/nifti-metadata/`)
+    fetch(`/${window.projectNamespace}/api/patient/${scanId}/nifti-metadata/`)
         .then(response => response.json())
         .then(data => {
-            console.log('NIFTI metadata response:', data); // Debug logging
+            console.debug('NIFTI metadata response:', data);
             
             if (data.error) {
                 showNiftiError(data.error);
@@ -224,7 +224,7 @@ function saveAffine() {
     }
     
     // Send update request
-    fetch(`/api/scan/${scanId}/nifti-metadata/`, {
+    fetch(`/${window.projectNamespace}/api/patient/${scanId}/nifti-metadata/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

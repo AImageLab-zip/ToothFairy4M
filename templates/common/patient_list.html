@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Scans - ToothFairy4M{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+<link rel="stylesheet" href="{% static 'css/patient_list.css' %}">
+{% endblock %}
+
+{% block content %}
+{% include 'common/partials/patient_list_content.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/patient_list.js' %}"></script>
+{% endblock %}
+
+
