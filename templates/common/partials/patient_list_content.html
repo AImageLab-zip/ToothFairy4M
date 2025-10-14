@@ -1,3 +1,4 @@
+{% load pagination_tags %}
 <!-- Layout: sidebar + main using Bootstrap grid; remove nested container -->
     <!-- Page header aligned with main column (offset by sidebar on lg+) -->
     <div class="row align-items-center mb-3">
@@ -210,19 +211,65 @@
     <!-- Pagination directly under the list -->
     <div class="patient-list-footer mt-2">
         <nav aria-label="Page navigation">
-            <ul class="pagination pagination-sm mb-0">
-                {% if page_obj.has_previous %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
-                {% else %}
-                <li class="page-item disabled"><span class="page-link">Previous</span></li>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <!-- Pagination controls -->
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="{% pagination_url page_obj.previous_page_number %}" aria-label="Previous">
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link"><i class="fas fa-chevron-left"></i> Previous</span>
+                    </li>
+                    {% endif %}
+                    
+                    <li class="page-item disabled">
+                        <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{% pagination_url page_obj.next_page_number %}" aria-label="Next">
+                            Next <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Next <i class="fas fa-chevron-right"></i></span>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- Page jump control -->
+                {% if page_obj.paginator.num_pages > 1 %}
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">Jump to page:</small>
+                    <form method="get" class="d-flex align-items-center gap-1" onsubmit="return handlePageJumpSubmit(event, {{ page_obj.paginator.num_pages }})">
+                        <!-- Preserve all current query parameters -->
+                        {% for key, value in request.GET.items %}
+                            {% if key != 'page' %}
+                            <input type="hidden" name="{{ key }}" value="{{ value }}">
+                            {% endif %}
+                        {% endfor %}
+                        <input type="number" 
+                               name="page" 
+                               class="form-control form-control-sm" 
+                               style="width: 70px;" 
+                               placeholder="#" 
+                               min="1" 
+                               max="{{ page_obj.paginator.num_pages }}"
+                               title="Enter page number (1-{{ page_obj.paginator.num_pages }})"
+                               aria-label="Page number">
+                        <button type="submit" class="btn btn-sm btn-primary" title="Go to page">
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </form>
+                </div>
                 {% endif %}
-                <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
-                {% if page_obj.has_next %}
-                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
-                {% else %}
-                <li class="page-item disabled"><span class="page-link">Next</span></li>
-                {% endif %}
-            </ul>
+            </div>
         </nav>
     </div>
 

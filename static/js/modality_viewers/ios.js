@@ -309,6 +309,9 @@ function loadSTLFiles(scene, loadingIndicator, upperStlUrl, lowerStlUrl) {
             
             console.debug('Scans centered and camera positioned');
             
+            // Ensure button states match mesh visibility
+            updateButtonStates();
+            
             // Mark IOS viewer as initialized
             if (window.IOSViewer && typeof window.IOSViewer.markInitialized === 'function') {
                 window.IOSViewer.markInitialized();
@@ -623,6 +626,41 @@ function onWindowResize() {
     }
 }
 
+// Update button states to match mesh visibility
+function updateButtonStates() {
+    // Update upper jaw button
+    const showUpperBtn = document.getElementById('showUpper');
+    if (showUpperBtn && upperMesh1) {
+        showUpperBtn.classList.toggle('active', upperMesh1.visible);
+        const icon = showUpperBtn.querySelector('i');
+        if (icon) {
+            if (upperMesh1.visible) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            } else {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
+    }
+    
+    // Update lower jaw button
+    const showLowerBtn = document.getElementById('showLower');
+    if (showLowerBtn && lowerMesh1) {
+        showLowerBtn.classList.toggle('active', lowerMesh1.visible);
+        const icon = showLowerBtn.querySelector('i');
+        if (icon) {
+            if (lowerMesh1.visible) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            } else {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        }
+    }
+}
+
 // Initialize 3D viewer control buttons
 function init3DControls() {
     // Reset view button
@@ -658,9 +696,25 @@ function init3DControls() {
     const showUpperBtn = document.getElementById('showUpper');
     if (showUpperBtn) {
         showUpperBtn.addEventListener('click', function() {
+            console.debug('Upper jaw button clicked, upperMesh1:', upperMesh1);
             if (upperMesh1) {
                 upperMesh1.visible = !upperMesh1.visible;
                 this.classList.toggle('active', upperMesh1.visible);
+                
+                // Update icon
+                const icon = this.querySelector('i');
+                if (icon) {
+                    if (upperMesh1.visible) {
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    } else {
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                    }
+                }
+                console.debug('Upper jaw visibility toggled to:', upperMesh1.visible);
+            } else {
+                console.warn('Upper mesh not loaded yet');
             }
         });
     }
@@ -669,9 +723,25 @@ function init3DControls() {
     const showLowerBtn = document.getElementById('showLower');
     if (showLowerBtn) {
         showLowerBtn.addEventListener('click', function() {
+            console.debug('Lower jaw button clicked, lowerMesh1:', lowerMesh1);
             if (lowerMesh1) {
                 lowerMesh1.visible = !lowerMesh1.visible;
                 this.classList.toggle('active', lowerMesh1.visible);
+                
+                // Update icon
+                const icon = this.querySelector('i');
+                if (icon) {
+                    if (lowerMesh1.visible) {
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    } else {
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                    }
+                }
+                console.debug('Lower jaw visibility toggled to:', lowerMesh1.visible);
+            } else {
+                console.warn('Lower mesh not loaded yet');
             }
         });
     }
@@ -840,6 +910,7 @@ window.IOSViewer = {
     resetView: resetView,
     toggleGrid: toggleGrid,
     updateGridSize: updateGridSize,
+    updateButtonStates: updateButtonStates,
     viewRight: viewRight,
     viewLeft: viewLeft,
     viewFront: viewFront

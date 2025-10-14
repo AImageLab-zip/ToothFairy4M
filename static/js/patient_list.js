@@ -1,3 +1,20 @@
+// Page jump validation
+function handlePageJumpSubmit(event, maxPages) {
+    const form = event.target;
+    const pageInput = form.querySelector('input[name="page"]');
+    const pageNumber = parseInt(pageInput.value);
+    
+    if (!pageNumber || pageNumber < 1 || pageNumber > maxPages) {
+        event.preventDefault();
+        alert(`Please enter a valid page number between 1 and ${maxPages}`);
+        pageInput.value = '';
+        pageInput.focus();
+        return false;
+    }
+    
+    return true;
+}
+
 // Filter management
 function toggleFilters() {
     const content = document.getElementById('filterContent');
