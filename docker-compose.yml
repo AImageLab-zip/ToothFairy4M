@@ -1,20 +1,60 @@
 services:
-  web-dev-llumetti:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs
+      - html:/usr/share/nginx/html
+      - vhost:/etc/nginx/vhost.d
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./nginx.conf:/etc/nginx/conf.d/custom.conf:ro
+    networks:
+      - proxy-net
+
+  acme-companion:
+    image: nginxproxy/acme-companion
+    container_name: acme-companion
+    restart: unless-stopped
+    depends_on:
+      - nginx-proxy
+    volumes:
+      - certs:/etc/nginx/certs
+      - html:/usr/share/nginx/html
+      - vhost:/etc/nginx/vhost.d
+      - acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
+      NGINX_PROXY_CONTAINER: nginx-proxy
+    networks:
+      - proxy-net
+
+  web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8080
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
       - /dataset:/dataset
-    env_file:
-      - .env
-    restart: unless-stopped
     ports:
-      - "8080:8080"
-    networks:
-      - proxy-net
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      VIRTUAL_HOST: ${DOMAIN}
+      LETSENCRYPT_HOST: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    env_file:
+      - .env
+    user: "${UID:-1000}:${GID:-1000}"
+    restart: unless-stopped
+    networks:
+      - proxy-net
+
   db:
     image: mysql:8.0
     environment:
@@ -23,9 +63,9 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - dev_mysql_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     ports:
-      - "3307:3306"
+      - "3306:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       timeout: 20s
@@ -36,8 +76,12 @@ services:
     networks:
       - proxy-net
 
+volumes:
+  mysql_data:
+  certs:
+  html:
+  vhost:
+  acme:
+
 networks:
   proxy-net:
-
-volumes:
-  dev_mysql_data:
