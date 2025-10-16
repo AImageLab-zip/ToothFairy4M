@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 import shutil
 from django.conf import settings
 
+@login_required
 def delete_patient(request, patient_id):
     return JsonResponse({
         'success': False, 
@@ -109,6 +110,7 @@ def delete_patient(request, patient_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@login_required
 def bulk_delete_patients(request):
     """Bulk delete multiple scans and all associated files"""
     try:

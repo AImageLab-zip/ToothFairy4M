@@ -11,15 +11,12 @@ from ..models import Patient, VoiceCaption
 
 logger = logging.getLogger(__name__)
 
+@login_required
 def upload_voice_caption(request, patient_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
-    
-    # Check permissions (could be expanded)
-    if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Authentication required'}, status=401)
     
     try:
         audio_file = request.FILES.get('audio_file')
@@ -87,6 +84,7 @@ def upload_voice_caption(request, patient_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@login_required
 def delete_voice_caption(request, patient_id, caption_id):
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -132,6 +130,7 @@ def delete_voice_caption(request, patient_id, caption_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
 def upload_text_caption(request, patient_id):
     """Handle text caption submission (alternative to voice recording)"""
     if request.method != 'POST':
@@ -196,6 +195,7 @@ def upload_text_caption(request, patient_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
 def edit_voice_caption_transcription(request, patient_id, caption_id):
     """Edit the transcription of a voice caption"""
     if request.method != 'POST':

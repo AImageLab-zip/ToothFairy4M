@@ -10,7 +10,7 @@
     position: absolute;
     top: 10px;
     right: 10px;
-    z-index: 1000;
+    z-index: 500;
 }
 
 /* Viewer Controls with Eye Icons */

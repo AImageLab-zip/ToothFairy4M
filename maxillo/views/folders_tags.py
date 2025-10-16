@@ -13,6 +13,7 @@ from ..models import Patient, Tag, Folder
 
 logger = logging.getLogger(__name__)
 
+@login_required
 @require_POST
 def create_folder(request):
     """Create a folder (single-level only)."""

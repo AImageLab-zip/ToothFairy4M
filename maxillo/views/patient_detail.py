@@ -14,6 +14,7 @@ from .helpers import redirect_with_namespace, render_with_fallback
 
 logger = logging.getLogger(__name__)
 
+@login_required
 def patient_detail(request, patient_id):
     patient = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
@@ -300,6 +301,7 @@ def patient_detail(request, patient_id):
         pass
     return render_with_fallback(request, 'patient_detail', context)
 
+@login_required
 def update_patient_name(request, patient_id):
     """AJAX endpoint for updating scan name"""
     user_profile = request.user.profile

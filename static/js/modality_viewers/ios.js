@@ -561,6 +561,50 @@ function viewFront() {
     controls1.update();
 }
 
+// View upper scan - hide lower, show upper, camera positioned for axis 0 left, axis 1 up, axis 2 towards screen
+function viewUpper() {
+    if (!camera1 || !controls1 || !upperMesh1 || !lowerMesh1) return;
+    
+    // Hide lower scan, show upper scan
+    lowerMesh1.visible = false;
+    upperMesh1.visible = true;
+    
+    // Position camera for upper scan view
+    // Axis 0 to the left, axis 1 up, axis 2 towards screen
+    const distance = camera1.position.length();
+    camera1.position.set(0, 0, distance); // Looking down from above
+    camera1.up.set(0, 1, -1); // Z-axis as up
+    camera1.lookAt(0, 0, 0);
+    
+    controls1.target.set(0, 0, 0);
+    controls1.update();
+    
+    // Update button states
+    updateButtonStates();
+}
+
+// View lower scan - hide upper, show lower, camera positioned for axis 0 left, axis 1 down, axis 2 out from screen
+function viewLower() {
+    if (!camera1 || !controls1 || !upperMesh1 || !lowerMesh1) return;
+    
+    // Hide upper scan, show lower scan
+    upperMesh1.visible = false;
+    lowerMesh1.visible = true;
+    
+    // Position camera for lower scan view
+    // Axis 0 to the left, axis 1 down, axis 2 out from screen
+    const distance = camera1.position.length();
+    camera1.position.set(0, 0, -distance); // Looking up from below
+    camera1.up.set(0, -1, 1); // Z-axis as up (inverted)
+    camera1.lookAt(0, 0, 0);
+    
+    controls1.target.set(0, 0, 0);
+    controls1.update();
+    
+    // Update button states
+    updateButtonStates();
+}
+
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
@@ -761,6 +805,18 @@ function init3DControls() {
     if (viewFrontBtn) {
         viewFrontBtn.addEventListener('click', viewFront);
     }
+
+    // View upper scan button
+    const viewUpperBtn = document.getElementById('viewUpper');
+    if (viewUpperBtn) {
+        viewUpperBtn.addEventListener('click', viewUpper);
+    }
+
+    // View lower scan button
+    const viewLowerBtn = document.getElementById('viewLower');
+    if (viewLowerBtn) {
+        viewLowerBtn.addEventListener('click', viewLower);
+    }
 }
 
 // Load scan data from API and initialize viewer
@@ -913,6 +969,8 @@ window.IOSViewer = {
     updateButtonStates: updateButtonStates,
     viewRight: viewRight,
     viewLeft: viewLeft,
-    viewFront: viewFront
+    viewFront: viewFront,
+    viewUpper: viewUpper,
+    viewLower: viewLower
 };
 

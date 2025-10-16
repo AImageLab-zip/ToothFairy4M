@@ -9,6 +9,7 @@ from ..models import Patient
 
 logger = logging.getLogger(__name__)
 
+@login_required
 def patient_viewer_data(request, patient_id):
     """API endpoint to provide scan data for 3D viewer"""
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
@@ -117,6 +118,7 @@ def patient_viewer_data(request, patient_id):
     return JsonResponse(data)
 
 
+@login_required
 def patient_cbct_data(request, patient_id):
     """API endpoint to serve CBCT data"""
     import os
@@ -205,6 +207,7 @@ def patient_cbct_data(request, patient_id):
         return JsonResponse({'error': f'Failed to load CBCT data: {str(e)}'}, status=500)
 
 
+@login_required
 def patient_volume_data(request, patient_id, modality_slug):
     """Generic API endpoint to serve NIfTI volume for arbitrary modality (no panoramic).
 
@@ -261,6 +264,7 @@ def patient_volume_data(request, patient_id, modality_slug):
         return JsonResponse({'error': f'Failed to load volume: {e}'}, status=500)
 
 
+@login_required
 def patient_panoramic_data(request, patient_id):
     """API endpoint to serve panoramic image data
     
@@ -402,6 +406,7 @@ def patient_panoramic_data(request, patient_id):
         return JsonResponse({'error': 'Internal server error'}, status=500)
 
 
+@login_required
 def patient_intraoral_data(request, patient_id):
     """API endpoint to serve intraoral photographs data"""
     
@@ -455,6 +460,7 @@ def patient_intraoral_data(request, patient_id):
         return JsonResponse({'error': 'Internal server error'}, status=500)
 
 
+@login_required
 def patient_teleradiography_data(request, patient_id):
     """API endpoint to serve teleradiography image data"""
     

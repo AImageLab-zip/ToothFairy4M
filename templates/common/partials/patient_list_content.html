@@ -142,6 +142,7 @@
             <div>Patient</div>
             <div>Status</div>
             <div>Tags</div>
+            <div>Uploader</div>
             <div>Privacy</div>
             <div>Actions</div>
         </div>
@@ -187,6 +188,13 @@
                 <button class="btn btn-sm btn-outline-secondary p-0 ms-1 btn-add-tag" data-scan-id="{{ p.patient_id }}" title="Add tag">
                     <i class="fas fa-plus" style="font-size: 0.65rem;"></i>
                 </button>
+            </div>
+            <div class="uploader">
+                {% if p.uploaded_by %}
+                    <span class="uploader-name">{{ p.uploaded_by.username }}</span>
+                {% else %}
+                    <small class="text-muted">-</small>
+                {% endif %}
             </div>
             <div class="privacy">
                 <span class="privacy-badge privacy-{{ p.visibility }}">{{ p.visibility|capfirst }}</span>

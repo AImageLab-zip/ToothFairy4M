@@ -12,6 +12,7 @@ from ..models import Patient
 
 logger = logging.getLogger(__name__)
 
+@login_required
 def get_nifti_metadata(request, patient_id):
     """Get NIFTI metadata including origin, affine matrix, and orientation"""
     try:
@@ -197,6 +198,7 @@ def get_nifti_metadata(request, patient_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
 def update_nifti_metadata(request, patient_id):
     """Update NIFTI metadata (admin only)"""
     try:

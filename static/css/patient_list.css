@@ -405,7 +405,7 @@
 /* Compact grid: narrow checkbox col, fixed widths to prevent wrapping */
 .patient-list-header, .patient-row { 
     display: grid; 
-    grid-template-columns: 36px 1.2fr 1.2fr 1.2fr 0.8fr 0.8fr; 
+    grid-template-columns: 36px 1.2fr 1.2fr 0.8fr 0.8fr 0.4fr 0.8fr; 
     gap: 0.75rem; 
     align-items: center; 
 }
