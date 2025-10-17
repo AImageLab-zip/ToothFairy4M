@@ -2,20 +2,24 @@
 from django.http import JsonResponse, FileResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
+from django.db import models
 import os
 import logging
 import traceback
 import mimetypes
 from common.models import FileRegistry
+from maxillo.models import ProjectAccess
 
 logger = logging.getLogger(__name__)
 
 
 @csrf_exempt  
+@login_required
 @require_http_methods(["GET"])
 def serve_file(request, file_id):
     """
-    Serve files from FileRegistry by ID
+    Serve files from FileRegistry by ID with authentication
     URL: /api/processing/files/serve/<file_id>/
     """
     try:
@@ -24,6 +28,45 @@ def serve_file(request, file_id):
         # Check if file exists
         if not os.path.exists(file_obj.file_path):
             raise Http404("File not found on disk")
+        
+        # Authentication: Check if user has access to the patient associated with this file
+        if file_obj.patient:
+            patient = file_obj.patient
+            user_profile = request.user.profile
+            
+            # Check patient visibility permissions
+            can_view = False
+            if user_profile.is_admin():
+                can_view = True
+            elif user_profile.is_annotator() and patient.visibility != 'debug':
+                can_view = True
+            elif user_profile.is_student_developer() and patient.visibility == 'debug':
+                can_view = True
+            elif patient.visibility == 'public':
+                can_view = True
+            
+            if not can_view:
+                logger.warning(f"User {request.user.id} denied access to file {file_id} for patient {patient.patient_id}")
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+            
+            # Check project access if patient belongs to a project
+            if patient.project:
+                current_project_id = request.session.get('current_project_id')
+                if not user_profile.is_admin() and current_project_id:
+                    has_project_access = ProjectAccess.objects.filter(
+                        user=request.user, 
+                        project=patient.project, 
+                        can_view=True
+                    ).exists()
+                    if not has_project_access:
+                        logger.warning(f"User {request.user.id} denied project access for file {file_id}")
+                        return JsonResponse({'error': 'Project access denied'}, status=403)
+        else:
+            # If file is not associated with a patient, only admins can access it
+            user_profile = request.user.profile
+            if not user_profile.is_admin():
+                logger.warning(f"User {request.user.id} denied access to orphaned file {file_id}")
+                return JsonResponse({'error': 'Permission denied'}, status=403)
         
         # Determine content type
         content_type, _ = mimetypes.guess_type(file_obj.file_path)
@@ -64,10 +107,11 @@ def serve_file(request, file_id):
 
 
 @csrf_exempt
+@login_required
 @require_http_methods(["GET"])
 def get_file_registry(request):
     """
-    API endpoint to get file registry information
+    API endpoint to get file registry information with authentication
     URL: /api/processing/files/
     """
     try:
@@ -77,9 +121,50 @@ def get_file_registry(request):
         limit = int(request.GET.get('limit', 50))
         offset = int(request.GET.get('offset', 0))
         
-        # Build query
-        files = FileRegistry.objects.all()
+        user_profile = request.user.profile
         
+        # Build query with authorization filtering
+        files = FileRegistry.objects.select_related('patient', 'patient__project')
+        
+        # Apply authorization filtering based on user role and patient visibility
+        if user_profile.is_admin():
+            # Admins can see all files
+            pass
+        elif user_profile.is_annotator():
+            # Annotators can see files from public/private patients
+            files = files.filter(
+                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
+                models.Q(patient__visibility__in=['public', 'private'])
+            )
+        elif user_profile.is_student_developer():
+            # Student developers can see files from debug patients
+            files = files.filter(
+                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
+                models.Q(patient__visibility='debug')
+            )
+        else:
+            # Regular users can only see files from public patients
+            files = files.filter(
+                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
+                models.Q(patient__visibility='public')
+            )
+        
+        # Additional project access filtering for non-admins
+        if not user_profile.is_admin():
+            current_project_id = request.session.get('current_project_id')
+            if current_project_id:
+                # Check project access
+                accessible_projects = ProjectAccess.objects.filter(
+                    user=request.user,
+                    can_view=True
+                ).values_list('project_id', flat=True)
+                
+                files = files.filter(
+                    models.Q(patient__project__isnull=True) |  # Files not in projects
+                    models.Q(patient__project_id__in=accessible_projects)
+                )
+        
+        # Apply additional filters
         if file_type:
             files = files.filter(file_type=file_type)
         if patient_id:
