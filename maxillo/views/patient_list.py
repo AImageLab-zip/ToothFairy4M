@@ -325,6 +325,18 @@ def patient_list(request):
         patients_with_status.append(patient_data)
     
     folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    
+    # Add patient counts for each folder
+    folders_with_counts = []
+    for folder in folders:
+        # Count patients in this folder, respecting the same visibility and project filters
+        folder_patients = patients.filter(folder=folder)
+        folder_count = folder_patients.count()
+        folders_with_counts.append({
+            'folder': folder,
+            'patient_count': folder_count
+        })
+    
     all_tags = Tag.objects.all().order_by('name')
 
     # Compose filter specs for template rendering (allowed_modalities and status_filters already built above)
@@ -401,7 +413,7 @@ def patient_list(request):
         'has_voice_filter': has_voice_filter,
         'folder_id': folder_id or 'all',
         'selected_tags': tags_selected,
-        'folders': folders,
+        'folders': folders_with_counts,
         'all_tags': all_tags,
         'per_page': per_page,
         'user_profile': user_profile,

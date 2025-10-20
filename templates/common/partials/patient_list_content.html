@@ -26,10 +26,11 @@
                     <div id="folderTreeCollapse" class="collapse show">
                         <div id="folderTree">
                         {% for f in folders %}
-                        <div class="folder-node" data-id="{{ f.id }}">
-                            <div class="folder-item {% if folder_id|add:'' == f.id|add:'' %}active{% endif %}" data-folder="{{ f.id }}">
-                                <a href="?folder={{ f.id }}" class="text-decoration-none text-reset">
-                                    <i class="fas fa-folder text-warning me-2"></i>{{ f.name }}
+                        <div class="folder-node" data-id="{{ f.folder.id }}">
+                            <div class="folder-item {% if folder_id|add:'' == f.folder.id|add:'' %}active{% endif %}" data-folder="{{ f.folder.id }}">
+                                <a href="?folder={{ f.folder.id }}" class="text-decoration-none text-reset">
+                                    <i class="fas fa-folder text-warning me-2"></i>{{ f.folder.name }}
+                                    <span class="badge bg-secondary ms-2">{{ f.patient_count }}</span>
                                 </a>
                             </div>
                         </div>
@@ -111,7 +112,7 @@
                                 <option value="" selected>Choose…</option>
                                 <option value="all">Remove from folder</option>
                                 {% for f in folders %}
-                                <option value="{{ f.id }}">{{ f.name }}</option>
+                                <option value="{{ f.folder.id }}">{{ f.folder.name }}</option>
                                 {% endfor %}
                             </select>
                             <button id="btnMoveSelected" class="btn btn-primary btn-sm uniform-btn" title="Move to folder" data-bs-toggle="tooltip" aria-label="Move to folder">
