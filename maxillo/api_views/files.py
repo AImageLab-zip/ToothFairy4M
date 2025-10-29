@@ -8,10 +8,48 @@ import os
 import logging
 import traceback
 import mimetypes
+from pathlib import Path
 from common.models import FileRegistry
 from maxillo.models import ProjectAccess
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+def validate_file_path(file_path):
+    """
+    SECURITY: Validate file path to prevent directory traversal attacks.
+    
+    Args:
+        file_path: Path to validate
+        
+    Returns:
+        bool: True if path is safe, False otherwise
+    """
+    try:
+        # Convert to Path object for easier manipulation
+        path = Path(file_path).resolve()
+        
+        # Get the dataset path from settings
+        dataset_path = Path(settings.DATASET_PATH).resolve()
+        
+        # Check if the file path is within the allowed dataset directory
+        # This prevents directory traversal attacks
+        if not str(path).startswith(str(dataset_path)):
+            logger.warning(f"SECURITY: File path outside allowed directory: {file_path}")
+            return False
+            
+        # Additional check for suspicious patterns
+        suspicious_patterns = ['..', '~', '/etc/', '/proc/', '/sys/', '/dev/']
+        if any(pattern in str(path) for pattern in suspicious_patterns):
+            logger.warning(f"SECURITY: Suspicious file path pattern detected: {file_path}")
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"SECURITY: Error validating file path {file_path}: {e}")
+        return False
 
 
 @csrf_exempt  
@@ -28,6 +66,11 @@ def serve_file(request, file_id):
         # Check if file exists
         if not os.path.exists(file_obj.file_path):
             raise Http404("File not found on disk")
+        
+        # SECURITY: Validate file path to prevent directory traversal attacks
+        if not validate_file_path(file_obj.file_path):
+            logger.warning(f"SECURITY: Invalid file path access attempt by user {request.user.id} for file {file_id}")
+            return JsonResponse({'error': 'Invalid file path'}, status=403)
         
         # Authentication: Check if user has access to the patient associated with this file
         if file_obj.patient:

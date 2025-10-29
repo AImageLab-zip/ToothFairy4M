@@ -1,6 +1,38 @@
 // NIFTI Metadata Management
 let currentMetadata = null;
 
+// CSRF token helper function
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function getCSRFToken() {
+    // When CSRF_USE_SESSIONS = True, token is in hidden form, not cookies
+    const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    
+    // Fallback to cookie method for backwards compatibility
+    const token = getCookie('csrftoken');
+    if (!token) {
+        console.error('SECURITY: CSRF token not found. This may indicate a security issue.');
+        return null;
+    }
+    return token;
+}
+
 // Load NIFTI metadata when section is expanded
 document.addEventListener('DOMContentLoaded', function() {
     const metadataCollapse = document.getElementById('niftiMetadataCollapse');
@@ -228,7 +260,7 @@ function saveAffine() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
+            'X-CSRFToken': getCSRFToken()
         },
         body: JSON.stringify({
             affine: newAffine

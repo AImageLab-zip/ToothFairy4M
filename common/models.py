@@ -82,6 +82,7 @@ class Invitation(models.Model):
 	code = models.CharField(max_length=64, unique=True)
 	email = models.EmailField(blank=True, null=True)
 	role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='standard')
+	project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name='invitations', help_text='Optional: Project the user will have access to')
 	created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	expires_at = models.DateTimeField()
@@ -94,7 +95,8 @@ class Invitation(models.Model):
 		return self.used_at is None and self.expires_at > timezone.now()
 
 	def __str__(self):
-		return f"Invitation {self.code} - {self.role}"
+		project_str = f" - {self.project.name}" if self.project else ""
+		return f"Invitation {self.code} - {self.role}{project_str}"
 
 	class Meta:
 		db_table = 'scans_invitation'

@@ -1,6 +1,7 @@
 import logging
 import time
 import json
+from common.models import Project
 from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger(__name__)
@@ -60,3 +61,28 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return None 
+
+
+class ProjectSessionMiddleware(MiddlewareMixin):
+    """
+    Middleware to automatically set the project session based on URL path
+    if not present in the session.
+    """
+    
+    def process_request(self, request):
+        """Set project session based on URL path"""
+        if not request.user.is_authenticated:
+            return None
+        if request.session.get('current_project_id'):
+            return None
+        if not request.path.startswith('/'):
+            return None
+
+        url_start = request.path.split('/')[1]
+        if url_start not in ['maxillo', 'brain']:
+            return None
+
+        project = Project.objects.get(name=url_start)
+        request.session['current_project_id'] = project.id
+        
+        return None

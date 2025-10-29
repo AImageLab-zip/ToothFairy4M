@@ -92,57 +92,70 @@ class Command(BaseCommand):
         # Perform the update in a transaction
         try:
             with transaction.atomic():
-                # Since patient_id is an AutoField (primary key), we need to use raw SQL
-                # First, temporarily disable foreign key checks
+                # SECURITY: Use parameterized queries and proper error handling
                 with connection.cursor() as cursor:
-                    # MySQL/MariaDB syntax
+                    # MySQL/MariaDB syntax - temporarily disable foreign key checks
+                    # SECURITY: This is necessary for primary key updates but should be done carefully
                     cursor.execute('SET FOREIGN_KEY_CHECKS=0;')
                     
-                    # Update the patient ID directly
-                    cursor.execute(
-                        'UPDATE scans_patient SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # Update all foreign key references
-                    # Jobs table
-                    cursor.execute(
-                        'UPDATE scans_job SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # FileRegistry table
-                    cursor.execute(
-                        'UPDATE scans_fileregistry SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # Classification table
-                    cursor.execute(
-                        'UPDATE scans_classification SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # VoiceCaption table
-                    cursor.execute(
-                        'UPDATE scans_voicecaption SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # ManyToMany table for modalities
-                    cursor.execute(
-                        'UPDATE scans_patient_modalities SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # ManyToMany table for tags
-                    cursor.execute(
-                        'UPDATE scans_patient_tags SET patient_id = %s WHERE patient_id = %s',
-                        [new_id, old_id]
-                    )
-                    
-                    # Re-enable foreign key checks
-                    cursor.execute('SET FOREIGN_KEY_CHECKS=1;')
+                    try:
+                        # SECURITY: Use parameterized queries to prevent SQL injection
+                        # Update the patient ID directly
+                        cursor.execute(
+                            'UPDATE scans_patient SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # Update all foreign key references using parameterized queries
+                        # Jobs table
+                        cursor.execute(
+                            'UPDATE scans_job SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # FileRegistry table
+                        cursor.execute(
+                            'UPDATE scans_fileregistry SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # Classification table
+                        cursor.execute(
+                            'UPDATE scans_classification SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # VoiceCaption table
+                        cursor.execute(
+                            'UPDATE scans_voicecaption SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # ManyToMany table for modalities
+                        cursor.execute(
+                            'UPDATE scans_patient_modalities SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # ManyToMany table for tags
+                        cursor.execute(
+                            'UPDATE scans_patient_tags SET patient_id = %s WHERE patient_id = %s',
+                            [new_id, old_id]
+                        )
+                        
+                        # SECURITY: Re-enable foreign key checks immediately after updates
+                        cursor.execute('SET FOREIGN_KEY_CHECKS=1;')
+                        
+                        # Verify the update was successful
+                        cursor.execute('SELECT COUNT(*) FROM scans_patient WHERE patient_id = %s', [new_id])
+                        count = cursor.fetchone()[0]
+                        if count != 1:
+                            raise Exception(f"Update verification failed: expected 1 patient with ID {new_id}, found {count}")
+                        
+                    except Exception as e:
+                        # SECURITY: Ensure foreign key checks are re-enabled even if update fails
+                        cursor.execute('SET FOREIGN_KEY_CHECKS=1;')
+                        raise e
                 
                 # Now update file paths in FileRegistry
                 updated_patient = Patient.objects.get(patient_id=new_id)

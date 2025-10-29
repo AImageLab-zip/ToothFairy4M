@@ -252,12 +252,8 @@ function initAdminActions() {
             const originalContent = this.innerHTML;
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             
-            fetch(`/${window.projectNamespace}/patient/${scanId}/delete/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Content-Type': 'application/json',
-                },
+            secureFetch(`/${window.projectNamespace}/patient/${scanId}/delete/`, {
+                method: 'POST'
             })
             .then(response => response.json())
             .then(data => {
@@ -326,12 +322,8 @@ function initAdminActions() {
             this.disabled = true;
             if (label) label.classList.add('d-none');
             if (spinner) spinner.classList.remove('d-none');
-            fetch(`/${window.projectNamespace}/patient/${rerunTargetScanId}/rerun-processing/`, {
+            secureFetch(`/${window.projectNamespace}/patient/${rerunTargetScanId}/rerun-processing/`, {
                 method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Content-Type': 'application/json'
-                },
                 body: JSON.stringify({ jobs })
             }).then(r => r.json()).then(data => {
                 if (data.success) {
@@ -382,7 +374,7 @@ function initAdminActions() {
     }
 }
 
-// Utility function to get CSRF token
+// Utility function to get CSRF token with validation
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -396,6 +388,59 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+// SECURITY: Enhanced CSRF token validation
+function getCSRFToken() {
+    // When CSRF_USE_SESSIONS = True, token is in hidden form, not cookies
+    const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    
+    // Fallback to cookie method for backwards compatibility
+    const token = getCookie('csrftoken');
+    if (!token) {
+        console.error('SECURITY: CSRF token not found. This may indicate a security issue.');
+        showNotification('error', 'Security token missing. Please refresh the page.');
+        return null;
+    }
+    return token;
+}
+
+// SECURITY: Enhanced fetch wrapper with CSRF validation
+function secureFetch(url, options = {}) {
+    const token = getCSRFToken();
+    if (!token && options.method && options.method !== 'GET') {
+        return Promise.reject(new Error('CSRF token missing'));
+    }
+    
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    
+    if (token && options.method && options.method !== 'GET') {
+        headers['X-CSRFToken'] = token;
+    }
+    
+    return fetch(url, {
+        ...options,
+        headers
+    }).then(response => {
+        // SECURITY: Check for CSRF failure
+        if (response.status === 403 && response.headers.get('Content-Type')?.includes('application/json')) {
+            return response.json().then(data => {
+                if (data.error && data.error.includes('CSRF')) {
+                    console.error('SECURITY: CSRF validation failed');
+                    showNotification('error', 'Security validation failed. Please refresh the page.');
+                    throw new Error('CSRF validation failed');
+                }
+                throw new Error(data.error || 'Request failed');
+            });
+        }
+        return response;
+    });
 }
 
 // Show notification
@@ -507,12 +552,8 @@ function initBulkSelection() {
             const originalContent = moveBtn.innerHTML;
             moveBtn.disabled = true;
             moveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            fetch(`/${window.projectNamespace}/folders/move-patients/`, {
+            secureFetch(`/${window.projectNamespace}/folders/move-patients/`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken') // Added CSRF token
-                },
                 body: JSON.stringify({ scan_ids: ids, folder_id })
             }).then(r => r.json()).then(data => {
                 if (data.success) {
@@ -546,12 +587,8 @@ function initBulkSelection() {
             deleteBtn.disabled = true;
             deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
             
-            fetch(`/${window.projectNamespace}/patients/bulk-delete/`, {
+            secureFetch(`/${window.projectNamespace}/patients/bulk-delete/`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
                 body: JSON.stringify({ scan_ids: ids })
             }).then(r => r.json()).then(data => {
                 if (data.success) {
@@ -576,12 +613,8 @@ function initCreateFolder() {
         if (!name) return;
         const current = new URL(window.location).searchParams.get('folder');
         const parent_id = current && current !== 'all' ? current : null; // parent_id is now ignored by backend
-        fetch(`/${window.projectNamespace}/folders/create/`, {
+        secureFetch(`/${window.projectNamespace}/folders/create/`, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken') // Added CSRF token
-            },
             body: JSON.stringify({ name, parent_id })
         }).then(r => r.json()).then(data => {
             if (data.success) {
@@ -899,12 +932,8 @@ function initInlineTagRemoval() {
             const tag = e.target.dataset.tag;
             
             if (confirm(`Remove tag "${tag}" from this scan?`)) {
-                fetch(`/${window.projectNamespace}/patient/${scanId}/tags/remove/`, {
+                secureFetch(`/${window.projectNamespace}/patient/${scanId}/tags/remove/`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
                     body: JSON.stringify({ tag })
                 }).then(r => r.json()).then(data => {
                     if (data.success) {

@@ -21,10 +21,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default="django-insecure-(u0z24i85=2ae7*q@fcii^^7vc4hyj$dph2%+(sz)r^basa6^h")
+# SECURITY: No default secret key - must be provided via environment variable
+SECRET_KEY = config('SECRET_KEY', default=None)
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable must be set for security reasons")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+# SECURITY: Debug disabled by default for security
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=str).split(',')
 
@@ -51,7 +55,6 @@ USE_X_FORWARDED_PORT = True
 
 # Force HTTPS detection for proxy environments
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = False  # Don't redirect, just detect
 
 # Application definition
 
@@ -78,6 +81,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "toothfairy.middleware.RequestLoggingMiddleware",
+    "toothfairy.middleware.ProjectSessionMiddleware",
 ]
 
 ROOT_URLCONF = "toothfairy.urls"
@@ -103,12 +107,13 @@ WSGI_APPLICATION = "toothfairy.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# SECURITY: Database credentials must be provided via environment variables
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": config('DB_NAME', default='toothfairy'),
-        "USER": config('DB_USER', default='django'),
-        "PASSWORD": config('DB_PASSWORD', default='django123'),
+        "NAME": config('DB_NAME', default=None),
+        "USER": config('DB_USER', default=None),
+        "PASSWORD": config('DB_PASSWORD', default=None),
         "HOST": config('DB_HOST', default='localhost'),
         "PORT": config('DB_PORT', default='3306'),
         "OPTIONS": {
@@ -116,6 +121,14 @@ DATABASES = {
         },
     }
 }
+
+# Validate required database credentials
+if not DATABASES['default']['NAME']:
+    raise ValueError("DB_NAME environment variable must be set")
+if not DATABASES['default']['USER']:
+    raise ValueError("DB_USER environment variable must be set")
+if not DATABASES['default']['PASSWORD']:
+    raise ValueError("DB_PASSWORD environment variable must be set")
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -180,8 +193,12 @@ CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS',
                               default='https://toothfairy4m.ing.unimore.it,http://localhost:8000,http://127.0.0.1:8000', 
                               cast=str).split(',')
 
-CSRF_USE_SESSIONS = False
-CSRF_COOKIE_HTTPONLY = False
+# SECURITY: Enhanced CSRF and Session Security
+CSRF_USE_SESSIONS = True  # Store CSRF token in session for better security
+CSRF_COOKIE_HTTPONLY = True  # Prevent XSS attacks on CSRF cookie
+CSRF_COOKIE_SAMESITE = 'Strict'  # Prevent CSRF attacks
+SESSION_COOKIE_HTTPONLY = True  # Prevent XSS attacks on session cookie
+SESSION_COOKIE_SAMESITE = 'Strict'  # Prevent session fixation attacks
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

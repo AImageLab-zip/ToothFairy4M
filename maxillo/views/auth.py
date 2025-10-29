@@ -8,6 +8,7 @@ import uuid
 
 from ..models import Invitation
 from ..forms import InvitationForm, InvitedUserCreationForm
+from common.models import ProjectAccess
 
 
 def register(request):
@@ -18,6 +19,16 @@ def register(request):
             user = form.save()
             user.profile.role = invitation.role
             user.profile.save()
+            
+            # Create ProjectAccess entry if invitation has a project
+            if invitation.project:
+                ProjectAccess.objects.create(
+                    user=user,
+                    project=invitation.project,
+                    can_view=True,
+                    can_upload=False  # Default: view-only access
+                )
+            
             invitation.used_at = timezone.now()
             invitation.used_by = user
             invitation.save()

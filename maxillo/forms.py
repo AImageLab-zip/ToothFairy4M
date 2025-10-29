@@ -253,9 +253,13 @@ class InvitationForm(forms.ModelForm):
     
     class Meta:
         model = Invitation
-        fields = ['email', 'role', 'expiry_days']
+        fields = ['email', 'role', 'project', 'expiry_days']
         widgets = {
             'role': forms.Select(attrs={'class': 'form-control'}),
+            'project': forms.Select(attrs={'class': 'form-control'}),
+        }
+        help_texts = {
+            'project': 'Optional: Project the user will have access to upon registration',
         }
     
     def save(self, commit=True):

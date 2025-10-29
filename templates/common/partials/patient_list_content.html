@@ -1,13 +1,13 @@
 {% load pagination_tags %}
-<!-- Layout: sidebar + main using Bootstrap grid; remove nested container -->
-    <!-- Page header aligned with main column (offset by sidebar on lg+) -->
+<!-- Hidden CSRF token for AJAX usage -->
+<form style="display:none;">{% csrf_token %}</form>
+
     <div class="row align-items-center mb-3">
         <div class="col-12 col-lg-10 offset-lg-2">
             <h4 class="mb-0"><i class="fas fa-users me-2"></i>List of Patients</h4>
         </div>
     </div>
 
-    <!-- Layout: sidebar + main -->
     <div class="row patient-page g-3">
         <aside class="sidebar-col col-12 col-lg-2">
             <div class="card mt-3">
@@ -58,7 +58,7 @@
                                     <input type="text" class="filter-input" name="search" placeholder="Search by name or ID" value="{{ search_query }}">
                                 </div>
                                 <div class="filter-item">
-                                    <label class="filter-label">Status</label>
+                                    <label class="filter-label">Modalities</label>
                                     <div class="status-filter-buttons">
                                         <input type="hidden" id="iosFilterValue" name="has_ios" value="{{ has_ios_filter }}">
                                         <input type="hidden" id="cbctFilterValue" name="has_cbct" value="{{ has_cbct_filter }}">
@@ -133,15 +133,13 @@
     <div class="patient-list-wrapper">
 
     
-
-    <!-- List styled per patient_list.css grid -->
     <div class="patient-list">
         <div class="patient-list-header">
             <div class="col-check">
                 <input type="checkbox" id="selectAll">
             </div>
             <div>Patient</div>
-            <div>Status</div>
+            <div>Modalities</div>
             <div>Tags</div>
             <div>Uploader</div>
             <div>Privacy</div>
@@ -217,11 +215,9 @@
         {% endfor %}
     </div>
     
-    <!-- Pagination directly under the list -->
     <div class="patient-list-footer mt-2">
         <nav aria-label="Page navigation">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <!-- Pagination controls -->
                 <ul class="pagination pagination-sm mb-0">
                     {% if page_obj.has_previous %}
                     <li class="page-item">
@@ -252,12 +248,10 @@
                     {% endif %}
                 </ul>
                 
-                <!-- Page jump control -->
                 {% if page_obj.paginator.num_pages > 1 %}
                 <div class="d-flex align-items-center gap-2">
                     <small class="text-muted">Jump to page:</small>
                     <form method="get" class="d-flex align-items-center gap-1" onsubmit="return handlePageJumpSubmit(event, {{ page_obj.paginator.num_pages }})">
-                        <!-- Preserve all current query parameters -->
                         {% for key, value in request.GET.items %}
                             {% if key != 'page' %}
                             <input type="hidden" name="{{ key }}" value="{{ value }}">
@@ -287,7 +281,6 @@
     </div>
 
 
-<!-- Rerun Processing Modal -->
 <div class="modal fade" id="rerunProcessingModal" tabindex="-1" aria-labelledby="rerunProcessingModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
