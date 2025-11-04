@@ -133,6 +133,9 @@ def patient_list(request):
             tags_selected = [t.strip() for t in comma.split(',') if t.strip()]
     per_page = int(request.GET.get('per_page', 20))
     
+    # Store base queryset for folder counts BEFORE applying folder filter
+    base_patients_for_counts = patients
+    
     if search_query:
         patients = patients.filter(
             Q(name__icontains=search_query) |
@@ -330,7 +333,8 @@ def patient_list(request):
     folders_with_counts = []
     for folder in folders:
         # Count patients in this folder, respecting the same visibility and project filters
-        folder_patients = patients.filter(folder=folder)
+        # Use base_patients_for_counts to avoid folder filter being applied
+        folder_patients = base_patients_for_counts.filter(folder=folder)
         folder_count = folder_patients.count()
         folders_with_counts.append({
             'folder': folder,

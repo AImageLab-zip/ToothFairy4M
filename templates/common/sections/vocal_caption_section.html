@@ -64,7 +64,7 @@
 
         <!-- Captions List -->
         <div class="voice-captions-list">
-            {% with captions=scan_pair.voice_captions.all %}
+            {% with captions=voice_captions %}
                 {% if captions %}
                     <div class="caption-list-compact">
                         {% for c in captions|dictsortreversed:"created_at" %}

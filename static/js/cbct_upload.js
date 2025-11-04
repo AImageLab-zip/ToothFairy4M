@@ -178,7 +178,7 @@ function handleFormSubmission() {
             
             // Check if user has uploaded any files at all
             const hasUpperScan = form.querySelector('input[name="ios_upper"]')?.files.length;
-            const hasLowerScan = form.querySelector('input[name="ios_lower"]')?.files.length:
+            const hasLowerScan = form.querySelector('input[name="ios_lower"]')?.files.length;
             const hasAnyIOS = hasUpperScan || hasLowerScan;
 
             // Check any 3D volume inputs inside generic or legacy containers

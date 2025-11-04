@@ -270,6 +270,13 @@ def patient_detail(request, patient_id):
         logger = logging.getLogger(__name__)
         logger.error(f"Error organizing patient files: {e}")
 
+
+    # Voice captions. TODO: filter only captions made by the current user for all captions?
+    # If the patient is Debug/1 (ID: 4646), only the admin can see all the captions, each users can see only their own captions.
+    voice_captions = patient.voice_captions.all()
+    if not user_profile.is_admin() and patient.patient_id == 4646:
+        voice_captions = voice_captions.filter(user=request.user)
+
     context = {
         'scan_pair': patient,
         'ai_classification': ai_classification,
@@ -282,6 +289,7 @@ def patient_detail(request, patient_id):
         'patient_modalities_json': patient_modalities_json,
         'default_modality_json': default_modality_json,
         'patient_files': patient_files,
+        'voice_captions': voice_captions,
     }
     # Allowed modalities for current project (to conditionally show upload controls)
     try:
