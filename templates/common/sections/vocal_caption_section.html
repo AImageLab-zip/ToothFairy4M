@@ -68,11 +68,37 @@
                 {% if captions %}
                     <div class="caption-list-compact">
                         {% for c in captions|dictsortreversed:"created_at" %}
-                        <div class="caption-item-compact" data-caption-id="{{ c.id }}">
+                        <div class="caption-item-compact" data-caption-id="{{ c.id }}" data-update-modality-url="{% url 'maxillo:update_voice_caption_modality' patient_id=scan_pair.patient_id caption_id=c.id %}">
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="caption-info">
                                     <small class="text-primary me-2">{{ c.user.username }}</small>
-                                    <span class="badge bg-secondary me-2">{{ c.get_modality_display }}</span>
+                                    <div class="dropdown d-inline-block me-2">
+                                        <span class="badge bg-secondary dropdown-toggle modality-badge-clickable" 
+                                              id="modalityDropdown{{ c.id }}" 
+                                              data-bs-toggle="dropdown" 
+                                              data-bs-auto-close="true"
+                                              data-bs-boundary="viewport"
+                                              aria-expanded="false"
+                                              data-caption-id="{{ c.id }}"
+                                              data-current-modality="{{ c.modality }}"
+                                              style="cursor: pointer;"
+                                              title="Click to change modality">
+                                            {{ c.get_modality_display }}
+                                        </span>
+                                        <ul class="dropdown-menu" aria-labelledby="modalityDropdown{{ c.id }}">
+                                            {% for modality in allowed_modalities %}
+                                            <li>
+                                                <a class="dropdown-item modality-option {% if modality.slug == c.modality %}active{% endif %}" 
+                                                   href="#" 
+                                                   data-modality-slug="{{ modality.slug }}"
+                                                   data-modality-name="{{ modality.name }}"
+                                                   data-caption-id="{{ c.id }}">
+                                                    {{ modality.name }}
+                                                </a>
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
                                     <span class="badge bg-secondary me-2">{{ c.get_display_duration|default:'Audio' }}</span>
                                     <small class="text-muted">{{ c.created_at|date:"M d, H:i" }}</small>
                                 </div>
@@ -255,6 +281,74 @@
                 textArea.addEventListener('input', updateCharCount);
                 updateCharCount();
             }
+            
+            // Handle modality change
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('modality-option') || e.target.closest('.modality-option')) {
+                    e.preventDefault();
+                    var target = e.target.classList.contains('modality-option') ? e.target : e.target.closest('.modality-option');
+                    
+                    var captionId = target.dataset.captionId;
+                    var modalitySlug = target.dataset.modalitySlug;
+                    var modalityName = target.dataset.modalityName;
+                    
+                    // Get the URL from the caption item's data attribute (Django-generated)
+                    var captionItem = document.querySelector(`.caption-item-compact[data-caption-id="${captionId}"]`);
+                    var updateUrl = captionItem ? captionItem.dataset.updateModalityUrl : null;
+                    
+                    if (!updateUrl) {
+                        console.error('Update URL not found for caption', captionId);
+                        alert('Error: Unable to update modality. Please refresh the page and try again.');
+                        return;
+                    }
+                    
+                    // Get CSRF token
+                    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                    
+                    // Update modality via AJAX
+                    fetch(updateUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({
+                            modality: modalitySlug
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Update the badge text
+                            var badge = document.querySelector(`#modalityDropdown${captionId}`);
+                            if (badge) {
+                                badge.textContent = data.caption.modality_display;
+                                badge.dataset.currentModality = data.caption.modality;
+                            }
+                            
+                            // Update active state in dropdown
+                            var dropdown = badge.parentElement;
+                            var dropdownItems = dropdown.querySelectorAll('.modality-option');
+                            dropdownItems.forEach(function(item) {
+                                if (item.dataset.modalitySlug === modalitySlug) {
+                                    item.classList.add('active');
+                                } else {
+                                    item.classList.remove('active');
+                                }
+                            });
+                            
+                            // Show success feedback (optional, using Bootstrap toast if available)
+                            console.log('Modality updated successfully');
+                        } else {
+                            alert('Error: ' + (data.error || 'Failed to update modality'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error updating modality:', error);
+                        alert('Failed to update modality. Please try again.');
+                    });
+                }
+            });
         });
         </script>
     </div>

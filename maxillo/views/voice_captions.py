@@ -264,3 +264,56 @@ def edit_voice_caption_transcription(request, patient_id, caption_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
+@require_POST
+def update_voice_caption_modality(request, patient_id, caption_id):
+    """Update the modality of a voice caption"""
+    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    voice_caption = get_object_or_404(VoiceCaption, id=caption_id, patient=scan_pair)
+    
+    # Check permissions
+    user_profile = request.user.profile
+    is_owner = voice_caption.user == request.user
+    is_admin = user_profile.is_admin
+    is_annotator = user_profile.is_annotator
+    
+    # Only owners, admins, or annotators can edit modality
+    if not (is_owner or is_admin or is_annotator):
+        return JsonResponse({
+            'error': 'You do not have permission to edit this caption.',
+            'code': 'permission_denied'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        new_modality = data.get('modality', '').strip()
+        
+        if not new_modality:
+            return JsonResponse({'error': 'Modality cannot be empty'}, status=400)
+        
+        # Validate modality against database
+        from ..modality_helpers import is_valid_modality_slug
+        if not is_valid_modality_slug(new_modality):
+            return JsonResponse({'error': 'Invalid modality'}, status=400)
+        
+        # Update the modality
+        voice_caption.modality = new_modality
+        voice_caption.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Modality updated successfully',
+            'caption': {
+                'id': voice_caption.id,
+                'modality': voice_caption.modality,
+                'modality_display': voice_caption.get_modality_display()
+            }
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f"Error updating caption modality: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+

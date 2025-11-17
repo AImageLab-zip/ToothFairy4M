@@ -75,13 +75,14 @@ class Invitation(models.Model):
 	ROLE_CHOICES = [
 		('standard', 'Standard User'),
 		('annotator', 'Annotator'),
+		('project_manager', 'Project Manager'),
 		('admin', 'Administrator'),
 		('student_dev', 'Student Developer'),
 	]
 
 	code = models.CharField(max_length=64, unique=True)
 	email = models.EmailField(blank=True, null=True)
-	role = models.CharField(max_length=15, choices=ROLE_CHOICES, default='standard')
+	role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='standard')
 	project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name='invitations', help_text='Optional: Project the user will have access to')
 	created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)

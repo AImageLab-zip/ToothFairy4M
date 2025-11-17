@@ -45,6 +45,7 @@ from .voice_captions import (
     delete_voice_caption,
     upload_text_caption,
     edit_voice_caption_transcription,
+    update_voice_caption_modality,
 )
 
 # Admin
@@ -52,6 +53,9 @@ from .admin import rerun_processing, admin_control_panel
 
 # Metadata
 from .metadata import get_nifti_metadata, update_nifti_metadata
+
+# Profile
+from .profile import user_profile
 
 # Export all functions
 __all__ = [
@@ -86,6 +90,7 @@ __all__ = [
     'delete_voice_caption',
     'upload_text_caption',
     'edit_voice_caption_transcription',
+    'update_voice_caption_modality',
     # Deletion
     'delete_patient',
     'bulk_delete_patients',
@@ -100,5 +105,7 @@ __all__ = [
     'move_patients_to_folder',
     'add_patient_tag',
     'remove_patient_tag',
+    # Profile
+    'user_profile',
 ]
 

@@ -362,6 +362,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    overflow: visible;
+}
+
+.voice-captions-list {
+    overflow: visible;
+}
+
+#vocalCaptionCollapse {
+    overflow: visible !important;
 }
 
 .caption-item-compact {
@@ -372,7 +381,7 @@
     transition: background-color 0.15s ease;
     width: 100%;
     max-width: 100%;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .caption-item-compact:hover {
@@ -1084,4 +1093,49 @@
     background-color: #dc3545;
     border-color: #dc3545;
     color: white;
+}
+
+/* Modality badge dropdown styling */
+.modality-badge-clickable {
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.modality-badge-clickable:hover {
+    background-color: #5a6268 !important;
+    transform: scale(1.05);
+}
+
+.modality-badge-clickable:active {
+    transform: scale(0.98);
+}
+
+/* Ensure dropdown menus in captions render properly */
+.caption-item-compact .dropdown {
+    position: relative;
+}
+
+.caption-item-compact .dropdown-menu {
+    position: absolute;
+    z-index: 1060;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.modality-option {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.modality-option:hover {
+    background-color: #f8f9fa;
+}
+
+.modality-option.active {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.modality-option.active:hover {
+    background-color: #0b5ed7;
 } 

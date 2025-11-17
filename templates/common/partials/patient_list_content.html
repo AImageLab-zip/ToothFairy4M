@@ -168,7 +168,14 @@
                     <span class="badge rounded-pill me-1 status-pill status-{{ ms.status }}" title="{{ ms.name }}" data-bs-toggle="tooltip" aria-label="{{ ms.name }}">{% if ms.icon %}<i class="{{ ms.icon }}"></i>{% else %}{{ ms.label|default:ms.name }}{% endif %}</span>
                     {% endif %}
                     {% endfor %}
-                    <span class="badge rounded-pill me-1 status-pill {% if item.voice_caption_processing %}status-processing{% elif item.voice_caption_processed %}status-processed{% else %}status-absent{% endif %}" title="Voice" data-bs-toggle="tooltip" aria-label="Voice"><i class="fas fa-comment"></i></span>
+                    <span class="badge rounded-pill me-1 status-pill {% if item.voice_caption_processing %}status-processing{% elif item.voice_caption_processed %}status-processed{% else %}status-absent{% endif %} position-relative" title="Voice{% if item.voice_caption_count %} ({{ item.voice_caption_count }} caption{{ item.voice_caption_count|pluralize }}){% endif %}" data-bs-toggle="tooltip" aria-label="Voice">
+                        <i class="fas fa-comment"></i>
+                        {% if item.voice_caption_count > 0 %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;">
+                            {{ item.voice_caption_count }}
+                        </span>
+                        {% endif %}
+                    </span>
                 </div>
             </div>
             <div class="tags-col">

@@ -317,6 +317,7 @@ def patient_list(request):
             'needs_processing': manual_classification is None and ai_classification is None,
             'voice_caption_processing': voice_caption_processing,
             'voice_caption_processed': voice_caption_processed,
+            'voice_caption_count': len(voice_captions),
             'voice_annotators': voice_annotators,
             'tags': patient.tag_names(),
             'folder': patient.folder,

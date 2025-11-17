@@ -17,6 +17,7 @@ urlpatterns = [
     path('patient/<int:patient_id>/text-caption/', views.upload_text_caption, name='upload_text_caption'),
     path('patient/<int:patient_id>/voice-caption/<int:caption_id>/delete/', views.delete_voice_caption, name='delete_voice_caption'),
     path('patient/<int:patient_id>/voice-caption/<int:caption_id>/edit/', views.edit_voice_caption_transcription, name='edit_voice_caption_transcription'),
+    path('patient/<int:patient_id>/voice-caption/<int:caption_id>/update-modality/', views.update_voice_caption_modality, name='update_voice_caption_modality'),
     path('patient/<int:patient_id>/tags/add/', views.add_patient_tag, name='add_patient_tag'),
     path('patient/<int:patient_id>/tags/remove/', views.remove_patient_tag, name='remove_patient_tag'),
     
@@ -25,6 +26,10 @@ urlpatterns = [
     path('patients/bulk-delete/', views.bulk_delete_patients, name='bulk_delete_patients'),
     path('patient/<int:patient_id>/rerun-processing/', views.rerun_processing, name='rerun_processing'),
     path('admin/control-panel/', lambda request: redirect('admin_control_panel'), name='admin_control_panel'),
+    
+    # Profile
+    path('profile/', views.user_profile, name='user_profile'),
+    path('profile/<str:username>/', views.user_profile, name='user_profile_by_username'),
     
     # Folder/tag management
     path('folders/create/', views.create_folder, name='create_folder'),

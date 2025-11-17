@@ -123,14 +123,20 @@
                                 <span class="badge bg-secondary ms-1">{{ user.profile.get_role_display }}</span>
                             </a>
                             <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item" href="{% url ns|add:':user_profile' %}">
+                                        <i class="fas fa-user me-1"></i>Profile
+                                    </a>
+                                </li>
                                 {% if user.is_staff %}
+                                    <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <a class="dropdown-item" href="{% url 'invitation_list' %}">
                                             <i class="fas fa-envelope me-1"></i>Manage Invitations
                                         </a>
                                     </li>
-                                    <li><hr class="dropdown-divider"></li>
                                 {% endif %}
+                                <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <form method="post" action="{% url 'logout' %}" class="dropdown-item p-0">
                                         {% csrf_token %}
