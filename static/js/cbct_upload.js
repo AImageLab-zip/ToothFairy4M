@@ -169,6 +169,15 @@ function handleFormSubmission() {
     const forms = document.querySelectorAll('form');
     
     forms.forEach(form => {
+        // Only validate forms that contain file upload elements
+        const hasFileInputs = form.querySelector('input[type="file"]') !== null;
+        const hasUploadContainer = form.querySelector('.volume-upload-container, .cbct-upload-container') !== null;
+        
+        // Skip validation for forms that are not file upload forms (e.g., logout, search, etc.)
+        if (!hasFileInputs && !hasUploadContainer) {
+            return;
+        }
+        
         form.addEventListener('submit', function(e) {
             // Skip validation for scan management form (which only updates settings)
             const action = form.querySelector('input[name="action"]')?.value;
@@ -176,44 +185,21 @@ function handleFormSubmission() {
                 return true; // Allow scan management form to submit without file validation
             }
             
-            // Check if user has uploaded any files at all
-            const hasUpperScan = form.querySelector('input[name="ios_upper"]')?.files.length;
-            const hasLowerScan = form.querySelector('input[name="ios_lower"]')?.files.length;
-            const hasAnyIOS = hasUpperScan || hasLowerScan;
-
-            // Check any 3D volume inputs inside generic or legacy containers
-            let hasAnyVolume = false;
-            const volumeContainers = form.querySelectorAll('.volume-upload-container, .cbct-upload-container');
-            volumeContainers.forEach(container => {
-                const inputs = container.querySelectorAll('input[type="file"]');
-                inputs.forEach(inp => {
-                    if (inp.files && inp.files.length > 0) {
-                        hasAnyVolume = true;
-                    }
-                });
-            });
-            
-            // Check for new image modalities
-            let hasAnyImageModality = false;
-            const imageInputs = [
-                form.querySelector('input[name="intraoral-photos"]'),
-                form.querySelector('input[name="teleradiography"]'),
-                form.querySelector('input[name="panoramic"]')
-            ];
-            imageInputs.forEach(input => {
-                if (input && input.files && input.files.length > 0) {
-                    hasAnyImageModality = true;
+            // Check if at least one file is uploaded
+            let hasAnyFile = false;
+            const allFileInputs = form.querySelectorAll('input[type="file"]');
+            allFileInputs.forEach(input => {
+                if (input.files && input.files.length > 0) {
+                    hasAnyFile = true;
                 }
             });
             
-            // If no files are being uploaded at all, show a general message
-            if (!hasAnyIOS && !hasAnyVolume) {
+            // If no files are being uploaded at all, show an error message
+            if (!hasAnyFile) {
                 e.preventDefault();
-                alert('Please upload at least one file. hasAnyIOS: ' + hasAnyIOS + ' hasAnyVolume: ' + hasAnyVolume + ' hasAnyImageModality: ' + hasAnyImageModality);
+                alert('Please upload at least one file.');
                 return false;
             }
-
-            // No further mode-specific validation needed; allow submit
             
             // Allow normal form submission
             return true;
