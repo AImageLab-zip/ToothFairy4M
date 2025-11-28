@@ -36,5 +36,7 @@ for d in $DIRS; do
     mkdir -p "$d"
 done
 
+mkdir -p /app/logs
+
 python manage.py migrate
 python manage.py runserver 0.0.0.0:8000
