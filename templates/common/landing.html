@@ -18,7 +18,6 @@
             <div class="user-chip dropdown">
                 <a class="btn btn-light btn-sm dropdown-toggle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-user-circle me-1"></i>{{ user.username }}
-                    <span class="badge bg-secondary ms-2">{{ user.profile.get_role_display }}</span>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li class="px-3 py-2 text-muted small">Signed in as <strong>{{ user.username }}</strong></li>
@@ -110,4 +109,3 @@
     {% endif %}
 </section>
 {% endblock %}
-

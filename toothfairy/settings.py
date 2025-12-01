@@ -82,6 +82,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "toothfairy.middleware.RequestLoggingMiddleware",
     "toothfairy.middleware.ProjectSessionMiddleware",
+    "toothfairy.middleware.ActiveProfileMiddleware",
 ]
 
 ROOT_URLCONF = "toothfairy.urls"
@@ -96,7 +97,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "maxillo.context_processors.current_project",
+                "common.context_processors.current_project",
             ],
         },
     },
