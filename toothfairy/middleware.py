@@ -86,3 +86,47 @@ class ProjectSessionMiddleware(MiddlewareMixin):
         request.session['current_project_id'] = project.id
         
         return None
+
+
+class ActiveProfileMiddleware(MiddlewareMixin):
+    """
+    Middleware that sets `request.user.profile` to the correct profile object
+    depending on which app namespace the request is for (e.g. 'maxillo' or 'brain').
+    This makes template and view code that uses `user.profile` app-agnostic.
+
+    If the appropriate profile object doesn't exist yet, it will be created with
+    the default role.
+    """
+
+    def process_request(self, request):
+        # Only operate for authenticated users
+        if not hasattr(request, 'user') or not request.user.is_authenticated:
+            return None
+
+        # Determine app by first URL segment (fallback to 'maxillo')
+        path_parts = [p for p in request.path.split('/') if p]
+        app_key = path_parts[0] if path_parts else 'maxillo'
+
+        try:
+            if app_key == 'brain':
+                # Prefer an existing related object, create if missing
+                if hasattr(request.user, 'brain_profile') and getattr(request.user, 'brain_profile'):
+                    request.user.profile = request.user.brain_profile
+                else:
+                    # Lazy import to avoid circular imports on module import time
+                    from brain.models import BrainUserProfile
+                    profile, _ = BrainUserProfile.objects.get_or_create(user=request.user)
+                    request.user.profile = profile
+            else:
+                # default to maxillo profile
+                if hasattr(request.user, 'profile') and getattr(request.user, 'profile'):
+                    # already set (possibly by signal or previous logic)
+                    pass
+                else:
+                    from maxillo.models import UserProfile
+                    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                    request.user.profile = profile
+        except Exception:
+            # In case of any DB errors during auth or when running management commands,
+            # avoid failing the whole request — leave user.profile unset.
+            return None

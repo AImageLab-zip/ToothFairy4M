@@ -5,6 +5,7 @@ class MaxilloConfig(AppConfig):
 	default_auto_field = "django.db.models.BigAutoField"
 	name = "maxillo"
 	label = "scans"
+	verbose_name = "Maxillo"
 
 	def ready(self):
 		import maxillo.signals
