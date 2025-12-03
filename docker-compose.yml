@@ -1,19 +1,22 @@
+name: toothfairy4m${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
+
 services:
   web:
     build: .
+    container_name: web${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
     volumes:
       - .:/app
       - /dataset:/dataset
     command: /app/entrypoint.sh
     ports:
-      - "8000:8000"
+      - "${WEB_EXTERNAL_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
     environment:
-      VIRTUAL_HOST: ${DOMAIN}
-      LETSENCRYPT_HOST: ${DOMAIN}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      VIRTUAL_HOST: ${DOMAIN:-}
+      LETSENCRYPT_HOST: ${DOMAIN:-}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
     env_file:
       - .env
     user: "${UID:-1000}:${GID:-1000}"
@@ -23,6 +26,7 @@ services:
 
   db:
     image: mysql:8.0
+    container_name: db${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -31,7 +35,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     ports:
-      - "3306:3306"
+      - "${DB_EXTERNAL_PORT:-3306}:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       timeout: 20s

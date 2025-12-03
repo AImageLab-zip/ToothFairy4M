@@ -297,6 +297,4 @@ if not DEBUG:
     LOGGING['loggers']['toothfairy']['level'] = 'DEBUG'
     LOGGING['loggers']['toothfairy.middleware']['level'] = 'DEBUG'
 
-# Create logs directory if it doesn't exist
-import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
