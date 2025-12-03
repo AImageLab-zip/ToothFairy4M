@@ -1,38 +1,4 @@
 services:
-  nginx-proxy:
-    image: nginxproxy/nginx-proxy
-    container_name: nginx-proxy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - certs:/etc/nginx/certs
-      - html:/usr/share/nginx/html
-      - vhost:/etc/nginx/vhost.d
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./nginx.conf:/etc/nginx/conf.d/custom.conf:ro
-    networks:
-      - proxy-net
-
-  acme-companion:
-    image: nginxproxy/acme-companion
-    container_name: acme-companion
-    restart: unless-stopped
-    depends_on:
-      - nginx-proxy
-    volumes:
-      - certs:/etc/nginx/certs
-      - html:/usr/share/nginx/html
-      - vhost:/etc/nginx/vhost.d
-      - acme:/etc/acme.sh
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
-      NGINX_PROXY_CONTAINER: nginx-proxy
-    networks:
-      - proxy-net
-
   web:
     build: .
     volumes:
@@ -78,10 +44,7 @@ services:
 
 volumes:
   mysql_data:
-  certs:
-  html:
-  vhost:
-  acme:
 
 networks:
   proxy-net:
+    external: true
