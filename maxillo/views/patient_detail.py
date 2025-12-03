@@ -271,10 +271,9 @@ def patient_detail(request, patient_id):
         logger.error(f"Error organizing patient files: {e}")
 
 
-    # Voice captions. TODO: filter only captions made by the current user for all captions?
-    # If the patient is Debug/1 (ID: 4646), only the admin can see all the captions, each users can see only their own captions.
+    # Voice captions -- filter only captions made by the current user for all captions
     voice_captions = patient.voice_captions.all()
-    if not user_profile.is_admin() and patient.patient_id in [4646, 4891]:
+    if not user_profile.is_admin() and not user_profile.is_project_manager(): # and patient.patient_id in [4646, 4891]:
         voice_captions = voice_captions.filter(user=request.user)
 
     context = {
