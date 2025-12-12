@@ -17,7 +17,7 @@ def home(request):
         all_projects = Project.objects.filter(is_active=True)
         
         # Admins can see all projects
-        if request.user.profile.is_admin():
+        if request.user.is_staff:
             projects = all_projects.order_by('name')
         else:
             accessible_project_ids = ProjectAccess.objects.filter(

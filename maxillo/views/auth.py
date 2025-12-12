@@ -9,6 +9,8 @@ import uuid
 from ..models import Invitation
 from ..forms import InvitationForm, InvitedUserCreationForm
 from common.models import ProjectAccess
+from brain.models import BrainUserProfile
+from maxillo.models import MaxilloUserProfile   
 
 
 def register(request):
@@ -17,8 +19,25 @@ def register(request):
         if form.is_valid():
             invitation = Invitation.objects.get(code=form.cleaned_data['invitation_code'])
             user = form.save()
-            user.profile.role = invitation.role
-            user.profile.save()
+            project_name = invitation.project.name if invitation.project else None
+            if project_name:
+                pname = (project_name or '').lower()
+                if pname == 'maxillo':
+                    profile, created = MaxilloUserProfile.objects.get_or_create(
+                        user=user,
+                        defaults={'role': invitation.role}
+                    )
+                    if not created and profile.role != invitation.role:
+                        profile.role = invitation.role
+                        profile.save()
+                elif pname == 'brain':
+                    profile, created = BrainUserProfile.objects.get_or_create(
+                        user=user,
+                        defaults={'role': invitation.role}
+                    )
+                    if not created and profile.role != invitation.role:
+                        profile.role = invitation.role
+                        profile.save()
             
             # Create ProjectAccess entry if invitation has a project
             if invitation.project:
@@ -49,7 +68,7 @@ def register(request):
 
 
 @login_required
-@user_passes_test(lambda u: u.profile.is_admin)
+@user_passes_test(lambda u: u.is_staff)
 def invitation_list(request):
     invitations = Invitation.objects.all().order_by('-created_at')
     if request.method == 'POST':
