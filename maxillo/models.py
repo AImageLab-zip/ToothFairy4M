@@ -139,7 +139,7 @@ def validate_cbct_folder(files):
     return valid_files
 
 
-class UserProfile(models.Model):
+class MaxilloUserProfile(models.Model):
     ROLE_CHOICES = [
         ('standard', 'Standard User'),
         ('annotator', 'Annotator'),
@@ -148,8 +148,12 @@ class UserProfile(models.Model):
         ('student_dev', 'Student Developer'),
     ]
     
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='maxillo_profile')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='standard')
+
+    class Meta:
+        verbose_name = "User profile"   
+        verbose_name_plural = "User profiles" 
     
     def __str__(self):
         return f"{self.user.username} - {self.get_role_display()}"

@@ -1,18 +1,18 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
-from .models import UserProfile
+from .models import MaxilloUserProfile
 
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
+        MaxilloUserProfile.objects.create(user=instance)
 
 
-@receiver(post_save, sender=UserProfile)
+@receiver(post_save, sender=MaxilloUserProfile)
 def update_user_staff_status(sender, instance, created, **kwargs):
-    """Update User's is_staff flag based on UserProfile role"""
+    """Update User's is_staff flag based on MaxilloUserProfile role"""
     user = instance.user
     
     # Student developers and admins should have staff access
@@ -30,7 +30,7 @@ def update_user_staff_status(sender, instance, created, **kwargs):
         # Get all view permissions for our models
         content_types = ContentType.objects.filter(
             app_label='scans',
-            model__in=['userprofile', 'dataset', 'patient', 'classification', 
+            model__in=['MaxilloUserProfile', 'dataset', 'patient', 'classification', 
                       'voicecaption', 'processingjob', 'fileregistry', 'invitation']
         )
         

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import UserProfile, Dataset, Patient, Classification, VoiceCaption
+from .models import MaxilloUserProfile, Dataset, Patient, Classification, VoiceCaption
 from common.models import Project, Modality, ProjectAccess, Job, FileRegistry, Invitation
 from .models import Tag, Folder
 from common.models import Project, Modality, ProjectAccess
@@ -25,8 +25,8 @@ class ReadOnlyAdminMixin:
         return super().has_delete_permission(request, obj)
 
 
-@admin.register(UserProfile)
-class UserProfileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+@admin.register(MaxilloUserProfile)
+class MaxilloUserProfileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['user', 'role']
     list_filter = ['role']
     search_fields = ['user__username', 'user__email']
