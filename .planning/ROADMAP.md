@@ -30,10 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. MaxilloUserProfile and BrainUserProfile models are removed from codebase
   4. Existing users can still access their projects with correct permissions after migration
   5. No duplicate permission checking code exists in views or middleware
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 01-01-PLAN.md — Add role field to ProjectAccess and migrate data from profiles
+- [ ] 01-02-PLAN.md — Update all permission checks to use ProjectAccess.role
+- [ ] 01-03-PLAN.md — Remove deprecated UserProfile models and boolean fields
 
 ### Phase 2: Brain Upload
 **Goal**: Users can upload and track brain MRI modalities
@@ -103,7 +105,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Permission Refactoring | 0/TBD | Not started | - |
+| 1. Permission Refactoring | 0/3 | Planned | - |
 | 2. Brain Upload | 0/TBD | Not started | - |
 | 3. Viewer Grid | 0/TBD | Not started | - |
 | 4. Viewer Display | 0/TBD | Not started | - |
