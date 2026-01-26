@@ -35,6 +35,14 @@ urlpatterns = [
     path('folders/create/', views.create_folder, name='create_folder'),
     path('folders/move-patients/', views.move_patients_to_folder, name='move_patients_to_folder'),
     
+    # Export endpoints
+    path('export/', views.export_list, name='export_list'),
+    path('export/new/', views.export_new, name='export_new'),
+    path('export/preview/', views.export_preview, name='export_preview'),
+    path('export/<int:export_id>/', views.export_status, name='export_status'),
+    path('export/<int:export_id>/download/', views.export_download, name='export_download'),
+    path('export/<int:export_id>/delete/', views.export_delete, name='export_delete'),
+    
     # API endpoints
     path('api/patient/<int:patient_id>/data/', views.patient_viewer_data, name='patient_viewer_data'),
     path('api/patient/<int:patient_id>/cbct/', views.patient_cbct_data, name='patient_cbct_data'),

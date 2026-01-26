@@ -1,3 +1,6 @@
+*.zip
+.planning
+backup*
 # Python
 __pycache__/
 *.py[cod]

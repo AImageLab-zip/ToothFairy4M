@@ -1,44 +1,6 @@
 name: toothfairy4m${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
 
 services:
-  nginx-proxy:
-    image: nginxproxy/nginx-proxy
-    container_name: nginx-proxy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - certs:/etc/nginx/certs
-      - html:/usr/share/nginx/html
-      - vhost:/etc/nginx/vhost.d
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./nginx.conf:/etc/nginx/conf.d/custom.conf:ro
-    networks:
-      - proxy-net
-    profiles:
-      - production
-
-  acme-companion:
-    image: nginxproxy/acme-companion
-    container_name: acme-companion
-    restart: unless-stopped
-    depends_on:
-      - nginx-proxy
-    volumes:
-      - certs:/etc/nginx/certs
-      - html:/usr/share/nginx/html
-      - vhost:/etc/nginx/vhost.d
-      - acme:/etc/acme.sh
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
-      NGINX_PROXY_CONTAINER: nginx-proxy
-    networks:
-      - proxy-net
-    profiles:
-      - production
-
   web:
     build: .
     container_name: web${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
@@ -86,16 +48,7 @@ services:
 
 volumes:
   mysql_data:
-    name: mysql_data${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
-  certs:
-    name: certs${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
-  html:
-    name: html${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
-  vhost:
-    name: vhost${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
-  acme:
-    name: acme${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
 
 networks:
   proxy-net:
-    name: proxy-net${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
+    external: true

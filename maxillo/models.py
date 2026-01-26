@@ -790,4 +790,67 @@ class VoiceCaption(models.Model):
 
 ## FileRegistry moved to common.FileRegistry
 
+
+class Export(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exports')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Query parameters stored as JSON
+    query_params = models.JSONField(default=dict, help_text='Stores folder_ids, modality_slugs, and filters')
+    query_summary = models.CharField(max_length=500, blank=True, help_text='Human-readable query summary')
+    
+    # Export file information
+    file_path = models.CharField(max_length=1000, blank=True, help_text='Path to generated ZIP file')
+    file_size = models.BigIntegerField(default=0, help_text='Size of export file in bytes')
+    patient_count = models.IntegerField(default=0, help_text='Number of patients in export')
+    
+    # Timing
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True, help_text='When processing started')
+    completed_at = models.DateTimeField(null=True, blank=True, help_text='When processing completed')
+    
+    # Error handling
+    error_message = models.TextField(blank=True, help_text='Error message if export failed')
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+        db_table = 'scans_export'
+    
+    def __str__(self):
+        return f"Export {self.id} - {self.get_status_display()} - {self.user.username} - {self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else 'N/A'}"
+    
+    def mark_processing(self):
+        """Mark export as processing and set started_at timestamp"""
+        self.status = 'processing'
+        self.started_at = timezone.now()
+        self.save()
+    
+    def mark_completed(self, file_path=None, file_size=None):
+        """Mark export as completed and set file information"""
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        if file_path:
+            self.file_path = file_path
+        if file_size is not None:
+            self.file_size = file_size
+        self.save()
+    
+    def mark_failed(self, error_message=''):
+        """Mark export as failed and set error message"""
+        self.status = 'failed'
+        self.completed_at = timezone.now()
+        self.error_message = error_message
+        self.save()
+
     

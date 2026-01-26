@@ -1,0 +1,436 @@
+"""Export views for administrator-only dataset export functionality."""
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from django.http import JsonResponse, FileResponse, Http404
+from django.views.decorators.http import require_POST, require_http_methods
+from django.db.models import Q, Count, Sum
+from django.conf import settings
+from django.utils import timezone
+import os
+import json
+import logging
+import threading
+
+from ..models import Export, Folder, Patient, VoiceCaption
+from common.models import Modality, FileRegistry
+
+logger = logging.getLogger(__name__)
+
+
+def is_admin(user):
+    """Check if user is admin (staff or has admin role)."""
+    return user.is_staff or user.profile.is_admin()
+
+
+@login_required
+@user_passes_test(is_admin)
+def export_list(request):
+    """Display export history page with all previous exports."""
+    exports = Export.objects.filter(user=request.user).order_by('-created_at')
+    
+    # Format file sizes for display
+    exports_with_sizes = []
+    for export in exports:
+        if export.file_size:
+            if export.file_size < 1024:
+                size_display = f"{export.file_size} B"
+            elif export.file_size < 1048576:
+                size_display = f"{export.file_size / 1024:.1f} KB"
+            elif export.file_size < 1073741824:
+                size_display = f"{export.file_size / 1048576:.1f} MB"
+            else:
+                size_display = f"{export.file_size / 1073741824:.2f} GB"
+        else:
+            size_display = None
+        exports_with_sizes.append({
+            'export': export,
+            'size_display': size_display,
+        })
+    
+    # Pagination if needed
+    from django.core.paginator import Paginator
+    paginator = Paginator(exports_with_sizes, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    return render(request, 'maxillo/export_list.html', {
+        'exports': page_obj,
+        'page_obj': page_obj,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["GET", "POST"])
+def export_new(request):
+    """Create new export page with folder/modality selection."""
+    if request.method == 'POST':
+        # Get form data
+        folder_ids = request.POST.getlist('folder_ids')
+        modality_slugs = request.POST.getlist('modality_slugs')
+        
+        # Get filters
+        filters = {}
+        for key in request.POST.keys():
+            if key.startswith('filter_'):
+                filter_name = key.replace('filter_', '')
+                filters[filter_name] = True
+        
+        # Validate selections
+        if not folder_ids:
+            messages.error(request, 'Please select at least one folder.')
+            return redirect('maxillo:export_new')
+        
+        # Filter out 'reports' for validation (it's optional)
+        actual_modalities = [slug for slug in modality_slugs if slug != 'reports']
+        if not actual_modalities:
+            messages.error(request, 'Please select at least one modality.')
+            return redirect('maxillo:export_new')
+        
+        # Create export record
+        query_params = {
+            'folder_ids': [int(fid) for fid in folder_ids],
+            'modality_slugs': modality_slugs,
+            'filters': filters,
+        }
+        
+        # Generate query summary
+        folder_count = len(folder_ids)
+        modality_names = []
+        include_reports = False
+        for slug in modality_slugs:
+            if slug == 'reports':
+                include_reports = True
+            else:
+                try:
+                    modality = Modality.objects.get(slug=slug)
+                    modality_names.append(modality.name)
+                except Modality.DoesNotExist:
+                    modality_names.append(slug)
+        
+        # Add Reports to summary if selected
+        if include_reports:
+            modality_names.append('Reports')
+        
+        filter_parts = []
+        if filters.get('has_cbct'):
+            filter_parts.append('Has CBCT')
+        if filters.get('has_ios'):
+            filter_parts.append('Has IOS')
+        for key, value in filters.items():
+            if key.startswith('has_reports_') and value:
+                modality_slug = key.replace('has_reports_', '')
+                try:
+                    modality = Modality.objects.get(slug=modality_slug)
+                    filter_parts.append(f'Has Reports for {modality.name}')
+                except Modality.DoesNotExist:
+                    filter_parts.append(f'Has Reports for {modality_slug}')
+        
+        query_summary_parts = [f"{folder_count} folder{'s' if folder_count > 1 else ''}"]
+        if modality_names:
+            query_summary_parts.append(' + '.join(modality_names))
+        if filter_parts:
+            query_summary_parts.append(', '.join(filter_parts))
+        
+        query_summary = ', '.join(query_summary_parts)
+        
+        export = Export.objects.create(
+            user=request.user,
+            status='pending',
+            query_params=query_params,
+            query_summary=query_summary,
+        )
+        
+        # Start background processing
+        from ..utils.export_processor import start_export_processing
+        start_export_processing(export.id)
+        
+        messages.success(request, f'Export #{export.id} created and processing started.')
+        return redirect('maxillo:export_list')
+    
+    # GET request - show form
+    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    
+    # Get patient counts for folders
+    folders_with_counts = []
+    for folder in folders:
+        patient_count = Patient.objects.filter(folder=folder).count()
+        folders_with_counts.append({
+            'folder': folder,
+            'patient_count': patient_count,
+        })
+    
+    # Get all active modalities
+    modalities = Modality.objects.filter(is_active=True).order_by('name')
+    
+    return render(request, 'maxillo/export_new.html', {
+        'folders': folders_with_counts,
+        'modalities': modalities,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["POST", "GET"])
+def export_preview(request):
+    """AJAX endpoint to get export statistics based on selected criteria."""
+    try:
+        # Get parameters from request
+        if request.method == 'POST':
+            data = json.loads(request.body) if request.body else {}
+        else:
+            data = request.GET
+        
+        folder_ids = data.get('folder_ids', [])
+        modality_slugs = data.get('modality_slugs', [])
+        filters = data.get('filters', {})
+        
+        # Convert to proper types
+        if isinstance(folder_ids, str):
+            folder_ids = [int(fid) for fid in folder_ids.split(',') if fid]
+        else:
+            folder_ids = [int(fid) for fid in folder_ids if fid]
+        
+        if isinstance(modality_slugs, str):
+            modality_slugs = modality_slugs.split(',') if modality_slugs else []
+        
+        # Query patients based on folders
+        patients = Patient.objects.filter(folder_id__in=folder_ids) if folder_ids else Patient.objects.none()
+        
+        # Apply filters (checking for processed files)
+        if filters.get('has_cbct'):
+            # Patients with CBCT processed files
+            cbct_patients = Patient.objects.filter(
+                files__file_type='cbct_processed'
+            ).distinct()
+            patients = patients.filter(patient_id__in=cbct_patients.values_list('patient_id', flat=True))
+        
+        if filters.get('has_ios'):
+            # Patients with IOS processed files
+            ios_patients = Patient.objects.filter(
+                files__file_type__in=['ios_processed_upper', 'ios_processed_lower']
+            ).distinct()
+            patients = patients.filter(patient_id__in=ios_patients.values_list('patient_id', flat=True))
+        
+        # Dynamic modality presence filters
+        for key, value in filters.items():
+            if key.startswith('has_') and not key.startswith('has_reports_') and value:
+                modality_slug = key.replace('has_', '')
+                # Map modality slug to file types (only processed)
+                file_type_map = {
+                    'cbct': ['cbct_processed'],
+                    'ios': ['ios_processed_upper', 'ios_processed_lower'],
+                    'teleradiography': ['teleradiography_processed'],
+                    'panoramic': ['panoramic_processed'],
+                    'intraoral': ['intraoral_processed'],
+                }
+                file_types = file_type_map.get(modality_slug, [])
+                if file_types:
+                    modality_patients = Patient.objects.filter(
+                        files__file_type__in=file_types
+                    ).distinct()
+                    patients = patients.filter(patient_id__in=modality_patients.values_list('patient_id', flat=True))
+        
+        # Report presence filters
+        for key, value in filters.items():
+            if key.startswith('has_reports_') and value:
+                modality_slug = key.replace('has_reports_', '')
+                # Patients with files for this modality AND voice captions
+                try:
+                    modality = Modality.objects.get(slug=modality_slug)
+                    # Get patients with voice captions for this modality
+                    report_patients = Patient.objects.filter(
+                        voice_captions__modality=modality,
+                        voice_captions__text_caption__isnull=False
+                    ).exclude(voice_captions__text_caption='').distinct()
+                    patients = patients.filter(patient_id__in=report_patients.values_list('patient_id', flat=True))
+                except Modality.DoesNotExist:
+                    pass
+        
+        patient_count = patients.count()
+        folder_count = len(folder_ids) if folder_ids else 0
+        # Count modalities excluding 'reports'
+        actual_modality_slugs = [slug for slug in modality_slugs if slug != 'reports'] if modality_slugs else []
+        modality_count = len(actual_modality_slugs)
+        
+        # Calculate file count and size estimate
+        # Separate reports from actual modalities
+        include_reports = 'reports' in modality_slugs
+        actual_modality_slugs = [slug for slug in modality_slugs if slug != 'reports']
+        
+        if actual_modality_slugs and patient_count > 0:
+            # Get files for selected modalities and patients (only processed files)
+            file_type_map = {
+                'cbct': ['cbct_processed'],  # Only processed
+                'ios': ['ios_processed_upper', 'ios_processed_lower'],  # Only processed
+                'teleradiography': ['teleradiography_processed'],  # Only processed
+                'panoramic': ['panoramic_processed'],  # Only processed
+                'intraoral': ['intraoral_processed'],  # Only processed
+            }
+            
+            file_types = []
+            for slug in actual_modality_slugs:
+                file_types.extend(file_type_map.get(slug, []))
+            
+            files = FileRegistry.objects.filter(
+                patient__in=patients,
+                file_type__in=file_types
+            )
+            
+            file_count = files.count()
+            total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
+            
+            # Add voice caption text files if reports are explicitly selected
+            if include_reports:
+                # Get reports only for selected modalities
+                modality_objects = Modality.objects.filter(slug__in=actual_modality_slugs)
+                voice_captions = VoiceCaption.objects.filter(
+                    patient__in=patients,
+                    modality__in=modality_objects,
+                    text_caption__isnull=False
+                ).exclude(text_caption='')
+                voice_caption_count = voice_captions.count()
+                file_count += voice_caption_count
+                # Calculate actual text file size
+                for vc in voice_captions:
+                    total_size += len(vc.text_caption.encode('utf-8'))
+        else:
+            file_count = 0
+            total_size = 0
+        
+        # Format size
+        if total_size < 1024 * 1024:  # Less than 1MB
+            size_str = f"~{total_size / 1024:.1f} KB"
+        elif total_size < 1024 * 1024 * 1024:  # Less than 1GB
+            size_str = f"~{total_size / (1024 * 1024):.1f} MB"
+        else:
+            size_str = f"~{total_size / (1024 * 1024 * 1024):.2f} GB"
+        
+        return JsonResponse({
+            'success': True,
+            'patient_count': patient_count,
+            'folder_count': folder_count,
+            'modality_count': modality_count,
+            'file_count': file_count,
+            'estimated_size': size_str,
+            'estimated_size_bytes': total_size,
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in export_preview: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+def export_status(request, export_id):
+    """AJAX endpoint to get current export status."""
+    export = get_object_or_404(Export, id=export_id)
+    
+    # Check permissions
+    if export.user != request.user and not request.user.is_staff:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    response_data = {
+        'id': export.id,
+        'status': export.status,
+        'query_summary': export.query_summary,
+    }
+    
+    if export.status == 'completed':
+        response_data['file_size'] = export.file_size
+        response_data['file_size_human'] = format_file_size(export.file_size)
+        response_data['patient_count'] = export.patient_count
+        if export.completed_at:
+            response_data['completed_at'] = export.completed_at.isoformat()
+    
+    if export.status == 'failed':
+        response_data['error_message'] = export.error_message
+    
+    if export.status == 'processing':
+        if export.started_at:
+            response_data['started_at'] = export.started_at.isoformat()
+    
+    return JsonResponse(response_data)
+
+
+@login_required
+@user_passes_test(is_admin)
+def export_download(request, export_id):
+    """Download export ZIP file."""
+    export = get_object_or_404(Export, id=export_id)
+    
+    # Check permissions
+    if export.user != request.user and not request.user.is_staff:
+        messages.error(request, 'You do not have permission to download this export.')
+        return redirect('maxillo:export_list')
+    
+    # Check status
+    if export.status != 'completed':
+        messages.error(request, 'Export is not yet completed.')
+        return redirect('maxillo:export_list')
+    
+    # Check file exists
+    if not export.file_path or not os.path.exists(export.file_path):
+        messages.error(request, 'Export file not found.')
+        export.mark_failed('Export file not found on disk')
+        return redirect('maxillo:export_list')
+    
+    # Serve file
+    try:
+        response = FileResponse(
+            open(export.file_path, 'rb'),
+            content_type='application/zip',
+        )
+        filename = os.path.basename(export.file_path)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Error serving export file: {e}", exc_info=True)
+        messages.error(request, 'Error serving export file.')
+        return redirect('maxillo:export_list')
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def export_delete(request, export_id):
+    """Delete export record and optionally the ZIP file."""
+    export = get_object_or_404(Export, id=export_id)
+    
+    # Check permissions
+    if export.user != request.user and not request.user.is_staff:
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    
+    try:
+        # Optionally delete file
+        if export.file_path and os.path.exists(export.file_path):
+            try:
+                os.remove(export.file_path)
+            except Exception as e:
+                logger.warning(f"Could not delete export file {export.file_path}: {e}")
+        
+        # Delete export record
+        export.delete()
+        
+        return JsonResponse({'success': True})
+    
+    except Exception as e:
+        logger.error(f"Error deleting export: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def format_file_size(size_bytes):
+    """Format file size in human-readable format."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
