@@ -1,5 +1,5 @@
 *.zip
-.planning
+.claude
 backup*
 # Python
 __pycache__/
