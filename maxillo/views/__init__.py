@@ -57,6 +57,16 @@ from .metadata import get_nifti_metadata, update_nifti_metadata
 # Profile
 from .profile import user_profile
 
+# Export
+from .export import (
+    export_list,
+    export_new,
+    export_preview,
+    export_status,
+    export_download,
+    export_delete,
+)
+
 # Export all functions
 __all__ = [
     # Helpers
@@ -107,5 +117,12 @@ __all__ = [
     'remove_patient_tag',
     # Profile
     'user_profile',
+    # Export
+    'export_list',
+    'export_new',
+    'export_preview',
+    'export_status',
+    'export_download',
+    'export_delete',
 ]
 
