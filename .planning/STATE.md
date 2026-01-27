@@ -5,35 +5,36 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 1 - Permission Refactoring
+**Current focus:** Phase 1 Complete - Ready for Phase 2
 
 ## Current Position
 
-Phase: 1 of 5 (Permission Refactoring)
-Plan: 3 of TBD in current phase
-Status: In progress
-Last activity: 2026-01-27 — Completed 01-03-PLAN.md
+Phase: 1 of 5 (Permission Refactoring) — COMPLETE
+Plan: 4 of 4 in current phase
+Status: Complete
+Last activity: 2026-01-27 — Completed 01-04-PLAN.md
 
-Progress: [███░░░░░░░] 30%
+Progress: [██████████] 100% (Phase 1)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 12 minutes
-- Total execution time: 0.6 hours
+- Total plans completed: 4
+- Average duration: 13 minutes
+- Total execution time: 0.9 hours
 
 **By Phase:**
 
 | Phase | Plans | Status | Total | Avg/Plan |
 |-------|-------|--------|-------|----------|
-| 01 | 3 | In Progress | 36m | 12m |
+| 01 | 4 | Complete | 51m | 13m |
 
 **Recent Trend:**
 - 01-01: Complete - 25m (including app rename fix)
 - 01-02: Complete - 4m (middleware and permission utilities)
 - 01-03: Complete - 7m (view and template refactoring)
-- Trend: Excellent velocity, clean execution, improving speed
+- 01-04: Complete - 15m (model removal and migrations)
+- Trend: Excellent velocity, clean execution
 
 *Updated after each plan completion*
 
@@ -61,17 +62,21 @@ Recent decisions affecting current work:
 - Simplify auth view to create only ProjectAccess on registration — Unified user onboarding, no app-specific profiles
 - Pass target_profile explicitly to templates — Middleware only sets request.user.profile for logged-in user
 
+**From 01-04:**
+- Use Django makemigrations for model deletion — Auto-generated migrations are reliable
+- Remove profile creation signals entirely — Users get access via invitation only
+
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-None - migration issues from 01-01 were resolved.
+None - Phase 1 complete with clean permission architecture.
 
 ## Session Continuity
 
-Last session: 2026-01-27 — Executed 01-03-PLAN.md
-Stopped at: Completed 01-03-PLAN.md successfully
-Resume file: .planning/phases/01-permission-refactoring/01-03-SUMMARY.md
-Next action: Continue to next plan in phase (admin cleanup and final UserProfile removal)
+Last session: 2026-01-27 — Executed 01-04-PLAN.md
+Stopped at: Completed Phase 1 - Permission Refactoring
+Resume file: .planning/phases/01-permission-refactoring/01-04-SUMMARY.md
+Next action: Verify phase goal, then proceed to Phase 2 (Brain Upload)
