@@ -12,7 +12,7 @@ This milestone transforms ToothFairy4M from a maxillofacial-only platform into a
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Permission Refactoring** - Consolidate dual profile system into unified ProjectAccess
+- [x] **Phase 1: Permission Refactoring** - Consolidate dual profile system into unified ProjectAccess
 - [ ] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
 - [ ] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [ ] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
@@ -30,12 +30,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. MaxilloUserProfile and BrainUserProfile models are removed from codebase
   4. Existing users can still access their projects with correct permissions after migration
   5. No duplicate permission checking code exists in views or middleware
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Add role field to ProjectAccess and migrate data from profiles
-- [ ] 01-02-PLAN.md — Update all permission checks to use ProjectAccess.role
-- [ ] 01-03-PLAN.md — Remove deprecated UserProfile models and boolean fields
+- [x] 01-01-PLAN.md — Add role field to ProjectAccess and migrate data from profiles
+- [x] 01-02-PLAN.md — Update all permission checks to use ProjectAccess.role
+- [x] 01-03-PLAN.md — Update views and templates to use ProjectAccess
+- [x] 01-04-PLAN.md — Remove deprecated UserProfile models and boolean fields
 
 ### Phase 2: Brain Upload
 **Goal**: Users can upload and track brain MRI modalities
@@ -105,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Permission Refactoring | 0/3 | Planned | - |
+| 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
 | 2. Brain Upload | 0/TBD | Not started | - |
 | 3. Viewer Grid | 0/TBD | Not started | - |
 | 4. Viewer Display | 0/TBD | Not started | - |
