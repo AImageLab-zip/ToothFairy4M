@@ -10,29 +10,30 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 1 of 5 (Permission Refactoring)
-Plan: 2 of TBD in current phase
+Plan: 3 of TBD in current phase
 Status: In progress
-Last activity: 2026-01-27 — Completed 01-02-PLAN.md
+Last activity: 2026-01-27 — Completed 01-03-PLAN.md
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 14.5 minutes
-- Total execution time: 0.5 hours
+- Total plans completed: 3
+- Average duration: 12 minutes
+- Total execution time: 0.6 hours
 
 **By Phase:**
 
 | Phase | Plans | Status | Total | Avg/Plan |
 |-------|-------|--------|-------|----------|
-| 01 | 2 | Complete | 29m | 14.5m |
+| 01 | 3 | In Progress | 36m | 12m |
 
 **Recent Trend:**
 - 01-01: Complete - 25m (including app rename fix)
 - 01-02: Complete - 4m (middleware and permission utilities)
-- Trend: Excellent velocity, clean execution
+- 01-03: Complete - 7m (view and template refactoring)
+- Trend: Excellent velocity, clean execution, improving speed
 
 *Updated after each plan completion*
 
@@ -56,6 +57,10 @@ Recent decisions affecting current work:
 - Use ProjectAccess as request.user.profile — Maintains backward compatibility with existing view/template code
 - Create separate PermissionChecker utility — Clean separation between request-based and non-request permission checking
 
+**From 01-03:**
+- Simplify auth view to create only ProjectAccess on registration — Unified user onboarding, no app-specific profiles
+- Pass target_profile explicitly to templates — Middleware only sets request.user.profile for logged-in user
+
 ### Pending Todos
 
 None yet.
@@ -66,7 +71,7 @@ None - migration issues from 01-01 were resolved.
 
 ## Session Continuity
 
-Last session: 2026-01-27 — Executed 01-02-PLAN.md
-Stopped at: Completed 01-02-PLAN.md successfully
-Resume file: .planning/phases/01-permission-refactoring/01-02-SUMMARY.md
-Next action: Continue to 01-03-PLAN.md (refactor view-level permission checks)
+Last session: 2026-01-27 — Executed 01-03-PLAN.md
+Stopped at: Completed 01-03-PLAN.md successfully
+Resume file: .planning/phases/01-permission-refactoring/01-03-SUMMARY.md
+Next action: Continue to next plan in phase (admin cleanup and final UserProfile removal)
