@@ -43,25 +43,24 @@ def current_project(request):
     current_project_slug = ''
     current_project_role_display = None
     current_project_profile = None
+
     if project and user and user.is_authenticated:
         current_project_slug = getattr(project, 'slug', '') or ''
-        # Try convention: <slug>_profile, then fallback to 'profile'
         try:
-            if current_project_slug:
-                attr_name = f"{current_project_slug}_profile"
-                if hasattr(user, attr_name):
-                    current_project_profile = getattr(user, attr_name)
-                    current_project_role_display = getattr(current_project_profile, 'get_role_display', None)
-                    if callable(current_project_role_display):
-                        current_project_role_display = current_project_role_display()
-            # fallback
-            if not current_project_role_display and hasattr(user, 'profile'):
+            # Try to get profile from request (set by middleware)
+            if hasattr(user, 'profile'):
                 current_project_profile = user.profile
-                current_project_role_display = getattr(current_project_profile, 'get_role_display', None)
-                if callable(current_project_role_display):
-                    current_project_role_display = current_project_role_display()
+                current_project_role_display = user.profile.get_role_display()
+            else:
+                # Fallback: look up ProjectAccess directly
+                access = ProjectAccess.objects.filter(
+                    user=user,
+                    project=project
+                ).first()
+                if access:
+                    current_project_profile = access
+                    current_project_role_display = access.get_role_display()
         except Exception:
-            # Ignore profile lookup errors
             current_project_role_display = None
 
     return {
