@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 1 of 5 (Permission Refactoring)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-01-26 — Roadmap created with 5 phases covering 27 v1 requirements
+Plan: 1 of TBD in current phase
+Status: BLOCKED - Migration issues
+Last activity: 2026-01-27 — Completed 01-01-PLAN.md (2/3 tasks, blocked by migration inconsistencies)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: TBD
-- Total execution time: 0 hours
+- Total plans completed: 0 (1 blocked)
+- Average duration: N/A
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
+| Phase | Plans | Status | Total | Avg/Plan |
+|-------|-------|--------|-------|----------|
+| 01 | 1 | Blocked (2/3 tasks) | 12m | 12m |
 
 **Recent Trend:**
-- No plans completed yet
-- Trend: TBD
+- 01-01: BLOCKED - Migration graph inconsistencies
+- Trend: Need architectural decision to proceed
 
 *Updated after each plan completion*
 
@@ -47,16 +47,27 @@ Recent decisions affecting current work:
 - Cache volumes on first load — Enables fast drag-drop without re-loading
 - Synchronized scrolling as default — Clinical workflow expects registered views
 
+**From 01-01:**
+- Keep can_view and can_upload fields during transition — Backward compatibility, remove in later plan
+- Depend on maxillo.0005 migrations directly — Simplified migration dependencies
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-None yet.
+**CRITICAL BLOCKER (01-01):**
+- Django migration graph inconsistency due to app rename (scans → maxillo)
+- Duplicate migration numbers: two 0004s and two 0005s in maxillo/migrations/
+- Django cannot build migration graph: `NodeNotFoundError` on maxillo.0002
+- Impacts: Cannot run migrations, cannot apply 0015/0016, cannot proceed with Phase 01
+- Options: (A) Squash maxillo migrations, (B) Manual database fix, (C) Fresh database
+- **NEEDS ARCHITECTURAL DECISION**
 
 ## Session Continuity
 
-Last session: 2026-01-26 — Roadmap creation
-Stopped at: ROADMAP.md and STATE.md written, ready to plan Phase 1
-Resume file: None
+Last session: 2026-01-27 — Executed 01-01-PLAN.md
+Stopped at: Blocked by migration graph issue, awaiting architectural decision
+Resume file: .planning/phases/01-permission-refactoring/01-01-SUMMARY.md
+Next action: User must choose migration fix approach (A/B/C) before continuing
