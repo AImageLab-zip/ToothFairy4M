@@ -55,8 +55,17 @@ class Modality(models.Model):
 
 
 class ProjectAccess(models.Model):
+	ROLE_CHOICES = [
+		('standard', 'Standard User'),
+		('annotator', 'Annotator'),
+		('project_manager', 'Project Manager'),
+		('admin', 'Administrator'),
+		('student_dev', 'Student Developer'),
+	]
+
 	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='project_access')
 	project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='access_list')
+	role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='standard')
 	can_view = models.BooleanField(default=True)
 	can_upload = models.BooleanField(default=False)
 	created_at = models.DateTimeField(auto_now_add=True)
@@ -66,6 +75,42 @@ class ProjectAccess(models.Model):
 
 	def __str__(self):
 		return f"{self.user.username} -> {self.project.name}"
+
+	def is_annotator(self):
+		return self.role in ['annotator', 'project_manager', 'admin']
+
+	def is_project_manager(self):
+		return self.role == 'project_manager'
+
+	def is_admin(self):
+		return self.role == 'admin'
+
+	def is_student_developer(self):
+		return self.role == 'student_dev'
+
+	def can_upload_scans(self):
+		return self.role in ['annotator', 'project_manager', 'admin', 'student_dev']
+
+	def can_see_debug_scans(self):
+		return self.role in ['admin', 'student_dev']
+
+	def can_see_public_private_scans(self):
+		return self.role in ['annotator', 'project_manager', 'admin', 'standard']
+
+	def can_modify_scan_settings(self):
+		return self.role in ['annotator', 'project_manager', 'admin']
+
+	def can_delete_scans(self):
+		return self.role == 'admin'
+
+	def can_delete_debug_scans(self):
+		return self.role in ['admin', 'student_dev']
+
+	def can_view_other_profiles(self):
+		return self.role in ['project_manager', 'admin']
+
+	def get_role_display(self):
+		return dict(self.ROLE_CHOICES).get(self.role, self.role)
 
 
 # Shared models used by all apps. These map to existing 'scans_*' tables.
