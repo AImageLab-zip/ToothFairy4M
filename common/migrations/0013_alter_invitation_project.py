@@ -8,7 +8,11 @@ def set_default_project(apps, schema_editor):
     Invitation = apps.get_model('common', 'Invitation')
     Project = apps.get_model('common', 'Project')
 
-    default_project = Project.objects.get(slug='maxillo')
+    # Get or create the maxillo project
+    default_project, created = Project.objects.get_or_create(
+        slug='maxillo',
+        defaults={'name': 'Maxillo', 'is_active': True}
+    )
 
     # Assign default project to all invitations that have no project yet
     Invitation.objects.filter(project__isnull=True).update(project=default_project)

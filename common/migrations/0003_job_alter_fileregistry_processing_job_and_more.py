@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('common', '0002_initial'),
-        ('scans', '0001_initial'),
+        ('maxillo', '0001_initial'),
     ]
 
     operations = [
@@ -29,8 +29,8 @@ class Migration(migrations.Migration):
                 ('error_logs', models.TextField(blank=True, help_text='Error logs if processing failed')),
                 ('worker_id', models.CharField(blank=True, help_text='ID of worker processing this job', max_length=100)),
                 ('dependencies', models.ManyToManyField(blank=True, help_text='Jobs that must complete before this job can start', related_name='dependent_jobs', to='common.job')),
-                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='scans.patient')),
-                ('voice_caption', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='scans.voicecaption')),
+                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='maxillo.patient')),
+                ('voice_caption', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='jobs', to='maxillo.voicecaption')),
             ],
             options={
                 'db_table': 'scans_job',

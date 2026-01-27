@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('scans', '0001_initial'),
+        ('maxillo', '0001_initial'),
     ]
 
     operations = [

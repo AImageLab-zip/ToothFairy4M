@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('common', '0007_add_maxillo_image_modalities'),
-        ('scans', '0002_alter_voicecaption_modality'),
+        ('maxillo', '0002_alter_voicecaption_modality'),
     ]
 
     operations = [

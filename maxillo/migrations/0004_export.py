@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('scans', '0003_add_project_manager_role'),
+        ('maxillo', '0003_add_project_manager_role'),
     ]
 
     operations = [

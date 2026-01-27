@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('common', '0003_job_alter_fileregistry_processing_job_and_more'),
-        ('scans', '0001_initial'),
+        ('maxillo', '0001_initial'),
     ]
 
     operations = [

@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('common', '0001_initial'),
-        ('scans', '0001_initial'),
+        ('maxillo', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -19,12 +19,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='fileregistry',
             name='patient',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='files', to='scans.patient'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='files', to='maxillo.patient'),
         ),
         migrations.AddField(
             model_name='fileregistry',
             name='voice_caption',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='files', to='scans.voicecaption'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='files', to='maxillo.voicecaption'),
         ),
         migrations.AddField(
             model_name='invitation',
@@ -49,12 +49,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='processingjob',
             name='patient',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='processing_jobs', to='scans.patient'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='processing_jobs', to='maxillo.patient'),
         ),
         migrations.AddField(
             model_name='processingjob',
             name='voice_caption',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='processing_jobs', to='scans.voicecaption'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='processing_jobs', to='maxillo.voicecaption'),
         ),
         migrations.AddField(
             model_name='fileregistry',

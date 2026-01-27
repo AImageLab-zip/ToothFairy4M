@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('scans', '0003_add_project_manager_role'),
+        ('maxillo', '0003_add_project_manager_role'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

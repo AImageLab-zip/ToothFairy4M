@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('scans', '0002_alter_voicecaption_modality'),
+        ('maxillo', '0002_alter_voicecaption_modality'),
     ]
 
     operations = [
