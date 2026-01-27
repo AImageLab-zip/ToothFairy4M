@@ -66,8 +66,6 @@ class ProjectAccess(models.Model):
 	user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='project_access')
 	project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='access_list')
 	role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='standard')
-	can_view = models.BooleanField(default=True)
-	can_upload = models.BooleanField(default=False)
 	created_at = models.DateTimeField(auto_now_add=True)
 
 	class Meta:

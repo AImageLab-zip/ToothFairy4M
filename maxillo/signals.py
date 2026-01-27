@@ -1,43 +1,25 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
-from .models import MaxilloUserProfile
 
+
+# Profile creation signal REMOVED - roles now handled via ProjectAccess
+# Users get ProjectAccess entries when:
+# 1. They accept an invitation (which specifies project and role)
+# 2. An admin manually grants access
 
 @receiver(post_save, sender=User)
-def create_user_profile(sender, instance, created, **kwargs):
+def setup_new_user(sender, instance, created, **kwargs):
+    """
+    Handle new user setup.
+    Note: ProjectAccess entries are created via invitation acceptance,
+    not automatically on user creation.
+    """
     if created:
-        MaxilloUserProfile.objects.create(user=instance)
+        # New users start without any project access
+        # They need to use an invitation or be granted access by admin
+        pass
 
 
-@receiver(post_save, sender=MaxilloUserProfile)
-def update_user_staff_status(sender, instance, created, **kwargs):
-    """Update User's is_staff flag based on MaxilloUserProfile role"""
-    user = instance.user
-    
-    # Student developers and admins should have staff access
-    should_be_staff = instance.role in ['admin', 'student_dev']
-    
-    if user.is_staff != should_be_staff:
-        user.is_staff = should_be_staff
-        user.save()
-    
-    # For Student Developers, we need to ensure they have at least view permissions
-    if instance.role == 'student_dev':
-        from django.contrib.auth.models import Permission
-        from django.contrib.contenttypes.models import ContentType
-        
-        # Get all view permissions for our models
-        content_types = ContentType.objects.filter(
-            app_label='scans',
-            model__in=['MaxilloUserProfile', 'dataset', 'patient', 'classification', 
-                      'voicecaption', 'processingjob', 'fileregistry', 'invitation']
-        )
-        
-        view_permissions = Permission.objects.filter(
-            content_type__in=content_types,
-            codename__startswith='view_'
-        )
-        
-        # Add view permissions to the user
-        user.user_permissions.set(view_permissions)
+# Staff status signal removed - staff status should be managed separately
+# or based on ProjectAccess roles if needed in the future

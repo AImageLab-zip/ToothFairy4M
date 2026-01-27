@@ -1,8 +1,5 @@
 from django.contrib import admin
-from .models import BrainUserProfile
 
-@admin.register(BrainUserProfile)
-class BrainUserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'role')
-    search_fields = ('user__username', 'user__email')
-    list_filter = ('role',)
+# Brain-specific admin registrations go here
+# Note: User permissions are now handled via common.ProjectAccess
+# BrainUserProfile has been removed in favor of the unified ProjectAccess system

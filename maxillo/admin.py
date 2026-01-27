@@ -1,9 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import MaxilloUserProfile, Dataset, Patient, Classification, VoiceCaption
+from .models import Dataset, Patient, Classification, VoiceCaption
 from common.models import Project, Modality, ProjectAccess, Job, FileRegistry, Invitation
 from .models import Tag, Folder
-from common.models import Project, Modality, ProjectAccess
 
 
 class ReadOnlyAdminMixin:
@@ -23,13 +22,6 @@ class ReadOnlyAdminMixin:
         if hasattr(request.user, 'profile') and request.user.profile.is_student_developer():
             return False
         return super().has_delete_permission(request, obj)
-
-
-@admin.register(MaxilloUserProfile)
-class MaxilloUserProfileAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['user', 'role']
-    list_filter = ['role']
-    search_fields = ['user__username', 'user__email']
 
 
 @admin.register(Dataset)
@@ -74,8 +66,8 @@ class ModalityAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(ProjectAccess)
 class ProjectAccessAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['user', 'project', 'can_view', 'can_upload', 'created_at']
-    list_filter = ['can_view', 'can_upload', 'created_at']
+    list_display = ['user', 'project', 'role', 'created_at']
+    list_filter = ['role', 'created_at']
     search_fields = ['user__username', 'project__name']
 
 
