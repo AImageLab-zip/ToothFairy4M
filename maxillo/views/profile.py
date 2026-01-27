@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from ..models import Patient, Classification, VoiceCaption
 from .helpers import render_with_fallback
+from common.models import ProjectAccess
 
 import logging
 logger = logging.getLogger(__name__)
@@ -100,9 +101,22 @@ def user_profile(request, username=None):
         user=target_user,
         created_at__gte=seven_days_ago
     ).count()
-    
+
+    # Get target user's ProjectAccess for current project
+    current_project_id = request.session.get('current_project_id')
+    target_profile = None
+    if current_project_id:
+        try:
+            target_profile = ProjectAccess.objects.get(
+                user=target_user,
+                project_id=current_project_id
+            )
+        except ProjectAccess.DoesNotExist:
+            target_profile = None
+
     context = {
         'target_user': target_user,
+        'target_profile': target_profile,
         'is_own_profile': target_user == request.user,
         'is_viewing_other_profile': request.user.profile.can_view_other_profiles() and target_user != request.user,
         

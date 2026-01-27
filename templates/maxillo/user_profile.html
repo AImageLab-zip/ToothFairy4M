@@ -26,7 +26,9 @@
                         {% endif %}
                     </h2>
                     <p class="text-muted mb-0">
-                        <span class="badge bg-secondary">{{ target_user.profile.get_role_display }}</span>
+                        {% if target_profile %}
+                            <span class="badge bg-secondary">{{ target_profile.get_role_display }}</span>
+                        {% endif %}
                         {% if is_viewing_other_profile %}
                             <span class="badge bg-info ms-2">Viewing Other Profile</span>
                         {% endif %}
@@ -373,7 +375,7 @@
                                 <option value="">Select a user...</option>
                                 {% for user_obj in all_users %}
                                     <option value="{{ user_obj.username }}">
-                                        {{ user_obj.username }} ({{ user_obj.profile.get_role_display }})
+                                        {{ user_obj.username }}{% if user_obj.profile %} ({{ user_obj.profile.get_role_display }}){% endif %}
                                     </option>
                                 {% endfor %}
                             </select>
