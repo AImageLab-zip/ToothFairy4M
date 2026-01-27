@@ -163,8 +163,8 @@ class Job(models.Model):
 	status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 	priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
 	dependencies = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependent_jobs', help_text='Jobs that must complete before this job can start')
-	patient = models.ForeignKey('scans.Patient', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
-	voice_caption = models.ForeignKey('scans.VoiceCaption', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
+	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
+	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
 
 	# IO
 	input_file_path = models.CharField(max_length=500, help_text='Path to primary input file in /dataset', blank=True)
@@ -290,8 +290,8 @@ class ProcessingJob(models.Model):
 	status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='pending')
 	priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
 	dependencies = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependent_jobs', help_text='Jobs that must complete before this job can start')
-	patient = models.ForeignKey('scans.Patient', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
-	voice_caption = models.ForeignKey('scans.VoiceCaption', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
 
 	# File paths
 	input_file_path = models.CharField(max_length=500, help_text='Path to input file in /dataset')
@@ -443,8 +443,8 @@ class FileRegistry(models.Model):
 	# Dynamic modality linkage and optional subtype (e.g., 'upper', 'lower')
 	modality = models.ForeignKey('Modality', on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
 	subtype = models.CharField(max_length=60, blank=True)
-	patient = models.ForeignKey('scans.Patient', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
-	voice_caption = models.ForeignKey('scans.VoiceCaption', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
 	processing_job = models.ForeignKey('common.Job', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	metadata = models.JSONField(default=dict, blank=True, help_text='Additional file metadata')

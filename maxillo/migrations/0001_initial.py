@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=100)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
-                ('parent', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='children', to='scans.folder')),
+                ('parent', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='children', to='maxillo.folder')),
             ],
             options={
                 'ordering': ['name'],
@@ -54,8 +54,8 @@ class Migration(migrations.Migration):
                 ('cbct_processing_status', models.CharField(choices=[('not_uploaded', 'Not Uploaded'), ('processing', 'Processing'), ('processed', 'Processed'), ('failed', 'Processing Failed')], default='not_uploaded', help_text='Processing status for CBCT scan', max_length=20)),
                 ('visibility', models.CharField(choices=[('public', 'Public'), ('private', 'Private'), ('debug', 'Debug')], default='private', max_length=10)),
                 ('uploaded_at', models.DateTimeField(auto_now_add=True)),
-                ('dataset', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='patients', to='scans.dataset')),
-                ('folder', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='patients', to='scans.folder')),
+                ('dataset', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='patients', to='maxillo.dataset')),
+                ('folder', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='patients', to='maxillo.folder')),
                 ('modalities', models.ManyToManyField(blank=True, help_text='Modalities available for this patient', related_name='patients', to='common.modality')),
                 ('project', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='patients', to='common.project')),
                 ('uploaded_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
                 ('midline', models.CharField(choices=[('Unknown', 'Unknown'), ('centered', 'Centered'), ('deviated', 'Deviated')], max_length=10)),
                 ('timestamp', models.DateTimeField(auto_now_add=True)),
                 ('annotator', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
-                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='classifications', to='scans.patient')),
+                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='classifications', to='maxillo.patient')),
             ],
             options={
                 'ordering': ['-timestamp'],
@@ -97,7 +97,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='patient',
             name='tags',
-            field=models.ManyToManyField(blank=True, related_name='patients', to='scans.tag'),
+            field=models.ManyToManyField(blank=True, related_name='patients', to='maxillo.tag'),
         ),
         migrations.CreateModel(
             name='UserProfile',
@@ -120,7 +120,7 @@ class Migration(migrations.Migration):
                 ('processing_status', models.CharField(choices=[('pending', 'Pending'), ('processing', 'Processing'), ('completed', 'Completed'), ('failed', 'Failed')], default='pending', help_text='Status of speech-to-text processing', max_length=20)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='voice_captions', to='scans.patient')),
+                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='voice_captions', to='maxillo.patient')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='voice_captions', to=settings.AUTH_USER_MODEL)),
             ],
             options={
