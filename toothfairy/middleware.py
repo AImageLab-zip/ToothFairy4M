@@ -1,12 +1,10 @@
 import logging
 import time
 import json
-from brain.models import BrainUserProfile
-from common.models import Project
+from common.models import Project, ProjectAccess
 from django.utils.deprecation import MiddlewareMixin
 import traceback
 from django.shortcuts import redirect
-from maxillo.models import MaxilloUserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -93,47 +91,59 @@ class ProjectSessionMiddleware(MiddlewareMixin):
 
 class ActiveProfileMiddleware(MiddlewareMixin):
     """
-    Middleware that sets `request.user.profile` to the correct profile object
-    depending on which app namespace the request is for (e.g. 'maxillo' or 'brain').
-    This makes template and view code that uses `user.profile` app-agnostic.
+    Middleware that sets `request.user.profile` to the ProjectAccess object
+    for the current project. This maintains backward compatibility with
+    existing view and template code that uses `user.profile`.
 
-    If the appropriate profile object doesn't exist yet, it will be created with
-    the default role.
+    The profile is resolved from ProjectAccess based on the URL path
+    (maxillo or brain) and the user's access to that project.
+
+    After this middleware runs:
+    - request.user.profile = ProjectAccess object (has same methods as old UserProfile)
+    - request.user_role = role string ('admin', 'annotator', etc.)
+    - request.user_project_access = ProjectAccess object (explicit reference)
     """
+
     def process_request(self, request):
         # Only operate for authenticated users
         if not hasattr(request, 'user') or not request.user.is_authenticated:
             return None
 
         path_parts = [p for p in request.path.split('/') if p]
-        
-        if not path_parts or len(path_parts) == 0:
+
+        if not path_parts:
             return None
-        
+
         app_key = path_parts[0]
 
         if app_key not in ['maxillo', 'brain']:
             return None
-        
-        project_profile_classes = {
-            'maxillo': MaxilloUserProfile,
-            'brain': BrainUserProfile,
-        }
-        ProjectProfileClass = project_profile_classes[app_key]
-        if hasattr(request.user, 'profile') and isinstance(request.user.profile, ProjectProfileClass):
-            return None
 
         try:
-            if app_key == 'maxillo' and hasattr(request.user, 'maxillo_profile'):
-                request.user.profile = request.user.maxillo_profile
-            elif app_key == 'brain' and hasattr(request.user, 'brain_profile'):
-                request.user.profile = request.user.brain_profile
-            else:
-                logger.debug(f"Couldnt set user.profile for user {request.user.id} in app '{app_key}'")
-                logger.debug(f"{request.user.__dict__=}")
-                raise Exception(f"User {request.user.id} has no profile for app '{app_key}'")
+            # Look up the project by slug
+            project = Project.objects.get(slug__iexact=app_key)
+
+            # Get ProjectAccess for this user and project
+            access = ProjectAccess.objects.select_related('project').get(
+                user=request.user,
+                project=project
+            )
+
+            # Set profile to ProjectAccess (has same interface as old profiles)
+            request.user.profile = access
+
+            # Also set explicit attributes for clarity
+            request.user_role = access.role
+            request.user_project_access = access
+
+        except Project.DoesNotExist:
+            logger.warning(f"ActiveProfileMiddleware: Project not found for app '{app_key}'")
+            return redirect('/')
+        except ProjectAccess.DoesNotExist:
+            logger.debug(f"ActiveProfileMiddleware: No ProjectAccess for user {request.user.id} in project '{app_key}'")
+            return redirect('/')
         except Exception as e:
-            logger.debug(f"ActiveProfileMiddleware: Exception getting profile for user {request.user.id} in app '{app_key}': {e}")
+            logger.error(f"ActiveProfileMiddleware: Unexpected error for user {request.user.id} in app '{app_key}': {e}")
             return redirect('/')
 
         return None
