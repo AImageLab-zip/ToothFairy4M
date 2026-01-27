@@ -143,7 +143,7 @@ def user_profile(request, username=None):
     
     # Add all users list for dropdown (only on own profile for admins/project managers)
     if request.user.profile.can_view_other_profiles() and target_user == request.user:
-        all_users = User.objects.select_related('profile').order_by('username')
+        all_users = User.objects.order_by('username')
         context['all_users'] = all_users
     
     return render_with_fallback(request, 'user_profile', context)
