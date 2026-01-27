@@ -49,10 +49,11 @@ Plans:
   4. User can upload T1c modality files in .nii.gz format via brain project
   5. Uploaded brain modalities appear immediately in patient detail (no processing wait)
   6. FileRegistry correctly shows brain modalities with appropriate file_type values
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD
+- [ ] 02-01-PLAN.md — Enable brain modality upload infrastructure
+- [ ] 02-02-PLAN.md — Verify brain upload flow end-to-end
 
 ### Phase 3: Viewer Grid
 **Goal**: Users can load modalities into a 2x2 viewer grid via drag-drop
@@ -107,7 +108,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
-| 2. Brain Upload | 0/TBD | Not started | - |
+| 2. Brain Upload | 0/2 | Not started | - |
 | 3. Viewer Grid | 0/TBD | Not started | - |
 | 4. Viewer Display | 0/TBD | Not started | - |
 | 5. Viewer Synchronization | 0/TBD | Not started | - |
