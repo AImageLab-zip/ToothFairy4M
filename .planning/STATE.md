@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 3 of 5 (Viewer Grid) — IN PROGRESS
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing Phase 3
-Last activity: 2026-01-28 — Completed 03-01-PLAN.md
+Last activity: 2026-01-28 — Completed 03-02-PLAN.md
 
-Progress: [████████░░] 44% (2.2/5 phases)
+Progress: [████████░░] 48% (2.4/5 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 10 minutes
-- Total execution time: 1.2 hours
+- Total plans completed: 8
+- Average duration: 9 minutes
+- Total execution time: 1.3 hours
 
 **By Phase:**
 
@@ -29,14 +29,14 @@ Progress: [████████░░] 44% (2.2/5 phases)
 |-------|-------|--------|-------|----------|
 | 01 | 4 | Complete | 51m | 13m |
 | 02 | 2 | Complete | 20m | 10m |
-| 03 | 1 | In Progress | 3m | 3m |
+| 03 | 2 | In Progress | 6m | 3m |
 
 **Recent Trend:**
-- 01-04: Complete - 15m (model removal and migrations)
 - 02-01: Complete - 2m (brain modality infrastructure)
 - 02-02: Complete - 18m (verification + bug fixes)
 - 03-01: Complete - 3m (2x2 grid layout foundation)
-- Trend: Excellent velocity on foundation work, clean template refactoring
+- 03-02: Complete - 3m (drag-drop interaction)
+- Trend: Exceptional velocity on UI work, clean JavaScript patterns
 
 *Updated after each plan completion*
 
@@ -70,6 +70,11 @@ Recent decisions affecting current work:
 - Fixed 600px grid height — Consistent window sizing, prevents layout jumps
 - Black background for empty windows — Medical imaging convention (prevents white flash)
 
+**From 03-02:**
+- JSON data script over inline attributes — Cleaner Django→JS data flow, avoids template filter complexity
+- Window state object pattern — Single source of truth for UI state, enables future persistence
+- Module pattern with public API — Encapsulated state (windowStates, loadModalityInWindow, clearWindow)
+
 ### Pending Todos
 
 None.
@@ -81,6 +86,6 @@ None - Phase 2 complete with working brain upload flow.
 ## Session Continuity
 
 Last session: 2026-01-28 — Executing Phase 3
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-viewer-grid/03-02-PLAN.md
-Next action: Execute plan 03-02 (NIfTI viewer integration)
+Stopped at: Completed 03-02-PLAN.md
+Resume file: .planning/phases/03-viewer-grid/03-03-PLAN.md
+Next action: Execute plan 03-03 (NIfTI viewer integration)
