@@ -12,7 +12,8 @@ window.CBCTViewer = {
     volumeData: null,
     dimensions: null,
     spacing: null,
-    
+    containerPrefix: '', // For multi-window support (e.g., 'window0_')
+
     scenes: {},
     cameras: {},
     renderers: {},
@@ -132,6 +133,7 @@ window.CBCTViewer = {
         // Reset state BUT KEEP CACHED DATA (volumeData, dimensions, spacing, histogram)
         this.initialized = false;
         this.loading = false;
+        this.containerPrefix = ''; // Reset container prefix
         // Don't clear: volumeData, dimensions, spacing, histogram (for caching)
         this.dataAspectRatios = {};
         this.baseCameraBounds = {};
@@ -202,11 +204,12 @@ window.CBCTViewer = {
         
         console.debug('Loading volume data...');
         this.loading = true;
-        
+
         // Show loading indicator (wrappers use slug without underscore)
+        // Apply containerPrefix for multi-window support
         const idSlug = this.targetModality;
-        const loadEl = document.getElementById(idSlug + 'Loading');
-        const viewsEl = document.getElementById(idSlug + 'Views');
+        const loadEl = document.getElementById(this.containerPrefix + idSlug + 'Loading');
+        const viewsEl = document.getElementById(this.containerPrefix + idSlug + 'Views');
         if (loadEl) loadEl.style.display = 'block';
         if (viewsEl) viewsEl.style.display = 'none';
 
@@ -417,10 +420,11 @@ window.CBCTViewer = {
             this.initializeViewers();
             this.initialized = true;
             this.loading = false;
-            
+
+            // Apply containerPrefix when finding loading/views elements
             const idSlug2 = this.targetModality || 'cbct';
-            const loadEl2 = document.getElementById(idSlug2 !== 'cbct' ? (idSlug2 + 'Loading') : 'cbctLoading');
-            const viewsEl2 = document.getElementById(idSlug2 !== 'cbct' ? (idSlug2 + 'Views') : 'cbctViews');
+            const loadEl2 = document.getElementById(this.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Loading') : 'cbctLoading'));
+            const viewsEl2 = document.getElementById(this.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Views') : 'cbctViews'));
             if (loadEl2) loadEl2.style.display = 'none';
             if (viewsEl2) viewsEl2.style.display = 'block';
             
@@ -436,6 +440,8 @@ window.CBCTViewer = {
 
     
     initializeViewers: function() {
+        // Note: containerPrefix is applied BEFORE idPrefix
+        // Example: containerPrefix='window0_', idPrefix='t1_' -> 'window0_t1_axialView'
         const idPrefix = (this.targetModality && this.targetModality !== 'cbct') ? (this.targetModality + '_') : '';
         this.initSliceViewer(idPrefix + 'axialView', 'axial');
         this.initSliceViewer(idPrefix + 'sagittalView', 'sagittal');
@@ -445,8 +451,10 @@ window.CBCTViewer = {
     },
     
     initSliceViewer: function(containerId, orientation, retryCount = 0) {
-        const container = document.getElementById(containerId);
-        
+        // Apply containerPrefix to resolve the actual container ID
+        const actualContainerId = this.containerPrefix + containerId;
+        const container = document.getElementById(actualContainerId);
+
         // Check if container exists and has size, and if dimensions are loaded
         if (!container || container.clientWidth === 0 || container.clientHeight === 0) {
             // Limit retries to prevent infinite loop
@@ -587,7 +595,9 @@ window.CBCTViewer = {
     },
     
     initVolumeViewerPlaceholder: function(containerId) {
-        const container = document.getElementById(containerId);
+        // Apply containerPrefix to resolve the actual container ID
+        const actualContainerId = this.containerPrefix + containerId;
+        const container = document.getElementById(actualContainerId);
         if (!container) return;
         
         // Clear any existing content
@@ -1151,10 +1161,11 @@ window.CBCTViewer = {
         }
         
         // Find or create slice label
+        // Apply containerPrefix for multi-window support
         const prefix = (this.targetModality && this.targetModality !== 'cbct') ? (this.targetModality + '_') : '';
-        const containerId = orientation === 'axial' ? (prefix + 'axialView') : 
+        const containerId = orientation === 'axial' ? (prefix + 'axialView') :
                            orientation === 'sagittal' ? (prefix + 'sagittalView') : (prefix + 'coronalView');
-        const container = document.getElementById(containerId);
+        const container = document.getElementById(this.containerPrefix + containerId);
         
         let label = container.querySelector('.slice-counter');
         if (!label) {
@@ -1192,9 +1203,9 @@ window.CBCTViewer = {
             ['axial', 'sagittal', 'coronal'].forEach(orientation => {
                 if (this.renderers[orientation] && this.scenes[orientation] && this.cameras[orientation]) {
                     const prefix = (this.targetModality && this.targetModality !== 'cbct') ? (this.targetModality + '_') : '';
-                    const containerId = orientation === 'axial' ? (prefix + 'axialView') : 
+                    const containerId = orientation === 'axial' ? (prefix + 'axialView') :
                                        orientation === 'sagittal' ? (prefix + 'sagittalView') : (prefix + 'coronalView');
-                    const container = document.getElementById(containerId);
+                    const container = document.getElementById(this.containerPrefix + containerId);
                     if (container && container.clientWidth > 0 && container.clientHeight > 0) {
                         this.renderers[orientation].setSize(container.clientWidth, container.clientHeight);
                         this.zoomLevels[orientation] = 1.0;
@@ -1350,9 +1361,9 @@ window.CBCTViewer = {
         const prefix = (this.targetModality && this.targetModality !== 'cbct') ? (this.targetModality + '_') : '';
         ['axial', 'sagittal', 'coronal'].forEach(orientation => {
             if (this.renderers[orientation] && this.cameras[orientation]) {
-                const containerId = orientation === 'axial' ? (prefix + 'axialView') : 
+                const containerId = orientation === 'axial' ? (prefix + 'axialView') :
                                    orientation === 'sagittal' ? (prefix + 'sagittalView') : (prefix + 'coronalView');
-                const container = document.getElementById(containerId);
+                const container = document.getElementById(this.containerPrefix + containerId);
                 if (container && container.clientWidth > 0 && container.clientHeight > 0) {
                     this.renderers[orientation].setSize(container.clientWidth, container.clientHeight);
                     
@@ -1380,7 +1391,7 @@ window.CBCTViewer = {
     
     showError: function(message, type = 'warning') {
         const idSlug = (this.targetModality && this.targetModality !== 'cbct') ? this.targetModality : 'cbct';
-        const loadingDiv = document.getElementById(idSlug + 'Loading') || document.getElementById('cbctLoading');
+        const loadingDiv = document.getElementById(this.containerPrefix + idSlug + 'Loading') || document.getElementById(this.containerPrefix + 'cbctLoading');
         let iconClass = 'fa-exclamation-triangle text-warning';
         let textClass = 'text-muted';
         
