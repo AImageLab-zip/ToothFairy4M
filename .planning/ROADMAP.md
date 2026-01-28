@@ -13,7 +13,7 @@ This milestone transforms ToothFairy4M from a maxillofacial-only platform into a
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Permission Refactoring** - Consolidate dual profile system into unified ProjectAccess
-- [ ] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
+- [x] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
 - [ ] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [ ] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
 - [ ] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
@@ -52,8 +52,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Enable brain modality upload infrastructure
-- [ ] 02-02-PLAN.md — Verify brain upload flow end-to-end
+- [x] 02-01-PLAN.md — Enable brain modality upload infrastructure
+- [x] 02-02-PLAN.md — Verify brain upload flow end-to-end
 
 ### Phase 3: Viewer Grid
 **Goal**: Users can load modalities into a 2x2 viewer grid via drag-drop
@@ -108,7 +108,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
-| 2. Brain Upload | 0/2 | Not started | - |
+| 2. Brain Upload | 2/2 | Complete | 2026-01-28 |
 | 3. Viewer Grid | 0/TBD | Not started | - |
 | 4. Viewer Display | 0/TBD | Not started | - |
 | 5. Viewer Synchronization | 0/TBD | Not started | - |
