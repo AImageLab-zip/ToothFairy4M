@@ -63,16 +63,11 @@ class NiiVueViewer {
 
         await this.nv.attachToCanvas(canvas);
 
-        // Convert blob to ArrayBuffer and pass via urlImageData.
-        // NiiVue extracts the file extension from the url field for format
-        // detection — blob URLs have no extension, so we use a synthetic
-        // filename URL and supply the actual data through urlImageData.
+        // Load volume from pre-fetched blob data. loadFromArrayBuffer
+        // parses the buffer directly without any HTTP request. The name
+        // must end in .nii.gz so NiiVue selects the correct parser.
         const arrayBuffer = await fileBlob.arrayBuffer();
-
-        await this.nv.loadVolumes([{
-            url: modalitySlug + '.nii.gz',
-            urlImageData: arrayBuffer
-        }]);
+        await this.nv.loadFromArrayBuffer(arrayBuffer, modalitySlug + '.nii.gz');
 
         // Set default orientation to axial
         this.setOrientation('axial');
