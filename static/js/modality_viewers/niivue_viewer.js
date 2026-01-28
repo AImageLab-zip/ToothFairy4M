@@ -51,7 +51,8 @@ class NiiVueViewer {
             show3Dcrosshair: false,         // No 3D crosshair in single view
             multiplanarForceRender: false,  // Single view mode
             isColorbar: false,              // No colorbar for simple viewing
-            logging: false                  // Disable console logging
+            logging: false,                 // Disable console logging
+            dragAndDropEnabled: false       // Grid handles drag-drop, not NiiVue
         });
 
         // Attach to canvas element
