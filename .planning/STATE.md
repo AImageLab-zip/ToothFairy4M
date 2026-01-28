@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 
 ## Current Position
 
-Phase: 3 of 5 (Viewer Grid) — IN PROGRESS
-Plan: 2 of 3 in current phase
-Status: Executing Phase 3
-Last activity: 2026-01-28 — Completed 03-02-PLAN.md
+Phase: 3 of 5 (Viewer Grid) — COMPLETE
+Plan: 3 of 3 in current phase
+Status: Phase 3 Complete
+Last activity: 2026-01-28 — Completed 03-03-PLAN.md (VolumeViewer refactor)
 
-Progress: [████████░░] 48% (2.4/5 phases)
+Progress: [██████████] 60% (3/5 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 9 minutes
-- Total execution time: 1.3 hours
+- Total plans completed: 9
+- Average duration: 12 minutes
+- Total execution time: 2 hours
 
 **By Phase:**
 
@@ -29,14 +29,13 @@ Progress: [████████░░] 48% (2.4/5 phases)
 |-------|-------|--------|-------|----------|
 | 01 | 4 | Complete | 51m | 13m |
 | 02 | 2 | Complete | 20m | 10m |
-| 03 | 2 | In Progress | 6m | 3m |
+| 03 | 3 | Complete | 51m | 17m |
 
 **Recent Trend:**
-- 02-01: Complete - 2m (brain modality infrastructure)
-- 02-02: Complete - 18m (verification + bug fixes)
 - 03-01: Complete - 3m (2x2 grid layout foundation)
 - 03-02: Complete - 3m (drag-drop interaction)
-- Trend: Exceptional velocity on UI work, clean JavaScript patterns
+- 03-03: Complete - 45m (VolumeViewer refactor + bug fixes)
+- Trend: Major refactor (singleton→class) took longer but delivered multi-window support
 
 *Updated after each plan completion*
 
@@ -75,6 +74,11 @@ Recent decisions affecting current work:
 - Window state object pattern — Single source of truth for UI state, enables future persistence
 - Module pattern with public API — Encapsulated state (windowStates, loadModalityInWindow, clearWindow)
 
+**From 03-03:**
+- Refactor CBCTViewer singleton to VolumeViewer class — Enables true multi-window viewing
+- Rename CBCT to Volume — Reflects actual functionality (handles all volume types)
+- Maintain backward compatibility via wrapper — Zero changes to existing Maxillo templates
+
 ### Pending Todos
 
 1. **Refactor VolumeViewer for modularity and async loading** (frontend)
@@ -88,7 +92,7 @@ None - Phase 2 complete with working brain upload flow.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Executing Phase 3
-Stopped at: Completed 03-02-PLAN.md
-Resume file: .planning/phases/03-viewer-grid/03-03-PLAN.md
-Next action: Execute plan 03-03 (NIfTI viewer integration)
+Last session: 2026-01-28 — Phase 3 Complete
+Stopped at: Completed 03-03-PLAN.md (VolumeViewer refactor)
+Resume file: .planning/phases/04-single-view/
+Next action: Plan and execute Phase 4 (Single-View Mode)
