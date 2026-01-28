@@ -18,15 +18,9 @@ def upload_patient(request):
     
     # Enforce per-project upload permission
     current_project_id = request.session.get('current_project_id')
-    if not user_profile.is_admin() and current_project_id:
-        has_upload_access = ProjectAccess.objects.filter(
-            user=request.user, 
-            project_id=current_project_id, 
-            can_upload=True
-        ).exists()
-        if not has_upload_access:
-            messages.error(request, 'You are not allowed to upload in this project.')
-            return redirect_with_namespace(request, 'patient_list')
+    if current_project_id and not user_profile.can_upload_scans():
+        messages.error(request, 'You are not allowed to upload in this project.')
+        return redirect_with_namespace(request, 'patient_list')
     
     if request.method == 'POST':
         patient_upload_form = PatientUploadForm(request.POST, request.FILES, user=request.user)
@@ -151,11 +145,11 @@ def upload_patient(request):
                 try:
                     modality = Modality.objects.get(slug='intraoral-photo')
                     patient.modalities.add(modality)
-                    
+
                     if len(intraoral_photos) > 10:
                         messages.warning(request, f"Too many intraoral images ({len(intraoral_photos)}). Only first 10 will be processed.")
                         intraoral_photos = intraoral_photos[:10]
-                    
+
                     from ..file_utils import save_intraoral_photos_to_dataset
                     saved, errors, job = save_intraoral_photos_to_dataset(patient, intraoral_photos)
                     if saved:
@@ -164,6 +158,28 @@ def upload_patient(request):
                         messages.warning(request, f"{len(errors)} intraoral photo(s) failed to upload")
                 except Exception as e:
                     messages.error(request, f"Error saving Intraoral Photos: {e}")
+
+            # Handle Brain MRI modalities (T1, T2, FLAIR, T1c)
+            brain_modalities = {
+                'braintumor-mri-t1': 'Brain MRI T1',
+                'braintumor-mri-t2': 'Brain MRI T2',
+                'braintumor-mri-flair': 'Brain MRI FLAIR',
+                'braintumor-mri-t1c': 'Brain MRI T1c',
+            }
+
+            for slug, display_name in brain_modalities.items():
+                file_obj = request.FILES.get(slug)
+                if file_obj:
+                    try:
+                        modality = Modality.objects.get(slug=slug)
+                        patient.modalities.add(modality)
+
+                        from ..file_utils import save_generic_modality_file
+                        fr, job = save_generic_modality_file(patient, slug, file_obj)
+                        if fr:
+                            messages.success(request, f"{display_name} uploaded successfully")
+                    except Exception as e:
+                        messages.error(request, f"Error saving {display_name}: {e}")
 
             messages.success(request, 'Patient uploaded successfully!')
             return redirect_with_namespace(request, 'patient_list')
