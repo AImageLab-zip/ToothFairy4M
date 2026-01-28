@@ -62,24 +62,21 @@ class NiiVueViewer {
 
         await this.nv.attachToCanvas(canvas);
 
-        // Create object URL from blob for loading
-        const url = URL.createObjectURL(fileBlob);
+        // Convert blob to ArrayBuffer and pass via urlImageData.
+        // NiiVue extracts the file extension from the url field for format
+        // detection — blob URLs have no extension, so we use a synthetic
+        // filename URL and supply the actual data through urlImageData.
+        const arrayBuffer = await fileBlob.arrayBuffer();
 
-        try {
-            // Load the volume - name must include .nii.gz extension for NiiVue format detection
-            await this.nv.loadVolumes([{
-                url: url,
-                name: modalitySlug + '.nii.gz'
-            }]);
+        await this.nv.loadVolumes([{
+            url: modalitySlug + '.nii.gz',
+            urlImageData: arrayBuffer
+        }]);
 
-            // Set default orientation to axial
-            this.setOrientation('axial');
+        // Set default orientation to axial
+        this.setOrientation('axial');
 
-            this.initialized = true;
-        } finally {
-            // Clean up the object URL
-            URL.revokeObjectURL(url);
-        }
+        this.initialized = true;
     }
 
     /**
