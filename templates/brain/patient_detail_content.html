@@ -1,6 +1,15 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'css/viewer_grid.css' %}">
 
+<!-- Django data for JavaScript -->
+<script id="viewerGridData" type="application/json">
+{
+    "scanId": {{ scan_pair.patient_id }},
+    "projectNamespace": "{% firstof request.resolver_match.namespace 'maxillo' %}",
+    "modalityFiles": {{ modality_files_json|safe }}
+}
+</script>
+
 <div class="container-fluid">
 
     <div class="row">
@@ -21,14 +30,11 @@
                         {% if patient_modalities %}
                             {% for m in patient_modalities %}
                                 {% if m.slug != 'rawzip' %}
-                                    {% with file=scan_pair.files.all|first %}
                                     <div class="modality-chip"
                                          data-modality="{{ m.slug }}"
-                                         data-file-id="{% if file %}{{ file.id }}{% endif %}"
                                          draggable="true">
                                         {% if m.label %}{{ m.label }}{% elif m.name %}{{ m.name }}{% else %}{{ m.slug|upper }}{% endif %}
                                     </div>
-                                    {% endwith %}
                                 {% endif %}
                             {% endfor %}
                         {% else %}
@@ -169,3 +175,6 @@
         </div>
     </div>
 </div>
+
+<!-- Viewer Grid JavaScript -->
+<script src="{% static 'js/viewer_grid.js' %}"></script>

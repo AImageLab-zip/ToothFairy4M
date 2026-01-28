@@ -31,6 +31,9 @@ const ViewerGrid = (function() {
         // Load Django data from template script
         loadDjangoData();
 
+        // Populate file IDs on modality chips
+        populateChipFileIds();
+
         // Initialize drag-drop interaction
         initDragDrop();
 
@@ -57,6 +60,20 @@ const ViewerGrid = (function() {
                 console.error('Error parsing Django data:', e);
             }
         }
+    }
+
+    /**
+     * Populate file IDs on modality chips from Django data
+     */
+    function populateChipFileIds() {
+        const chips = document.querySelectorAll('.modality-chip');
+        chips.forEach(chip => {
+            const modality = chip.dataset.modality;
+            const fileInfo = djangoData.modalityFiles[modality];
+            if (fileInfo && fileInfo.id) {
+                chip.dataset.fileId = fileInfo.id;
+            }
+        });
     }
 
     /**

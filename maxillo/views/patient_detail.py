@@ -295,6 +295,9 @@ def patient_detail(request, patient_id):
     except Exception as e:
         logger.warning(f"Error building modality_files: {e}")
 
+    # JSON-serialize modality_files for template
+    modality_files_json = _json.dumps(modality_files)
+
     context = {
         'scan_pair': patient,
         'ai_classification': ai_classification,
@@ -309,6 +312,7 @@ def patient_detail(request, patient_id):
         'patient_files': patient_files,
         'voice_captions': voice_captions,
         'modality_files': modality_files,
+        'modality_files_json': modality_files_json,
     }
     # Allowed modalities for current project (to conditionally show upload controls)
     try:
