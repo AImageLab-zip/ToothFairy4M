@@ -2,7 +2,7 @@
  * Viewer Grid - Drag-drop interaction for multi-window MRI viewer
  *
  * Manages state for 4 viewer windows and drag-drop loading of modalities.
- * State object tracks: modality, loading, error, fileId for each window.
+ * Each window gets its own VolumeViewer instance for true multi-window support.
  */
 
 const ViewerGrid = (function() {
@@ -15,10 +15,6 @@ const ViewerGrid = (function() {
         2: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
         3: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null }
     };
-
-    // Loading queue to serialize CBCTViewer loads (singleton limitation)
-    const loadingQueue = [];
-    let isProcessingQueue = false;
 
     // Global data from Django template
     let djangoData = {
@@ -177,15 +173,29 @@ const ViewerGrid = (function() {
     }
 
     /**
-     * Load a modality into a specific window (queued to handle singleton CBCTViewer)
+     * Load a modality into a specific window
+     * Each window gets its own VolumeViewer instance
      * @param {number} windowIndex - 0-3 for grid position
-     * @param {string} modality - Modality slug (e.g. 't1', 't2')
+     * @param {string} modality - Modality slug (e.g. 'braintumor-mri-t1')
      * @param {string|null} fileId - FileRegistry ID for this modality
      */
     function loadModalityInWindow(windowIndex, modality, fileId) {
-        console.log(`Queueing ${modality} (fileId: ${fileId}) for window ${windowIndex}`);
+        console.log(`Loading ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
 
-        // Update state to show loading immediately
+        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+        if (!windowEl) {
+            console.error(`Window element not found for index ${windowIndex}`);
+            return;
+        }
+
+        // Dispose existing viewer if present
+        const existingState = windowStates[windowIndex];
+        if (existingState.viewerInstance) {
+            console.log(`Disposing previous viewer in window ${windowIndex}`);
+            existingState.viewerInstance.dispose();
+        }
+
+        // Update state
         windowStates[windowIndex] = {
             modality: modality,
             loading: true,
@@ -193,96 +203,6 @@ const ViewerGrid = (function() {
             fileId: fileId,
             viewerInstance: null
         };
-        updateWindowUI(windowIndex);
-
-        // Add to queue
-        loadingQueue.push({ windowIndex, modality, fileId });
-
-        // Process queue if not already processing
-        if (!isProcessingQueue) {
-            processQueue();
-        }
-    }
-
-    /**
-     * Process the loading queue one item at a time
-     * CBCTViewer is a singleton, so loads must be serialized
-     */
-    async function processQueue() {
-        if (isProcessingQueue || loadingQueue.length === 0) {
-            return;
-        }
-
-        isProcessingQueue = true;
-
-        while (loadingQueue.length > 0) {
-            const { windowIndex, modality, fileId } = loadingQueue.shift();
-
-            // Check if this window still wants this modality (user may have cleared it)
-            const state = windowStates[windowIndex];
-            if (state.modality !== modality) {
-                console.log(`Skipping ${modality} for window ${windowIndex} - modality changed`);
-                continue;
-            }
-
-            try {
-                await _processLoad(windowIndex, modality, fileId);
-            } catch (error) {
-                console.error(`Error in queue processing for ${modality}:`, error);
-            }
-        }
-
-        isProcessingQueue = false;
-    }
-
-    /**
-     * Wait for CBCTViewer to finish loading
-     * @param {number} timeoutMs - Maximum wait time
-     * @returns {Promise<boolean>} - True if viewer is ready, false if timeout
-     */
-    function waitForViewerReady(timeoutMs = 30000) {
-        return new Promise((resolve) => {
-            const startTime = Date.now();
-            const checkInterval = 100;
-
-            function check() {
-                if (!window.CBCTViewer) {
-                    resolve(false);
-                    return;
-                }
-
-                // CBCTViewer sets loading=false and initialized=true when done
-                if (!window.CBCTViewer.loading && window.CBCTViewer.initialized) {
-                    resolve(true);
-                    return;
-                }
-
-                if (Date.now() - startTime > timeoutMs) {
-                    console.warn('Timeout waiting for CBCTViewer to be ready');
-                    resolve(false);
-                    return;
-                }
-
-                setTimeout(check, checkInterval);
-            }
-
-            check();
-        });
-    }
-
-    /**
-     * Internal: Actually load a modality into a window
-     * @param {number} windowIndex - 0-3 for grid position
-     * @param {string} modality - Modality slug
-     * @param {string|null} fileId - FileRegistry ID
-     */
-    async function _processLoad(windowIndex, modality, fileId) {
-        console.log(`Processing load: ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
-
-        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
-        if (!windowEl) {
-            throw new Error(`Window element not found for index ${windowIndex}`);
-        }
 
         // Build container prefix for this window
         const containerPrefix = `window${windowIndex}_`;
@@ -325,50 +245,71 @@ const ViewerGrid = (function() {
         label.textContent = modality.toUpperCase();
         windowEl.appendChild(label);
 
-        // Initialize CBCTViewer with containerPrefix
-        if (!window.CBCTViewer) {
-            throw new Error('CBCTViewer not loaded');
-        }
-
-        // CBCTViewer is a singleton - can only render to one set of containers at a time
-        // Clear other windows that have active viewers (their canvases will be invalid after dispose)
-        for (let i = 0; i < 4; i++) {
-            if (i !== windowIndex && windowStates[i].viewerInstance) {
-                console.log(`Clearing invalidated viewer in window ${i} (singleton limitation)`);
-                windowStates[i].viewerInstance = null;
-                windowStates[i].modality = null;
-                windowStates[i].loading = false;
-                updateWindowUI(i);
-            }
-        }
-
-        // Dispose any previous state in CBCTViewer
-        window.CBCTViewer.dispose();
-
-        // Set containerPrefix for window-specific containers
-        window.CBCTViewer.containerPrefix = containerPrefix;
-
-        // Initialize viewer
-        window.CBCTViewer.init(modality);
-
-        // Wait for viewer to actually finish loading
-        const ready = await waitForViewerReady(30000);
-
-        if (ready) {
-            // Store viewer instance reference
-            windowStates[windowIndex].viewerInstance = window.CBCTViewer;
+        // Check if VolumeViewer class is available
+        if (!window.VolumeViewer) {
+            console.error('VolumeViewer not loaded');
             windowStates[windowIndex].loading = false;
-            windowStates[windowIndex].error = null;
-
-            // Mark window as loaded
-            windowEl.classList.add('loaded');
-
-            console.log(`Successfully loaded ${modality} in window ${windowIndex}`);
-        } else {
-            windowStates[windowIndex].loading = false;
-            windowStates[windowIndex].error = `Timeout loading ${modality}`;
+            windowStates[windowIndex].error = 'VolumeViewer not loaded';
             updateWindowUI(windowIndex);
+            return;
         }
+
+        // Create new VolumeViewer instance for this window
+        const viewer = new window.VolumeViewer(containerPrefix);
+        windowStates[windowIndex].viewerInstance = viewer;
+
+        // Initialize viewer (async - will update UI when done)
+        viewer.init(modality);
+
+        // Poll for completion
+        waitForViewerReady(windowIndex, viewer, 30000);
+    }
+
+    /**
+     * Wait for a viewer instance to finish loading
+     * @param {number} windowIndex - Window index
+     * @param {VolumeViewer} viewer - The viewer instance
+     * @param {number} timeoutMs - Maximum wait time
+     */
+    function waitForViewerReady(windowIndex, viewer, timeoutMs = 30000) {
+        const startTime = Date.now();
+        const checkInterval = 100;
+
+        function check() {
+            // Check if this is still the active viewer for this window
+            if (windowStates[windowIndex].viewerInstance !== viewer) {
+                console.log(`Viewer changed for window ${windowIndex}, stopping wait`);
+                return;
+            }
+
+            // Check if viewer is ready
+            if (!viewer.loading && viewer.initialized) {
+                windowStates[windowIndex].loading = false;
+                windowStates[windowIndex].error = null;
+
+                const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+                if (windowEl) {
+                    windowEl.classList.add('loaded');
+                }
+
+                console.log(`Successfully loaded ${windowStates[windowIndex].modality} in window ${windowIndex}`);
+                return;
+            }
+
+            // Check for timeout
+            if (Date.now() - startTime > timeoutMs) {
+                console.warn(`Timeout waiting for viewer in window ${windowIndex}`);
+                windowStates[windowIndex].loading = false;
+                windowStates[windowIndex].error = 'Timeout loading volume';
+                updateWindowUI(windowIndex);
+                return;
+            }
+
+            // Keep checking
+            setTimeout(check, checkInterval);
+        }
+
+        check();
     }
 
     /**
@@ -389,6 +330,12 @@ const ViewerGrid = (function() {
             if (dropHint) {
                 windowEl.appendChild(dropHint);
                 dropHint.style.display = 'flex';
+            } else {
+                // Create drop hint if it doesn't exist
+                const newDropHint = document.createElement('div');
+                newDropHint.className = 'drop-hint';
+                newDropHint.innerHTML = '<i class="fas fa-arrow-down"></i><p>Drop modality here</p>';
+                windowEl.appendChild(newDropHint);
             }
             windowEl.classList.remove('loaded');
             return;
@@ -402,11 +349,15 @@ const ViewerGrid = (function() {
 
         // Error state
         if (state.error) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #dc3545; text-align: center; z-index: 100;';
+            // Find or create error container
+            let errorDiv = windowEl.querySelector('.error-message');
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #dc3545; text-align: center; z-index: 100;';
+                windowEl.appendChild(errorDiv);
+            }
             errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i><br>${state.error}`;
-            windowEl.appendChild(errorDiv);
             return;
         }
 
@@ -492,13 +443,6 @@ const ViewerGrid = (function() {
      * @param {number} windowIndex - 0-3 for grid position
      */
     function clearWindow(windowIndex) {
-        // Remove any pending loads for this window from the queue
-        for (let i = loadingQueue.length - 1; i >= 0; i--) {
-            if (loadingQueue[i].windowIndex === windowIndex) {
-                loadingQueue.splice(i, 1);
-            }
-        }
-
         // Dispose viewer if present
         const state = windowStates[windowIndex];
         if (state.viewerInstance) {
