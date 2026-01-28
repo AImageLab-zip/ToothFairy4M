@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 
 ## Current Position
 
-Phase: 3 of 5 (Viewer Grid) — PLANNING COMPLETE
-Plan: 0 of 3 in current phase
-Status: Ready for execution
-Last activity: 2026-01-28 — Created Phase 3 plans
+Phase: 3 of 5 (Viewer Grid) — IN PROGRESS
+Plan: 1 of 3 in current phase
+Status: Executing Phase 3
+Last activity: 2026-01-28 — Completed 03-01-PLAN.md
 
-Progress: [████████░░] 40% (2/5 phases)
+Progress: [████████░░] 44% (2.2/5 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 11 minutes
-- Total execution time: 1.1 hours
+- Total plans completed: 7
+- Average duration: 10 minutes
+- Total execution time: 1.2 hours
 
 **By Phase:**
 
@@ -29,13 +29,14 @@ Progress: [████████░░] 40% (2/5 phases)
 |-------|-------|--------|-------|----------|
 | 01 | 4 | Complete | 51m | 13m |
 | 02 | 2 | Complete | 20m | 10m |
+| 03 | 1 | In Progress | 3m | 3m |
 
 **Recent Trend:**
-- 01-03: Complete - 7m (view and template refactoring)
 - 01-04: Complete - 15m (model removal and migrations)
 - 02-01: Complete - 2m (brain modality infrastructure)
 - 02-02: Complete - 18m (verification + bug fixes)
-- Trend: Good velocity, infrastructure fixes discovered during verification
+- 03-01: Complete - 3m (2x2 grid layout foundation)
+- Trend: Excellent velocity on foundation work, clean template refactoring
 
 *Updated after each plan completion*
 
@@ -63,6 +64,12 @@ Recent decisions affecting current work:
 - Patient project assignment uses current session project — Fixed hardcoded Maxillo assignment
 - Docker volume mount: /dataset-dev:/dataset — Dev environment isolation
 
+**From 03-01:**
+- CSS Grid instead of Bootstrap grid — Better control over equal-height windows
+- Draggable chips instead of dropdown — More intuitive for multi-window workflow
+- Fixed 600px grid height — Consistent window sizing, prevents layout jumps
+- Black background for empty windows — Medical imaging convention (prevents white flash)
+
 ### Pending Todos
 
 None.
@@ -73,7 +80,7 @@ None - Phase 2 complete with working brain upload flow.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Planned Phase 3
-Stopped at: Phase 3 planning complete
-Resume file: .planning/phases/03-viewer-grid/03-01-PLAN.md
-Next action: Execute Phase 3 with `/gsd:execute-phase 3`
+Last session: 2026-01-28 — Executing Phase 3
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-viewer-grid/03-02-PLAN.md
+Next action: Execute plan 03-02 (NIfTI viewer integration)
