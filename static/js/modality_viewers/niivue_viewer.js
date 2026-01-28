@@ -69,7 +69,8 @@ class NiiVueViewer {
             // Load the volume
             await this.nv.loadVolumes([{
                 url: url,
-                name: modalitySlug
+                name: modalitySlug,
+                extension: '.nii.gz'  // Explicitly specify NIfTI file extension to prevent undefined error
             }]);
 
             // Set default orientation to axial
