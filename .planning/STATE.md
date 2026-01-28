@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 4 - Viewer Display (Planning Complete)
+**Current focus:** Phase 4 - Viewer Display (In Progress)
 
 ## Current Position
 
-Phase: 4 of 5 (Viewer Display) — PLANNING COMPLETE
-Plan: 0 of 3 in current phase
-Status: Ready to execute
-Last activity: 2026-01-28 — Created Phase 4 plans (NiiVue integration)
+Phase: 4 of 5 (Viewer Display) — IN PROGRESS
+Plan: 1 of 3 in current phase
+Status: Plan 04-01 complete
+Last activity: 2026-01-28 — Completed 04-01-PLAN.md (NiiVue Setup)
 
-Progress: [██████████] 60% (3/5 phases)
+Progress: [███████████░] 67% (10/15 plans total, 1/3 in Phase 4)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 12 minutes
-- Total execution time: 2 hours
+- Total plans completed: 10
+- Average duration: 11 minutes
+- Total execution time: 2h 1m
 
 **By Phase:**
 
@@ -30,12 +30,12 @@ Progress: [██████████] 60% (3/5 phases)
 | 01 | 4 | Complete | 51m | 13m |
 | 02 | 2 | Complete | 20m | 10m |
 | 03 | 3 | Complete | 51m | 17m |
+| 04 | 1/3 | In Progress | 1m | 1m |
 
 **Recent Trend:**
-- 03-01: Complete - 3m (2x2 grid layout foundation)
-- 03-02: Complete - 3m (drag-drop interaction)
 - 03-03: Complete - 45m (VolumeViewer refactor + bug fixes)
-- Trend: Major refactor (singleton→class) took longer but delivered multi-window support
+- 04-01: Complete - 1m (NiiVue CDN + wrapper class)
+- Trend: Simple setup tasks fast, ready for integration work
 
 *Updated after each plan completion*
 
@@ -79,6 +79,11 @@ Recent decisions affecting current work:
 - Rename CBCT to Volume — Reflects actual functionality (handles all volume types)
 - Maintain backward compatibility via wrapper — Zero changes to existing Maxillo templates
 
+**From 04-01:**
+- NiiVue v0.66.0 via jsdelivr CDN — Latest stable, exposes window.niivue global
+- ES6 class wrapper pattern — Clean API surface for viewer_grid.js integration
+- Single-view mode (multiplanar: false) — One view per grid window
+
 ### Pending Todos
 
 1. **Refactor VolumeViewer for modularity and async loading** (frontend)
@@ -88,11 +93,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-None - Phase 2 complete with working brain upload flow.
+None - NiiVue setup complete, ready for viewer grid integration.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Phase 4 Planning Complete
-Stopped at: Created 04-01, 04-02, 04-03 plans for NiiVue integration
-Resume file: .planning/phases/04-viewer-display/
-Next action: Execute Phase 4 with /gsd:execute-phase 4
+Last session: 2026-01-28 — Completed 04-01-PLAN.md
+Stopped at: Plan 04-01 complete (NiiVue Setup)
+Resume file: .planning/phases/04-viewer-display/04-02-PLAN.md
+Next action: Execute 04-02 (Viewer Grid Integration)
