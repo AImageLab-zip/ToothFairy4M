@@ -204,3 +204,24 @@
 .orientation-btn.active:hover {
     background: #0b5ed7;
 }
+
+/* Error State */
+.viewer-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #dc3545;
+    text-align: center;
+    padding: 1rem;
+}
+
+.viewer-error i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.viewer-error p {
+    margin-bottom: 0.75rem;
+}

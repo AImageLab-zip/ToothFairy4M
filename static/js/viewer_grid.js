@@ -312,10 +312,55 @@ const ViewerGrid = (function() {
             console.log(`Successfully loaded ${modality} in window ${windowIndex} using NiiVue`);
 
         } catch (error) {
-            console.error(`Error loading modality in window ${windowIndex}:`, error);
+            console.error(`Error loading ${modality} in window ${windowIndex}:`, error);
+
+            // Determine user-friendly message
+            let userMessage = 'Failed to load volume';
+            if (error.message.includes('HTTP 404')) {
+                userMessage = 'Volume file not found';
+            } else if (error.message.includes('HTTP 403')) {
+                userMessage = 'Access denied to volume';
+            } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+                userMessage = 'Network error - check connection';
+            }
+
             windowStates[windowIndex].loading = false;
-            windowStates[windowIndex].error = error.message || 'Failed to load volume';
-            updateWindowUI(windowIndex);
+            windowStates[windowIndex].error = userMessage;
+
+            // Show error UI with retry button
+            const loadingDiv = windowEl.querySelector('.niivue-loading');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
+            }
+
+            // Remove existing viewer container and replace with error
+            const viewerContainerEl = windowEl.querySelector('.niivue-viewer-container');
+            if (viewerContainerEl) {
+                viewerContainerEl.innerHTML = `
+                    <div class="viewer-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>${userMessage}</p>
+                        <button class="btn btn-sm btn-outline-light retry-btn"
+                                data-window="${windowIndex}"
+                                data-modality="${modality}"
+                                data-file-id="${fileId}">
+                            <i class="fas fa-redo me-1"></i>Retry
+                        </button>
+                    </div>
+                `;
+
+                // Attach retry handler
+                const retryBtn = viewerContainerEl.querySelector('.retry-btn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const w = parseInt(e.currentTarget.dataset.window, 10);
+                        const m = e.currentTarget.dataset.modality;
+                        const f = e.currentTarget.dataset.fileId;
+                        loadModalityInWindow(w, m, f);
+                    });
+                }
+            }
         }
     }
 
