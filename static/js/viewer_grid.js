@@ -212,19 +212,21 @@ const ViewerGrid = (function() {
             const containerPrefix = `window${windowIndex}_`;
 
             // Create viewer container structure
+            // Note: Views div must be visible with dimensions for CBCTViewer to initialize slice viewers
+            // Loading indicator is positioned as overlay on top
             const viewerHTML = `
-                <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%;">
-                    <div id="${containerPrefix}${modality}Loading" style="display: block; text-align: center; padding-top: 40%;">
-                        <div class="spinner-border" role="status">
+                <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%; position: relative;">
+                    <div id="${containerPrefix}${modality}Loading" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 10;">
+                        <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
                     </div>
-                    <div id="${containerPrefix}${modality}Views" style="display: none; width: 100%; height: 100%;">
+                    <div id="${containerPrefix}${modality}Views" style="display: block; width: 100%; height: 100%;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 2px; background: #000;">
-                            <div id="${containerPrefix}${modality}_axialView" style="position: relative; background: #000;"></div>
-                            <div id="${containerPrefix}${modality}_sagittalView" style="position: relative; background: #000;"></div>
-                            <div id="${containerPrefix}${modality}_coronalView" style="position: relative; background: #000;"></div>
-                            <div id="${containerPrefix}${modality}_volumeView" style="position: relative; background: #1a1a1a;"></div>
+                            <div id="${containerPrefix}${modality}_axialView" style="position: relative; background: #000; min-height: 120px;"></div>
+                            <div id="${containerPrefix}${modality}_sagittalView" style="position: relative; background: #000; min-height: 120px;"></div>
+                            <div id="${containerPrefix}${modality}_coronalView" style="position: relative; background: #000; min-height: 120px;"></div>
+                            <div id="${containerPrefix}${modality}_volumeView" style="position: relative; background: #1a1a1a; min-height: 120px;"></div>
                         </div>
                     </div>
                 </div>
