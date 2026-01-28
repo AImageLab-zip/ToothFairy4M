@@ -8,6 +8,7 @@ import os
 import logging
 import traceback
 from common.models import Project, Modality, ProjectAccess, FileRegistry
+from common.permissions import PermissionChecker
 from ..models import Patient, Folder
 
 logger = logging.getLogger(__name__)
@@ -38,16 +39,18 @@ def project_upload_api(request, project_slug):
         # Check user permissions
         if not request.user.is_authenticated:
             return JsonResponse({'error': 'Authentication required'}, status=401)
-        
-        user_profile = request.user.profile
-        project_access = ProjectAccess.objects.filter(user=request.user, project=project, can_upload=True).exists()
-        if not user_profile.is_admin() and (not user_profile.can_upload_scans() or not project_access):
-            return JsonResponse({'error': 'You do not have permission to upload scans'}, status=403)
-        
-        # Check project upload permissions
-        if not user_profile.is_admin():
-            if not ProjectAccess.objects.filter(user=request.user, project=project, can_upload=True).exists():
-                return JsonResponse({'error': 'You are not allowed to upload in this project'}, status=403)
+
+        # Get user permissions using PermissionChecker
+        perm = PermissionChecker(request.user, project)
+
+        # Check if user has access to the project and can upload
+        # Admins can always upload, others need project access with appropriate role
+        if not perm.is_admin():
+            if not perm.has_project_access():
+                return JsonResponse({'error': 'You do not have permission to upload scans'}, status=403)
+            # Only annotators and admins can upload (not student developers)
+            if not perm.is_annotator():
+                return JsonResponse({'error': 'You do not have permission to upload scans'}, status=403)
         
         # Use the existing form logic from upload_scan view
         from ..forms import PatientUploadForm
@@ -70,7 +73,7 @@ def project_upload_api(request, project_slug):
         patient.project = project
         
         # Student developers can only create debug patients
-        if user_profile.is_student_developer():
+        if perm.is_student_developer():
             patient.visibility = 'debug'
         
         # Handle folder assignment

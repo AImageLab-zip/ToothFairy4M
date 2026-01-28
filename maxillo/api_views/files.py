@@ -11,6 +11,7 @@ import mimetypes
 from pathlib import Path
 from common.models import FileRegistry
 from maxillo.models import ProjectAccess
+from common.permissions import PermissionChecker
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -75,39 +76,42 @@ def serve_file(request, file_id):
         # Authentication: Check if user has access to the patient associated with this file
         if file_obj.patient:
             patient = file_obj.patient
-            user_profile = request.user.profile
-            
+            project = patient.project
+
+            # Get user permissions using PermissionChecker
+            perm = PermissionChecker(request.user, project)
+
             # Check patient visibility permissions
             can_view = False
-            if user_profile.is_admin():
+            if perm.is_admin():
                 can_view = True
-            elif user_profile.is_annotator() and patient.visibility != 'debug':
+            elif perm.is_annotator() and patient.visibility != 'debug':
                 can_view = True
-            elif user_profile.is_student_developer() and patient.visibility == 'debug':
+            elif perm.is_student_developer() and patient.visibility == 'debug':
                 can_view = True
             elif patient.visibility == 'public':
                 can_view = True
-            
+
             if not can_view:
                 logger.warning(f"User {request.user.id} denied access to file {file_id} for patient {patient.patient_id}")
                 return JsonResponse({'error': 'Permission denied'}, status=403)
-            
+
             # Check project access if patient belongs to a project
-            if patient.project:
-                current_project_id = request.session.get('current_project_id')
-                if not user_profile.is_admin() and current_project_id:
-                    has_project_access = ProjectAccess.objects.filter(
-                        user=request.user, 
-                        project=patient.project, 
-                        can_view=True
-                    ).exists()
-                    if not has_project_access:
-                        logger.warning(f"User {request.user.id} denied project access for file {file_id}")
-                        return JsonResponse({'error': 'Project access denied'}, status=403)
+            if project and not perm.is_admin():
+                has_project_access = ProjectAccess.objects.filter(
+                    user=request.user,
+                    project=project
+                ).exists()
+                if not has_project_access:
+                    logger.warning(f"User {request.user.id} denied project access for file {file_id}")
+                    return JsonResponse({'error': 'Project access denied'}, status=403)
         else:
-            # If file is not associated with a patient, only admins can access it
-            user_profile = request.user.profile
-            if not user_profile.is_admin():
+            # If file is not associated with a patient, check any project access
+            has_any_admin_access = ProjectAccess.objects.filter(
+                user=request.user,
+                role='admin'
+            ).exists()
+            if not has_any_admin_access:
                 logger.warning(f"User {request.user.id} denied access to orphaned file {file_id}")
                 return JsonResponse({'error': 'Permission denied'}, status=403)
         
@@ -163,23 +167,34 @@ def get_file_registry(request):
         patient_id = request.GET.get('patient_id')
         limit = int(request.GET.get('limit', 50))
         offset = int(request.GET.get('offset', 0))
-        
-        user_profile = request.user.profile
-        
+
+        # Get current project from session for permission checking
+        from common.models import Project
+        current_project_id = request.session.get('current_project_id')
+        current_project = None
+        if current_project_id:
+            try:
+                current_project = Project.objects.get(id=current_project_id)
+            except Project.DoesNotExist:
+                pass
+
+        # Get user permissions using PermissionChecker
+        perm = PermissionChecker(request.user, current_project)
+
         # Build query with authorization filtering
         files = FileRegistry.objects.select_related('patient', 'patient__project')
-        
+
         # Apply authorization filtering based on user role and patient visibility
-        if user_profile.is_admin():
+        if perm.is_admin():
             # Admins can see all files
             pass
-        elif user_profile.is_annotator():
+        elif perm.is_annotator():
             # Annotators can see files from public/private patients
             files = files.filter(
                 models.Q(patient__isnull=True) |  # Orphaned files (admin only)
                 models.Q(patient__visibility__in=['public', 'private'])
             )
-        elif user_profile.is_student_developer():
+        elif perm.is_student_developer():
             # Student developers can see files from debug patients
             files = files.filter(
                 models.Q(patient__isnull=True) |  # Orphaned files (admin only)
@@ -191,21 +206,18 @@ def get_file_registry(request):
                 models.Q(patient__isnull=True) |  # Orphaned files (admin only)
                 models.Q(patient__visibility='public')
             )
-        
+
         # Additional project access filtering for non-admins
-        if not user_profile.is_admin():
-            current_project_id = request.session.get('current_project_id')
-            if current_project_id:
-                # Check project access
-                accessible_projects = ProjectAccess.objects.filter(
-                    user=request.user,
-                    can_view=True
-                ).values_list('project_id', flat=True)
-                
-                files = files.filter(
-                    models.Q(patient__project__isnull=True) |  # Files not in projects
-                    models.Q(patient__project_id__in=accessible_projects)
-                )
+        if not perm.is_admin():
+            # Check project access
+            accessible_projects = ProjectAccess.objects.filter(
+                user=request.user
+            ).values_list('project_id', flat=True)
+
+            files = files.filter(
+                models.Q(patient__project__isnull=True) |  # Files not in projects
+                models.Q(patient__project_id__in=accessible_projects)
+            )
         
         # Apply additional filters
         if file_type:
