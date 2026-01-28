@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 3 - Viewer Grid (Planning Complete)
+**Current focus:** Phase 4 - Viewer Display (Planning Complete)
 
 ## Current Position
 
-Phase: 3 of 5 (Viewer Grid) — COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase 3 Complete
-Last activity: 2026-01-28 — Completed 03-03-PLAN.md (VolumeViewer refactor)
+Phase: 4 of 5 (Viewer Display) — PLANNING COMPLETE
+Plan: 0 of 3 in current phase
+Status: Ready to execute
+Last activity: 2026-01-28 — Created Phase 4 plans (NiiVue integration)
 
 Progress: [██████████] 60% (3/5 phases)
 
@@ -92,7 +92,7 @@ None - Phase 2 complete with working brain upload flow.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Phase 3 Complete
-Stopped at: Completed 03-03-PLAN.md (VolumeViewer refactor)
-Resume file: .planning/phases/04-single-view/
-Next action: Plan and execute Phase 4 (Single-View Mode)
+Last session: 2026-01-28 — Phase 4 Planning Complete
+Stopped at: Created 04-01, 04-02, 04-03 plans for NiiVue integration
+Resume file: .planning/phases/04-viewer-display/
+Next action: Execute Phase 4 with /gsd:execute-phase 4
