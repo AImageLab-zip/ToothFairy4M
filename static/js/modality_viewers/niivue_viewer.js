@@ -66,11 +66,10 @@ class NiiVueViewer {
         const url = URL.createObjectURL(fileBlob);
 
         try {
-            // Load the volume
+            // Load the volume - name must include .nii.gz extension for NiiVue format detection
             await this.nv.loadVolumes([{
                 url: url,
-                name: modalitySlug,
-                extension: '.nii.gz'  // Explicitly specify NIfTI file extension to prevent undefined error
+                name: modalitySlug + '.nii.gz'
             }]);
 
             // Set default orientation to axial
