@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Permission Refactoring** - Consolidate dual profile system into unified ProjectAccess
 - [x] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
-- [ ] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
+- [x] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [ ] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
 - [ ] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
 
@@ -68,9 +68,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Create 2x2 grid layout with empty window states
-- [ ] 03-02-PLAN.md — Implement drag-drop interaction and state management
-- [ ] 03-03-PLAN.md — Wire volume loading and window display
+- [x] 03-01-PLAN.md — Create 2x2 grid layout with empty window states
+- [x] 03-02-PLAN.md — Implement drag-drop interaction and state management
+- [x] 03-03-PLAN.md — Wire volume loading and window display
 
 ### Phase 4: Viewer Display
 **Goal**: Each window displays NIfTI volumes with multi-plane navigation
@@ -82,10 +82,12 @@ Plans:
   3. User can switch any window between axial, sagittal, and coronal views via menu
   4. User can scroll through slices with mouse wheel in each window
   5. Volumes are cached after first load (re-loading same modality is instant)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 04-01-PLAN.md — Add NiiVue library and create niivue_viewer.js wrapper
+- [ ] 04-02-PLAN.md — Integrate NiiVue with viewer_grid.js and add orientation menu
+- [ ] 04-03-PLAN.md — Implement volume caching, error handling, and cleanup
 
 ### Phase 5: Viewer Synchronization
 **Goal**: Windows scroll together when viewing same orientation
@@ -111,6 +113,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
 | 2. Brain Upload | 2/2 | Complete | 2026-01-28 |
-| 3. Viewer Grid | 0/3 | Ready | - |
-| 4. Viewer Display | 0/TBD | Not started | - |
+| 3. Viewer Grid | 3/3 | Complete | 2026-01-28 |
+| 4. Viewer Display | 0/3 | Ready | - |
 | 5. Viewer Synchronization | 0/TBD | Not started | - |
