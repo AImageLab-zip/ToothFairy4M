@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 
 ## Current Position
 
-Phase: 1 of 5 (Permission Refactoring) — COMPLETE
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-01-27 — Completed 01-04-PLAN.md
+Phase: 2 of 5 (Brain Upload) — IN PROGRESS
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-28 — Completed 02-01-PLAN.md
 
-Progress: [██████████] 100% (Phase 1)
+Progress: [██████████░░░░░░░░░░░░░░░░░░░] 33% (Phase 2: 1/3 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 13 minutes
+- Total plans completed: 5
+- Average duration: 11 minutes
 - Total execution time: 0.9 hours
 
 **By Phase:**
@@ -28,13 +28,15 @@ Progress: [██████████] 100% (Phase 1)
 | Phase | Plans | Status | Total | Avg/Plan |
 |-------|-------|--------|-------|----------|
 | 01 | 4 | Complete | 51m | 13m |
+| 02 | 1 | In Progress | 2m | 2m |
 
 **Recent Trend:**
 - 01-01: Complete - 25m (including app rename fix)
 - 01-02: Complete - 4m (middleware and permission utilities)
 - 01-03: Complete - 7m (view and template refactoring)
 - 01-04: Complete - 15m (model removal and migrations)
-- Trend: Excellent velocity, clean execution
+- 02-01: Complete - 2m (brain modality infrastructure)
+- Trend: Excellent velocity, infrastructure setup very fast
 
 *Updated after each plan completion*
 
@@ -66,6 +68,10 @@ Recent decisions affecting current work:
 - Use Django makemigrations for model deletion — Auto-generated migrations are reliable
 - Remove profile creation signals entirely — Users get access via invitation only
 
+**From 02-01:**
+- Brain modalities use immediate completion pattern — No async processing needed for pre-processed .nii.gz volumes
+- Brain project follows Maxillo modality registration pattern — Reuse existing infrastructure
+
 ### Pending Todos
 
 None.
@@ -76,7 +82,7 @@ None - Phase 1 complete with clean permission architecture.
 
 ## Session Continuity
 
-Last session: 2026-01-27 — Executed 01-04-PLAN.md
-Stopped at: Completed Phase 1 - Permission Refactoring
-Resume file: .planning/phases/01-permission-refactoring/01-04-SUMMARY.md
-Next action: Verify phase goal, then proceed to Phase 2 (Brain Upload)
+Last session: 2026-01-28 — Executed 02-01-PLAN.md
+Stopped at: Completed 02-01-PLAN.md (Brain Upload Infrastructure)
+Resume file: .planning/phases/02-brain-upload/02-01-SUMMARY.md
+Next action: Proceed to 02-02 (Brain Upload Views)
