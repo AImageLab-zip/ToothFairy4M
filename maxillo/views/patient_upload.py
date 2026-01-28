@@ -44,9 +44,12 @@ def upload_patient(request):
             if user_profile.is_student_developer():
                 patient.visibility = 'debug'
                 
-            # Assign Maxillo project
+            # Assign current project from session
             if not patient.project:
-                patient.project = Project.objects.filter(name='Maxillo').first()
+                if current_project_id:
+                    patient.project = Project.objects.filter(id=current_project_id).first()
+                if not patient.project:
+                    patient.project = Project.objects.filter(name='Maxillo').first()
                 
             # Assign folder if provided
             folder = patient_upload_form.cleaned_data.get('folder')
