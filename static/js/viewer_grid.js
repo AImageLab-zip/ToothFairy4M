@@ -285,7 +285,8 @@ const ViewerGrid = (function() {
             // Attach orientation menu event handlers
             const menuBtns = windowEl.querySelectorAll('.orientation-btn');
             menuBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent click from reaching NiiVue canvas
                     const orientation = btn.dataset.orientation;
                     viewer.setOrientation(orientation);
                     menuBtns.forEach(b => b.classList.remove('active'));

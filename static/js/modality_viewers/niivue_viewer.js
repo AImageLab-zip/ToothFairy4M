@@ -97,6 +97,7 @@ class NiiVueViewer {
         // Map orientation names to NiiVue slice type constants
         // NiiVue uses: sliceTypeAxial=2, sliceTypeSagittal=1, sliceTypeCoronal=0
         let sliceType;
+        let actualOrientation = normalizedOrientation;
         switch (normalizedOrientation) {
             case 'axial':
                 sliceType = this.nv.sliceTypeAxial;
@@ -110,11 +111,11 @@ class NiiVueViewer {
             default:
                 console.warn(`NiiVueViewer: Unknown orientation '${orientation}', defaulting to axial`);
                 sliceType = this.nv.sliceTypeAxial;
-                normalizedOrientation === 'axial';
+                actualOrientation = 'axial';
         }
 
         this.nv.setSliceType(sliceType);
-        this.currentOrientation = normalizedOrientation;
+        this.currentOrientation = actualOrientation;
     }
 
     /**
