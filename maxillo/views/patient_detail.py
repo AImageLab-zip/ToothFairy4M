@@ -276,6 +276,25 @@ def patient_detail(request, patient_id):
     if not user_profile.is_admin() and not user_profile.is_project_manager(): # and patient.patient_id in [4646, 4891]:
         voice_captions = voice_captions.filter(user=request.user)
 
+    # Build modality files lookup for drag-drop grid
+    modality_files = {}
+    try:
+        for m in patient_modalities:
+            slug = m.get('slug', '')
+            if slug:
+                # Find the FileRegistry entry for this modality
+                from common.models import Modality as _Modality
+                modality_obj = _Modality.objects.filter(slug=slug).first()
+                if modality_obj:
+                    file_obj = patient.files.filter(modality=modality_obj).first()
+                    if file_obj:
+                        modality_files[slug] = {
+                            'id': file_obj.id,
+                            'file_type': file_obj.file_type,
+                        }
+    except Exception as e:
+        logger.warning(f"Error building modality_files: {e}")
+
     context = {
         'scan_pair': patient,
         'ai_classification': ai_classification,
@@ -289,6 +308,7 @@ def patient_detail(request, patient_id):
         'default_modality_json': default_modality_json,
         'patient_files': patient_files,
         'voice_captions': voice_captions,
+        'modality_files': modality_files,
     }
     # Allowed modalities for current project (to conditionally show upload controls)
     try:
