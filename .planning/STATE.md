@@ -77,7 +77,10 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None.
+1. **Refactor VolumeViewer for modularity and async loading** (frontend)
+   - Split large monolithic file into focused modules
+   - Use Web Workers for background volume loading
+   - Preload volumes on page load
 
 ### Blockers/Concerns
 
