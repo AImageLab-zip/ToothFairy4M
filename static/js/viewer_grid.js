@@ -10,10 +10,10 @@ const ViewerGrid = (function() {
 
     // Window state for 4 grid positions
     const windowStates = {
-        0: { modality: null, loading: false, error: null, fileId: null },
-        1: { modality: null, loading: false, error: null, fileId: null },
-        2: { modality: null, loading: false, error: null, fileId: null },
-        3: { modality: null, loading: false, error: null, fileId: null }
+        0: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
+        1: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
+        2: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
+        3: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null }
     };
 
     // Global data from Django template
@@ -179,28 +179,103 @@ const ViewerGrid = (function() {
      * @param {string|null} fileId - FileRegistry ID for this modality
      */
     function loadModalityInWindow(windowIndex, modality, fileId) {
+        console.log(`Loading ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
+
+        // Dispose existing viewer if present
+        const state = windowStates[windowIndex];
+        if (state.viewerInstance) {
+            console.log(`Disposing previous viewer in window ${windowIndex}`);
+            state.viewerInstance.dispose();
+            state.viewerInstance = null;
+        }
+
         // Update state
         windowStates[windowIndex] = {
             modality: modality,
             loading: true,
             error: null,
-            fileId: fileId
+            fileId: fileId,
+            viewerInstance: null
         };
 
-        // Update UI immediately
+        // Update UI to show loading state
         updateWindowUI(windowIndex);
 
-        // Simulate loading (actual viewer integration in Plan 03-03)
-        setTimeout(() => {
-            // Check if window still has this modality (user might have cleared it)
-            if (windowStates[windowIndex].modality === modality) {
-                windowStates[windowIndex].loading = false;
-                windowStates[windowIndex].error = null;
-                updateWindowUI(windowIndex);
+        try {
+            // Create viewer container HTML
+            const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+            if (!windowEl) {
+                throw new Error(`Window element not found for index ${windowIndex}`);
             }
-        }, 1000);
 
-        console.log(`Loading ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
+            // Build container prefix for this window
+            const containerPrefix = `window${windowIndex}_`;
+
+            // Create viewer container structure
+            const viewerHTML = `
+                <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%;">
+                    <div id="${containerPrefix}${modality}Loading" style="display: block; text-align: center; padding-top: 40%;">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <div id="${containerPrefix}${modality}Views" style="display: none; width: 100%; height: 100%;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 2px; background: #000;">
+                            <div id="${containerPrefix}axialView" style="position: relative; background: #000;"></div>
+                            <div id="${containerPrefix}sagittalView" style="position: relative; background: #000;"></div>
+                            <div id="${containerPrefix}coronalView" style="position: relative; background: #000;"></div>
+                            <div id="${containerPrefix}volumeView" style="position: relative; background: #1a1a1a;"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Clear window content (except drop hint)
+            const dropHint = windowEl.querySelector('.drop-hint');
+            windowEl.innerHTML = '';
+            if (dropHint) {
+                windowEl.appendChild(dropHint);
+                dropHint.style.display = 'none';
+            }
+
+            // Add viewer container
+            const viewerContainer = document.createElement('div');
+            viewerContainer.innerHTML = viewerHTML;
+            windowEl.appendChild(viewerContainer.firstElementChild);
+
+            // Add window label
+            const label = document.createElement('div');
+            label.className = 'window-label';
+            label.textContent = modality.toUpperCase();
+            windowEl.appendChild(label);
+
+            // Initialize CBCTViewer with containerPrefix
+            if (!window.CBCTViewer) {
+                throw new Error('CBCTViewer not loaded');
+            }
+
+            // Set containerPrefix for window-specific containers
+            window.CBCTViewer.containerPrefix = containerPrefix;
+
+            // Initialize viewer
+            window.CBCTViewer.init(modality);
+
+            // Store viewer instance reference
+            windowStates[windowIndex].viewerInstance = window.CBCTViewer;
+            windowStates[windowIndex].loading = false;
+            windowStates[windowIndex].error = null;
+
+            // Mark window as loaded
+            windowEl.classList.add('loaded');
+
+            console.log(`Successfully loaded ${modality} in window ${windowIndex}`);
+
+        } catch (error) {
+            console.error(`Error loading modality ${modality} in window ${windowIndex}:`, error);
+            windowStates[windowIndex].loading = false;
+            windowStates[windowIndex].error = `Failed to load ${modality}: ${error.message}`;
+            updateWindowUI(windowIndex);
+        }
     }
 
     /**
@@ -213,58 +288,37 @@ const ViewerGrid = (function() {
 
         if (!windowEl) return;
 
-        // Clear previous UI elements except drop hint
-        const oldLabel = windowEl.querySelector('.window-label');
-        const oldSpinner = windowEl.querySelector('.spinner-border');
-        const oldError = windowEl.querySelector('.error-message');
-        if (oldLabel) oldLabel.remove();
-        if (oldSpinner) oldSpinner.remove();
-        if (oldError) oldError.remove();
-
         // Empty state
         if (!state.modality) {
+            // Clear all content except drop hint
+            const dropHint = windowEl.querySelector('.drop-hint');
+            windowEl.innerHTML = '';
+            if (dropHint) {
+                windowEl.appendChild(dropHint);
+                dropHint.style.display = 'flex';
+            }
             windowEl.classList.remove('loaded');
-            windowEl.querySelector('.drop-hint').style.display = 'flex';
             return;
         }
 
-        // Hide drop hint
-        windowEl.querySelector('.drop-hint').style.display = 'none';
-
-        // Loading state
-        if (state.loading) {
-            const spinner = document.createElement('div');
-            spinner.className = 'spinner-border';
-            spinner.setAttribute('role', 'status');
-            spinner.innerHTML = '<span class="visually-hidden">Loading...</span>';
-            windowEl.appendChild(spinner);
-            return;
+        // Hide drop hint if present
+        const dropHint = windowEl.querySelector('.drop-hint');
+        if (dropHint) {
+            dropHint.style.display = 'none';
         }
 
         // Error state
         if (state.error) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
-            errorDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #dc3545; text-align: center;';
+            errorDiv.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #dc3545; text-align: center; z-index: 100;';
             errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i><br>${state.error}`;
             windowEl.appendChild(errorDiv);
             return;
         }
 
-        // Loaded state
-        windowEl.classList.add('loaded');
-
-        // Add modality label
-        const label = document.createElement('div');
-        label.className = 'window-label';
-        label.textContent = state.modality.toUpperCase();
-        windowEl.appendChild(label);
-
-        // Add placeholder content (actual viewer in Plan 03-03)
-        const placeholder = document.createElement('div');
-        placeholder.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #888; text-align: center;';
-        placeholder.innerHTML = `<i class="fas fa-brain" style="font-size: 3rem; opacity: 0.3;"></i><br><small>Viewer integration: Plan 03-03</small>`;
-        windowEl.appendChild(placeholder);
+        // Loading and loaded states are handled by loadModalityInWindow
+        // which creates the viewer container HTML directly
     }
 
     /**
@@ -345,11 +399,20 @@ const ViewerGrid = (function() {
      * @param {number} windowIndex - 0-3 for grid position
      */
     function clearWindow(windowIndex) {
+        // Dispose viewer if present
+        const state = windowStates[windowIndex];
+        if (state.viewerInstance) {
+            console.log(`Disposing viewer in window ${windowIndex}`);
+            state.viewerInstance.dispose();
+        }
+
+        // Reset state
         windowStates[windowIndex] = {
             modality: null,
             loading: false,
             error: null,
-            fileId: null
+            fileId: null,
+            viewerInstance: null
         };
 
         updateWindowUI(windowIndex);
