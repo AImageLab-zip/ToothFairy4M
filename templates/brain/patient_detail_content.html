@@ -16,7 +16,7 @@
                                 <input type="radio" class="btn-check" name="viewerType" id="{{ rid }}" autocomplete="off"
                                        {% if default_modality_slug == m.slug %}checked{% endif %}>
                                 <label class="btn btn-outline-secondary btn-sm modality-toggle" data-modality="{{ m.slug }}" for="{{ rid }}">
-                                    {% if m.label %}{{ m.label }}{% elif m.name %}{{ m.name %}{% else %}{{ m.slug|upper }}{% endif %}
+                                    {% if m.label %}{{ m.label }}{% elif m.name %}{{ m.name }}{% else %}{{ m.slug|upper }}{% endif %}
                                 </label>
                                 {% endwith %}
                                 {% endif %}
