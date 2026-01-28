@@ -150,18 +150,18 @@
                                     </h6>
                                     <ul class="list-unstyled instruction-list">
                                         <li><strong>Scroll wheel:</strong> Navigate through slices</li>
-                                        <li><strong>Click view buttons:</strong> Switch between Axial, Sagittal, and Coronal views</li>
-                                        <li><strong>Synchronized scrolling:</strong> All windows scroll together (when enabled)</li>
+                                        <li><strong>A/S/C buttons:</strong> Switch between Axial, Sagittal, and Coronal views</li>
+                                        <li><strong>Left-click + drag:</strong> Adjust window/level (brightness/contrast)</li>
                                     </ul>
                                 </div>
 
                                 <div class="instruction-group">
                                     <h6 class="text-primary mb-2">
-                                        <i class="fas fa-adjust me-1"></i>Window/Level Adjustment
+                                        <i class="fas fa-adjust me-1"></i>Window Management
                                     </h6>
                                     <ul class="list-unstyled instruction-list">
-                                        <li><strong>Left-click + drag:</strong> Adjust brightness and contrast</li>
-                                        <li><strong>Right-click:</strong> Reset window/level to defaults</li>
+                                        <li><strong>Right-click:</strong> Clear window (remove modality)</li>
+                                        <li><strong>Re-drag:</strong> Replace modality in any window</li>
                                     </ul>
                                 </div>
                             </div>
@@ -179,7 +179,4 @@
 <!-- NiiVue for medical volume viewing (DISP-01) -->
 <script src="https://cdn.jsdelivr.net/npm/@niivue/niivue@0.66.0/dist/niivue.min.js"></script>
 <script src="{% static 'js/modality_viewers/niivue_viewer.js' %}"></script>
-
-<!-- Volume Viewer and Grid JavaScript -->
-<script src="{% static 'js/modality_viewers/volume_viewer.js' %}"></script>
 <script src="{% static 'js/viewer_grid.js' %}"></script>
