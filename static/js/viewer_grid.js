@@ -16,6 +16,10 @@ const ViewerGrid = (function() {
         3: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null }
     };
 
+    // Loading queue to serialize CBCTViewer loads (singleton limitation)
+    const loadingQueue = [];
+    let isProcessingQueue = false;
+
     // Global data from Django template
     let djangoData = {
         scanId: null,
@@ -173,23 +177,15 @@ const ViewerGrid = (function() {
     }
 
     /**
-     * Load a modality into a specific window
+     * Load a modality into a specific window (queued to handle singleton CBCTViewer)
      * @param {number} windowIndex - 0-3 for grid position
      * @param {string} modality - Modality slug (e.g. 't1', 't2')
      * @param {string|null} fileId - FileRegistry ID for this modality
      */
     function loadModalityInWindow(windowIndex, modality, fileId) {
-        console.log(`Loading ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
+        console.log(`Queueing ${modality} (fileId: ${fileId}) for window ${windowIndex}`);
 
-        // Dispose existing viewer if present
-        const state = windowStates[windowIndex];
-        if (state.viewerInstance) {
-            console.log(`Disposing previous viewer in window ${windowIndex}`);
-            state.viewerInstance.dispose();
-            state.viewerInstance = null;
-        }
-
-        // Update state
+        // Update state to show loading immediately
         windowStates[windowIndex] = {
             modality: modality,
             loading: true,
@@ -197,71 +193,168 @@ const ViewerGrid = (function() {
             fileId: fileId,
             viewerInstance: null
         };
-
-        // Update UI to show loading state
         updateWindowUI(windowIndex);
 
-        try {
-            // Create viewer container HTML
-            const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
-            if (!windowEl) {
-                throw new Error(`Window element not found for index ${windowIndex}`);
+        // Add to queue
+        loadingQueue.push({ windowIndex, modality, fileId });
+
+        // Process queue if not already processing
+        if (!isProcessingQueue) {
+            processQueue();
+        }
+    }
+
+    /**
+     * Process the loading queue one item at a time
+     * CBCTViewer is a singleton, so loads must be serialized
+     */
+    async function processQueue() {
+        if (isProcessingQueue || loadingQueue.length === 0) {
+            return;
+        }
+
+        isProcessingQueue = true;
+
+        while (loadingQueue.length > 0) {
+            const { windowIndex, modality, fileId } = loadingQueue.shift();
+
+            // Check if this window still wants this modality (user may have cleared it)
+            const state = windowStates[windowIndex];
+            if (state.modality !== modality) {
+                console.log(`Skipping ${modality} for window ${windowIndex} - modality changed`);
+                continue;
             }
 
-            // Build container prefix for this window
-            const containerPrefix = `window${windowIndex}_`;
+            try {
+                await _processLoad(windowIndex, modality, fileId);
+            } catch (error) {
+                console.error(`Error in queue processing for ${modality}:`, error);
+            }
+        }
 
-            // Create viewer container structure
-            // Note: Views div must be visible with dimensions for CBCTViewer to initialize slice viewers
-            // Loading indicator is positioned as overlay on top
-            const viewerHTML = `
-                <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%; position: relative;">
-                    <div id="${containerPrefix}${modality}Loading" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 10;">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                    <div id="${containerPrefix}${modality}Views" style="display: block; width: 100%; height: 100%;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 2px; background: #000;">
-                            <div id="${containerPrefix}${modality}_axialView" style="position: relative; background: #000; min-height: 120px;"></div>
-                            <div id="${containerPrefix}${modality}_sagittalView" style="position: relative; background: #000; min-height: 120px;"></div>
-                            <div id="${containerPrefix}${modality}_coronalView" style="position: relative; background: #000; min-height: 120px;"></div>
-                            <div id="${containerPrefix}${modality}_volumeView" style="position: relative; background: #1a1a1a; min-height: 120px;"></div>
-                        </div>
+        isProcessingQueue = false;
+    }
+
+    /**
+     * Wait for CBCTViewer to finish loading
+     * @param {number} timeoutMs - Maximum wait time
+     * @returns {Promise<boolean>} - True if viewer is ready, false if timeout
+     */
+    function waitForViewerReady(timeoutMs = 30000) {
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const checkInterval = 100;
+
+            function check() {
+                if (!window.CBCTViewer) {
+                    resolve(false);
+                    return;
+                }
+
+                // CBCTViewer sets loading=false and initialized=true when done
+                if (!window.CBCTViewer.loading && window.CBCTViewer.initialized) {
+                    resolve(true);
+                    return;
+                }
+
+                if (Date.now() - startTime > timeoutMs) {
+                    console.warn('Timeout waiting for CBCTViewer to be ready');
+                    resolve(false);
+                    return;
+                }
+
+                setTimeout(check, checkInterval);
+            }
+
+            check();
+        });
+    }
+
+    /**
+     * Internal: Actually load a modality into a window
+     * @param {number} windowIndex - 0-3 for grid position
+     * @param {string} modality - Modality slug
+     * @param {string|null} fileId - FileRegistry ID
+     */
+    async function _processLoad(windowIndex, modality, fileId) {
+        console.log(`Processing load: ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
+
+        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+        if (!windowEl) {
+            throw new Error(`Window element not found for index ${windowIndex}`);
+        }
+
+        // Build container prefix for this window
+        const containerPrefix = `window${windowIndex}_`;
+
+        // Create viewer container structure
+        const viewerHTML = `
+            <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%; position: relative;">
+                <div id="${containerPrefix}${modality}Loading" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 10;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
-            `;
+                <div id="${containerPrefix}${modality}Views" style="display: block; width: 100%; height: 100%;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 2px; background: #000;">
+                        <div id="${containerPrefix}${modality}_axialView" style="position: relative; background: #000; min-height: 120px;"></div>
+                        <div id="${containerPrefix}${modality}_sagittalView" style="position: relative; background: #000; min-height: 120px;"></div>
+                        <div id="${containerPrefix}${modality}_coronalView" style="position: relative; background: #000; min-height: 120px;"></div>
+                        <div id="${containerPrefix}${modality}_volumeView" style="position: relative; background: #1a1a1a; min-height: 120px;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
 
-            // Clear window content (except drop hint)
-            const dropHint = windowEl.querySelector('.drop-hint');
-            windowEl.innerHTML = '';
-            if (dropHint) {
-                windowEl.appendChild(dropHint);
-                dropHint.style.display = 'none';
+        // Clear window content (except drop hint)
+        const dropHint = windowEl.querySelector('.drop-hint');
+        windowEl.innerHTML = '';
+        if (dropHint) {
+            windowEl.appendChild(dropHint);
+            dropHint.style.display = 'none';
+        }
+
+        // Add viewer container
+        const viewerContainer = document.createElement('div');
+        viewerContainer.innerHTML = viewerHTML;
+        windowEl.appendChild(viewerContainer.firstElementChild);
+
+        // Add window label
+        const label = document.createElement('div');
+        label.className = 'window-label';
+        label.textContent = modality.toUpperCase();
+        windowEl.appendChild(label);
+
+        // Initialize CBCTViewer with containerPrefix
+        if (!window.CBCTViewer) {
+            throw new Error('CBCTViewer not loaded');
+        }
+
+        // CBCTViewer is a singleton - can only render to one set of containers at a time
+        // Clear other windows that have active viewers (their canvases will be invalid after dispose)
+        for (let i = 0; i < 4; i++) {
+            if (i !== windowIndex && windowStates[i].viewerInstance) {
+                console.log(`Clearing invalidated viewer in window ${i} (singleton limitation)`);
+                windowStates[i].viewerInstance = null;
+                windowStates[i].modality = null;
+                windowStates[i].loading = false;
+                updateWindowUI(i);
             }
+        }
 
-            // Add viewer container
-            const viewerContainer = document.createElement('div');
-            viewerContainer.innerHTML = viewerHTML;
-            windowEl.appendChild(viewerContainer.firstElementChild);
+        // Dispose any previous state in CBCTViewer
+        window.CBCTViewer.dispose();
 
-            // Add window label
-            const label = document.createElement('div');
-            label.className = 'window-label';
-            label.textContent = modality.toUpperCase();
-            windowEl.appendChild(label);
+        // Set containerPrefix for window-specific containers
+        window.CBCTViewer.containerPrefix = containerPrefix;
 
-            // Initialize CBCTViewer with containerPrefix
-            if (!window.CBCTViewer) {
-                throw new Error('CBCTViewer not loaded');
-            }
+        // Initialize viewer
+        window.CBCTViewer.init(modality);
 
-            // Set containerPrefix for window-specific containers
-            window.CBCTViewer.containerPrefix = containerPrefix;
+        // Wait for viewer to actually finish loading
+        const ready = await waitForViewerReady(30000);
 
-            // Initialize viewer
-            window.CBCTViewer.init(modality);
-
+        if (ready) {
             // Store viewer instance reference
             windowStates[windowIndex].viewerInstance = window.CBCTViewer;
             windowStates[windowIndex].loading = false;
@@ -271,11 +364,9 @@ const ViewerGrid = (function() {
             windowEl.classList.add('loaded');
 
             console.log(`Successfully loaded ${modality} in window ${windowIndex}`);
-
-        } catch (error) {
-            console.error(`Error loading modality ${modality} in window ${windowIndex}:`, error);
+        } else {
             windowStates[windowIndex].loading = false;
-            windowStates[windowIndex].error = `Failed to load ${modality}: ${error.message}`;
+            windowStates[windowIndex].error = `Timeout loading ${modality}`;
             updateWindowUI(windowIndex);
         }
     }
@@ -401,6 +492,13 @@ const ViewerGrid = (function() {
      * @param {number} windowIndex - 0-3 for grid position
      */
     function clearWindow(windowIndex) {
+        // Remove any pending loads for this window from the queue
+        for (let i = loadingQueue.length - 1; i >= 0; i--) {
+            if (loadingQueue[i].windowIndex === windowIndex) {
+                loadingQueue.splice(i, 1);
+            }
+        }
+
         // Dispose viewer if present
         const state = windowStates[windowIndex];
         if (state.viewerInstance) {
