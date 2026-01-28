@@ -2,7 +2,7 @@
  * Viewer Grid - Drag-drop interaction for multi-window MRI viewer
  *
  * Manages state for 4 viewer windows and drag-drop loading of modalities.
- * Each window gets its own VolumeViewer instance for true multi-window support.
+ * Each window gets its own NiiVueViewer instance for true multi-window support.
  */
 
 const ViewerGrid = (function() {
@@ -10,10 +10,10 @@ const ViewerGrid = (function() {
 
     // Window state for 4 grid positions
     const windowStates = {
-        0: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
-        1: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
-        2: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null },
-        3: { modality: null, loading: false, error: null, fileId: null, viewerInstance: null }
+        0: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' },
+        1: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' },
+        2: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' },
+        3: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' }
     };
 
     // Global data from Django template
@@ -174,12 +174,12 @@ const ViewerGrid = (function() {
 
     /**
      * Load a modality into a specific window
-     * Each window gets its own VolumeViewer instance
+     * Each window gets its own NiiVueViewer instance
      * @param {number} windowIndex - 0-3 for grid position
      * @param {string} modality - Modality slug (e.g. 'braintumor-mri-t1')
      * @param {string|null} fileId - FileRegistry ID for this modality
      */
-    function loadModalityInWindow(windowIndex, modality, fileId) {
+    async function loadModalityInWindow(windowIndex, modality, fileId) {
         console.log(`Loading ${modality} (fileId: ${fileId}) in window ${windowIndex}`);
 
         const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
@@ -190,38 +190,39 @@ const ViewerGrid = (function() {
 
         // Dispose existing viewer if present
         const existingState = windowStates[windowIndex];
-        if (existingState.viewerInstance) {
-            console.log(`Disposing previous viewer in window ${windowIndex}`);
-            existingState.viewerInstance.dispose();
+        if (existingState.niivueInstance) {
+            console.log(`Disposing previous NiiVue viewer in window ${windowIndex}`);
+            try {
+                existingState.niivueInstance.dispose();
+            } catch (e) {
+                console.warn('Error disposing previous viewer:', e);
+            }
         }
 
-        // Update state
+        // Update state to loading
         windowStates[windowIndex] = {
             modality: modality,
             loading: true,
             error: null,
             fileId: fileId,
-            viewerInstance: null
+            niivueInstance: null,
+            currentOrientation: 'axial'
         };
 
-        // Build container prefix for this window
-        const containerPrefix = `window${windowIndex}_`;
-
-        // Create viewer container structure
+        // Create viewer container structure with canvas and orientation menu
+        const canvasId = `niivue-canvas-${windowIndex}`;
         const viewerHTML = `
-            <div id="${containerPrefix}${modality}-viewer" class="modality-viewer" style="width: 100%; height: 100%; position: relative;">
-                <div id="${containerPrefix}${modality}Loading" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 10;">
+            <div class="niivue-viewer-container" style="width: 100%; height: 100%; position: relative;">
+                <div class="niivue-loading" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 10;">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
-                <div id="${containerPrefix}${modality}Views" style="display: block; width: 100%; height: 100%;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 100%; height: 100%; gap: 2px; background: #000;">
-                        <div id="${containerPrefix}${modality}_axialView" style="position: relative; background: #000; min-height: 120px;"></div>
-                        <div id="${containerPrefix}${modality}_sagittalView" style="position: relative; background: #000; min-height: 120px;"></div>
-                        <div id="${containerPrefix}${modality}_coronalView" style="position: relative; background: #000; min-height: 120px;"></div>
-                        <div id="${containerPrefix}${modality}_volumeView" style="position: relative; background: #1a1a1a; min-height: 120px;"></div>
-                    </div>
+                <canvas id="${canvasId}" class="niivue-canvas"></canvas>
+                <div class="orientation-menu">
+                    <button class="orientation-btn active" data-orientation="axial">A</button>
+                    <button class="orientation-btn" data-orientation="sagittal">S</button>
+                    <button class="orientation-btn" data-orientation="coronal">C</button>
                 </div>
             </div>
         `;
@@ -245,71 +246,65 @@ const ViewerGrid = (function() {
         label.textContent = modality.toUpperCase();
         windowEl.appendChild(label);
 
-        // Check if VolumeViewer class is available
-        if (!window.VolumeViewer) {
-            console.error('VolumeViewer not loaded');
+        // Check if NiiVueViewer class is available
+        if (!window.NiiVueViewer) {
+            console.error('NiiVueViewer not loaded');
             windowStates[windowIndex].loading = false;
-            windowStates[windowIndex].error = 'VolumeViewer not loaded';
+            windowStates[windowIndex].error = 'NiiVueViewer not loaded';
             updateWindowUI(windowIndex);
             return;
         }
 
-        // Create new VolumeViewer instance for this window
-        const viewer = new window.VolumeViewer(containerPrefix);
-        windowStates[windowIndex].viewerInstance = viewer;
+        // Fetch file blob from API
+        try {
+            console.log(`Fetching file blob for fileId: ${fileId}`);
+            const response = await fetch(`/api/processing/files/serve/${fileId}/`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            const fileBlob = await response.blob();
+            console.log(`File blob received: ${fileBlob.size} bytes`);
 
-        // Initialize viewer (async - will update UI when done)
-        viewer.init(modality);
+            // Create new NiiVueViewer instance for this window
+            const viewer = new window.NiiVueViewer(canvasId);
 
-        // Poll for completion
-        waitForViewerReady(windowIndex, viewer, 30000);
-    }
+            // Initialize viewer with modality and blob
+            await viewer.init(modality, fileBlob);
 
-    /**
-     * Wait for a viewer instance to finish loading
-     * @param {number} windowIndex - Window index
-     * @param {VolumeViewer} viewer - The viewer instance
-     * @param {number} timeoutMs - Maximum wait time
-     */
-    function waitForViewerReady(windowIndex, viewer, timeoutMs = 30000) {
-        const startTime = Date.now();
-        const checkInterval = 100;
+            // Store instance in state
+            windowStates[windowIndex].niivueInstance = viewer;
+            windowStates[windowIndex].loading = false;
+            windowStates[windowIndex].error = null;
 
-        function check() {
-            // Check if this is still the active viewer for this window
-            if (windowStates[windowIndex].viewerInstance !== viewer) {
-                console.log(`Viewer changed for window ${windowIndex}, stopping wait`);
-                return;
+            // Hide loading spinner
+            const loadingDiv = windowEl.querySelector('.niivue-loading');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
             }
 
-            // Check if viewer is ready
-            if (!viewer.loading && viewer.initialized) {
-                windowStates[windowIndex].loading = false;
-                windowStates[windowIndex].error = null;
+            // Attach orientation menu event handlers
+            const menuBtns = windowEl.querySelectorAll('.orientation-btn');
+            menuBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const orientation = btn.dataset.orientation;
+                    viewer.setOrientation(orientation);
+                    menuBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    windowStates[windowIndex].currentOrientation = orientation;
+                });
+            });
 
-                const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
-                if (windowEl) {
-                    windowEl.classList.add('loaded');
-                }
+            // Mark window as loaded
+            windowEl.classList.add('loaded');
 
-                console.log(`Successfully loaded ${windowStates[windowIndex].modality} in window ${windowIndex}`);
-                return;
-            }
+            console.log(`Successfully loaded ${modality} in window ${windowIndex} using NiiVue`);
 
-            // Check for timeout
-            if (Date.now() - startTime > timeoutMs) {
-                console.warn(`Timeout waiting for viewer in window ${windowIndex}`);
-                windowStates[windowIndex].loading = false;
-                windowStates[windowIndex].error = 'Timeout loading volume';
-                updateWindowUI(windowIndex);
-                return;
-            }
-
-            // Keep checking
-            setTimeout(check, checkInterval);
+        } catch (error) {
+            console.error(`Error loading modality in window ${windowIndex}:`, error);
+            windowStates[windowIndex].loading = false;
+            windowStates[windowIndex].error = error.message || 'Failed to load volume';
+            updateWindowUI(windowIndex);
         }
-
-        check();
     }
 
     /**
@@ -349,6 +344,12 @@ const ViewerGrid = (function() {
 
         // Error state
         if (state.error) {
+            // Hide loading spinner if present
+            const loadingDiv = windowEl.querySelector('.niivue-loading');
+            if (loadingDiv) {
+                loadingDiv.style.display = 'none';
+            }
+
             // Find or create error container
             let errorDiv = windowEl.querySelector('.error-message');
             if (!errorDiv) {
@@ -443,11 +444,15 @@ const ViewerGrid = (function() {
      * @param {number} windowIndex - 0-3 for grid position
      */
     function clearWindow(windowIndex) {
-        // Dispose viewer if present
+        // Dispose NiiVue viewer if present
         const state = windowStates[windowIndex];
-        if (state.viewerInstance) {
-            console.log(`Disposing viewer in window ${windowIndex}`);
-            state.viewerInstance.dispose();
+        if (state.niivueInstance) {
+            console.log(`Disposing NiiVue viewer in window ${windowIndex}`);
+            try {
+                state.niivueInstance.dispose();
+            } catch (e) {
+                console.warn('Error disposing viewer:', e);
+            }
         }
 
         // Reset state
@@ -456,7 +461,8 @@ const ViewerGrid = (function() {
             loading: false,
             error: null,
             fileId: null,
-            viewerInstance: null
+            niivueInstance: null,
+            currentOrientation: 'axial'
         };
 
         updateWindowUI(windowIndex);
