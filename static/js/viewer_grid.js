@@ -8,6 +8,10 @@
 const ViewerGrid = (function() {
     'use strict';
 
+    // Cache for fetched volume blobs (keyed by fileId)
+    // Note: Cache persists across window clears for network optimization
+    const volumeCache = {};
+
     // Window state for 4 grid positions
     const windowStates = {
         0: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' },
@@ -255,15 +259,22 @@ const ViewerGrid = (function() {
             return;
         }
 
-        // Fetch file blob from API
+        // Fetch file blob from API (with caching)
         try {
-            console.log(`Fetching file blob for fileId: ${fileId}`);
-            const response = await fetch(`/api/processing/files/serve/${fileId}/`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            let fileBlob;
+            if (volumeCache[fileId]) {
+                console.log(`Using cached blob for fileId ${fileId}`);
+                fileBlob = volumeCache[fileId];
+            } else {
+                console.log(`Fetching blob for fileId ${fileId}`);
+                const response = await fetch(`/api/processing/files/serve/${fileId}/`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                fileBlob = await response.blob();
+                volumeCache[fileId] = fileBlob;
+                console.log(`File blob received and cached: ${fileBlob.size} bytes`);
             }
-            const fileBlob = await response.blob();
-            console.log(`File blob received: ${fileBlob.size} bytes`);
 
             // Create new NiiVueViewer instance for this window
             const viewer = new window.NiiVueViewer(canvasId);
