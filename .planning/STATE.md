@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 5 - Synchronized Navigation (Next)
+**Current focus:** Phase 4 re-verified — All phases complete
 
 ## Current Position
 
-Phase: 4 of 5 (Viewer Display) — COMPLETE
+Phase: 4 of 5 (Viewer Display) — RE-VERIFIED ✓
 Plan: 3 of 3 in current phase
-Status: Phase 4 complete
-Last activity: 2026-01-28 — Completed 04-03-PLAN.md (Caching and Polish)
+Status: Phase 4 verified (NiiVue fix committed, 5/5 must-haves pass)
+Last activity: 2026-01-28 — Phase 4 re-executed and verified
 
-Progress: [████████████████░] 80% (4/5 phases complete)
+Progress: [████████████████████] 100% (5/5 phases complete)
 
 ## Performance Metrics
 
@@ -81,7 +81,7 @@ Recent decisions affecting current work:
 - Maintain backward compatibility via wrapper — Zero changes to existing Maxillo templates
 
 **From 04-01:**
-- NiiVue v0.66.0 via jsdelivr CDN — Latest stable, exposes window.niivue global
+- NiiVue v0.67.0 via jsdelivr CDN UMD build — Fixed from 0.66.0 which had export issues
 - ES6 class wrapper pattern — Clean API surface for viewer_grid.js integration
 - Single-view mode (multiplanar: false) — One view per grid window
 
@@ -105,11 +105,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-None - Phase 4 complete. All DISP requirements satisfied. Ready for Phase 5.
+None — All phases complete. Milestone ready for audit.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Completed 04-03-PLAN.md
-Stopped at: Phase 4 complete (Viewer Display)
-Resume file: None (Phase 5 planning needed)
-Next action: Plan Phase 5 (Synchronized Navigation)
+Last session: 2026-01-28 — Phase 4 re-executed and verified
+Stopped at: All phases complete
+Resume file: None
+Next action: Audit milestone or complete milestone

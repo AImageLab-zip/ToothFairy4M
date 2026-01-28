@@ -35,11 +35,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Brain Viewer Display
 
-- [ ] **DISP-01**: Each window displays NIfTI volume slices using NiiVue
-- [ ] **DISP-02**: Default view is axial orientation
-- [ ] **DISP-03**: Per-window menu to switch between axial, sagittal, and coronal views
-- [ ] **DISP-04**: Mouse scroll changes slice within the volume
-- [ ] **DISP-05**: Volume data cached on first load for fast subsequent access
+- [x] **DISP-01**: Each window displays NIfTI volume slices using NiiVue
+- [x] **DISP-02**: Default view is axial orientation
+- [x] **DISP-03**: Per-window menu to switch between axial, sagittal, and coronal views
+- [x] **DISP-04**: Mouse scroll changes slice within the volume
+- [x] **DISP-05**: Volume data cached on first load for fast subsequent access
 
 ### Brain Viewer Synchronization
 
