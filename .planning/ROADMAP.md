@@ -65,10 +65,12 @@ Plans:
   3. User can drag a modality from the list and drop it into any window
   4. Dropped modality loads and displays in the target window
   5. User can replace a window's modality by dropping a different one on it
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 03-01-PLAN.md — Create 2x2 grid layout with empty window states
+- [ ] 03-02-PLAN.md — Implement drag-drop interaction and state management
+- [ ] 03-03-PLAN.md — Wire volume loading and window display
 
 ### Phase 4: Viewer Display
 **Goal**: Each window displays NIfTI volumes with multi-plane navigation
@@ -109,6 +111,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
 | 2. Brain Upload | 2/2 | Complete | 2026-01-28 |
-| 3. Viewer Grid | 0/TBD | Not started | - |
+| 3. Viewer Grid | 0/3 | Ready | - |
 | 4. Viewer Display | 0/TBD | Not started | - |
 | 5. Viewer Synchronization | 0/TBD | Not started | - |
