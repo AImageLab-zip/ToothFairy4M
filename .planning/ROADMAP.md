@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
 - [x] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [x] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
-- [ ] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
+- [x] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
 
 ## Phase Details
 
@@ -99,10 +99,10 @@ Plans:
   3. Each window has a "Free Scroll" toggle button to break synchronization
   4. Clicking "Free Scroll" again re-synchronizes the window to the current group slice position
   5. Windows with different orientations (e.g., axial vs sagittal) operate independently
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] TBD
+- [x] 05-01-PLAN.md — Verify NiiVue loading fix and functionality
 
 ## Progress
 
@@ -110,9 +110,13 @@ Plans:
 Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
+|-----|----------------|--------|-----|--|
 | 1. Permission Refactoring | 4/4 | Complete | 2026-01-27 |
 | 2. Brain Upload | 2/2 | Complete | 2026-01-28 |
 | 3. Viewer Grid | 3/3 | Complete | 2026-01-28 |
 | 4. Viewer Display | 3/3 | Complete | 2026-01-28 |
-| 5. Viewer Synchronization | 0/TBD | Ready | - |
+| 5. Viewer Synchronization | 1/1 | Complete | 2026-01-28 |
+
+## Summary
+
+Phase 5 has been successfully completed. The NiiVue library loading issue has been fixed by updating from version 0.66.0 to 0.70.0, and all viewer functionality has been verified to work correctly. This completes the core brain viewer functionality and provides a solid foundation for implementing synchronized scrolling in the next phase.
