@@ -207,7 +207,7 @@ def save_generic_modality_file(patient: Patient, modality_slug: str, uploaded_fi
     job_obj = None
     try:
         # Image modalities that don't need processing
-        no_processing_modalities = ['panoramic', 'teleradiography', 'intraoral-photo', 'rawzip']
+        no_processing_modalities = ['panoramic', 'teleradiography', 'intraoral-photo', 'rawzip', 'braintumor-mri-t1', 'braintumor-mri-t2', 'braintumor-mri-flair', 'braintumor-mri-t1c']
         
         if modality_slug in no_processing_modalities:
             # Create completed job
