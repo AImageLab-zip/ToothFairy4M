@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 ## Current Position
 
 Phase: 4 of 5 (Viewer Display) — IN PROGRESS
-Plan: 1 of 3 in current phase
-Status: Plan 04-01 complete
-Last activity: 2026-01-28 — Completed 04-01-PLAN.md (NiiVue Setup)
+Plan: 2 of 3 in current phase
+Status: Plan 04-02 complete
+Last activity: 2026-01-28 — Completed 04-02-PLAN.md (Viewer Grid Integration)
 
-Progress: [███████████░] 67% (10/15 plans total, 1/3 in Phase 4)
+Progress: [████████████░] 73% (11/15 plans total, 2/3 in Phase 4)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 11 minutes
-- Total execution time: 2h 1m
+- Total plans completed: 11
+- Average duration: 10 minutes
+- Total execution time: 2h 4m
 
 **By Phase:**
 
@@ -30,12 +30,12 @@ Progress: [███████████░] 67% (10/15 plans total, 1/3 in 
 | 01 | 4 | Complete | 51m | 13m |
 | 02 | 2 | Complete | 20m | 10m |
 | 03 | 3 | Complete | 51m | 17m |
-| 04 | 1/3 | In Progress | 1m | 1m |
+| 04 | 2/3 | In Progress | 3m | 1.5m |
 
 **Recent Trend:**
-- 03-03: Complete - 45m (VolumeViewer refactor + bug fixes)
 - 04-01: Complete - 1m (NiiVue CDN + wrapper class)
-- Trend: Simple setup tasks fast, ready for integration work
+- 04-02: Complete - 2m (NiiVue integration + orientation menu)
+- Trend: Fast execution on well-planned tasks
 
 *Updated after each plan completion*
 
@@ -70,7 +70,7 @@ Recent decisions affecting current work:
 - Black background for empty windows — Medical imaging convention (prevents white flash)
 
 **From 03-02:**
-- JSON data script over inline attributes — Cleaner Django→JS data flow, avoids template filter complexity
+- JSON data script over inline attributes — Cleaner Django->JS data flow, avoids template filter complexity
 - Window state object pattern — Single source of truth for UI state, enables future persistence
 - Module pattern with public API — Encapsulated state (windowStates, loadModalityInWindow, clearWindow)
 
@@ -84,6 +84,12 @@ Recent decisions affecting current work:
 - ES6 class wrapper pattern — Clean API surface for viewer_grid.js integration
 - Single-view mode (multiplanar: false) — One view per grid window
 
+**From 04-02:**
+- Replace VolumeViewer with NiiVueViewer — Single-view NiiVue matches grid window design
+- Fetch blob before NiiVue init — NiiVue needs blob data, not URLs
+- Orientation menu as overlay — A/S/C buttons positioned top-right with z-index 20
+- stopPropagation on buttons — Prevents clicks from propagating to NiiVue canvas
+
 ### Pending Todos
 
 1. **Refactor VolumeViewer for modularity and async loading** (frontend)
@@ -93,11 +99,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-None - NiiVue setup complete, ready for viewer grid integration.
+None - NiiVue integration complete, viewer grid functional with orientation controls.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Completed 04-01-PLAN.md
-Stopped at: Plan 04-01 complete (NiiVue Setup)
-Resume file: .planning/phases/04-viewer-display/04-02-PLAN.md
-Next action: Execute 04-02 (Viewer Grid Integration)
+Last session: 2026-01-28 — Completed 04-02-PLAN.md
+Stopped at: Plan 04-02 complete (Viewer Grid Integration)
+Resume file: .planning/phases/04-viewer-display/04-03-PLAN.md
+Next action: Execute 04-03 (Brightness/Contrast Controls) or proceed to Phase 5
