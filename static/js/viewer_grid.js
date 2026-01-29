@@ -339,6 +339,9 @@ const ViewerGrid = (function() {
                     <button class="free-scroll-btn" title="Toggle free scroll">
                         <i class="fas fa-link"></i>
                     </button>
+                    <button class="reset-view-btn" title="Reset zoom and pan">
+                        <i class="fas fa-compress-arrows-alt"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -515,6 +518,18 @@ const ViewerGrid = (function() {
                 });
             }
 
+            // Attach Reset View button handler
+            const resetViewBtn = windowEl.querySelector('.reset-view-btn');
+            if (resetViewBtn) {
+                resetViewBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (viewer.nv) {
+                        viewer.nv.scene.pan2Dxyzmm = [0, 0, 0, 1];
+                        viewer.nv.drawScene();
+                    }
+                });
+            }
+
             // Custom scroll/zoom/pan handlers on canvas.
             // Use capture phase so we intercept before NiiVue's own handlers.
             const canvas = document.getElementById(canvasId);
@@ -529,8 +544,12 @@ const ViewerGrid = (function() {
                         const pan = nv.scene.pan2Dxyzmm;
                         const currentZoom = pan[3] || 1;
                         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-                        const newZoom = Math.max(0.5, Math.min(5, currentZoom * zoomFactor));
-                        nv.scene.pan2Dxyzmm = [pan[0], pan[1], pan[2], newZoom];
+                        const newZoom = Math.max(1, Math.min(5, currentZoom * zoomFactor));
+                        // Clamp existing pan to new zoom level
+                        const maxPan = Math.max(0, (newZoom - 1) / newZoom) * (canvas.clientWidth / 2);
+                        const clampedX = Math.max(-maxPan, Math.min(maxPan, pan[0]));
+                        const clampedY = Math.max(-maxPan, Math.min(maxPan, pan[1]));
+                        nv.scene.pan2Dxyzmm = [clampedX, clampedY, pan[2], newZoom];
                         nv.drawScene();
                     } else if (e.shiftKey) {
                         e.preventDefault();
@@ -566,7 +585,14 @@ const ViewerGrid = (function() {
                     const dy = e.clientY - panStart.y;
                     const nv = viewer.nv;
                     const pan = nv.scene.pan2Dxyzmm;
-                    nv.scene.pan2Dxyzmm = [pan[0] + dx, pan[1] - dy, pan[2], pan[3]];
+                    const zoom = pan[3] || 1;
+                    // Clamp pan so image edge can't go past canvas center.
+                    // At zoom 1x the image fills the view, so no pan is useful.
+                    // At higher zoom, allow proportional panning.
+                    const maxPan = Math.max(0, (zoom - 1) / zoom) * (canvas.clientWidth / 2);
+                    const newX = Math.max(-maxPan, Math.min(maxPan, pan[0] + dx));
+                    const newY = Math.max(-maxPan, Math.min(maxPan, pan[1] - dy));
+                    nv.scene.pan2Dxyzmm = [newX, newY, pan[2], zoom];
                     nv.drawScene();
                     panStart = { x: e.clientX, y: e.clientY };
                 }, { capture: true });
