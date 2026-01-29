@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 Phase: 5 of 5 (Viewer Synchronization) — COMPLETE
 Plan: 2 of 2 in current phase — COMPLETE
 Status: All phases complete. Milestone finished.
-Last activity: 2026-01-29 — Phase 5 verified and closed
+Last activity: 2026-01-29 — Completed quick task 001: Fix viewer pan limits, zoom, context menu
 
 Progress: [████████████████████] 100% (5/5 phases, 14/14 plans complete)
 
@@ -123,9 +123,15 @@ Recent decisions affecting current work:
 
 None — All 5 phases complete. Milestone finished.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | Fix viewer pan limits, zoom toward cursor, right-click context menu | 2026-01-29 | ef900a4 | [001-fix-viewer-pan-limits-zoom-context-menu](./quick/001-fix-viewer-pan-limits-zoom-context-menu/) |
+
 ## Session Continuity
 
-Last session: 2026-01-29 — Phase 5 complete, milestone finished
-Stopped at: All phases complete, milestone docs updated
+Last session: 2026-01-29 — Completed quick task 001: Fix viewer pan limits, zoom toward cursor, right-click context menu
+Stopped at: Quick task 001 complete
 Resume file: None
 Next action: Milestone audit (optional) or start next milestone
