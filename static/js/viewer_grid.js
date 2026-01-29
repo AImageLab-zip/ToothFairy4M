@@ -20,6 +20,21 @@ const ViewerGrid = (function() {
         3: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' }
     };
 
+    // Synchronization groups - windows viewing the same orientation scroll together
+    const synchronizationGroups = {
+        'axial': [],
+        'sagittal': [],
+        'coronal': []
+    };
+
+    // Free scroll state - tracks which windows have free-scroll enabled
+    const freeScrollWindows = {
+        0: false,
+        1: false,
+        2: false,
+        3: false
+    };
+
     // Global data from Django template
     let djangoData = {
         scanId: null,
@@ -45,6 +60,51 @@ const ViewerGrid = (function() {
         initContextMenus();
 
         console.log('ViewerGrid initialized', { djangoData, windowStates });
+    }
+
+    /**
+     * Update synchronization group membership for a window
+     * Removes from old group and adds to new group
+     * @param {number} windowIndex - 0-3 for grid position
+     * @param {string} newOrientation - 'axial', 'sagittal', or 'coronal'
+     */
+    function updateOrientationGroup(windowIndex, newOrientation) {
+        // Remove from all groups
+        for (const orientation in synchronizationGroups) {
+            const index = synchronizationGroups[orientation].indexOf(windowIndex);
+            if (index > -1) {
+                synchronizationGroups[orientation].splice(index, 1);
+            }
+        }
+
+        // Add to new group
+        if (synchronizationGroups[newOrientation]) {
+            synchronizationGroups[newOrientation].push(windowIndex);
+            console.log(`Window ${windowIndex} joined ${newOrientation} group:`, synchronizationGroups[newOrientation]);
+        }
+    }
+
+    /**
+     * Get consensus slice index for an orientation group
+     * Returns the slice index from the first ready viewer in the group
+     * @param {string} orientation - 'axial', 'sagittal', or 'coronal'
+     * @returns {number} Slice index, or 0 if no viewers ready
+     */
+    function getGroupConsensusSlice(orientation) {
+        const group = synchronizationGroups[orientation];
+        if (!group || group.length === 0) {
+            return 0;
+        }
+
+        // Find first ready viewer in group
+        for (const windowIndex of group) {
+            const viewer = windowStates[windowIndex].niivueInstance;
+            if (viewer && viewer.isReady() && !freeScrollWindows[windowIndex]) {
+                return viewer.getSliceIndex();
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -511,6 +571,17 @@ const ViewerGrid = (function() {
                 console.warn('Error disposing viewer:', e);
             }
         }
+
+        // Remove from synchronization groups
+        for (const orientation in synchronizationGroups) {
+            const index = synchronizationGroups[orientation].indexOf(windowIndex);
+            if (index > -1) {
+                synchronizationGroups[orientation].splice(index, 1);
+            }
+        }
+
+        // Reset free scroll state
+        freeScrollWindows[windowIndex] = false;
 
         // Reset state
         windowStates[windowIndex] = {
