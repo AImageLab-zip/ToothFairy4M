@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 Phase: 5 of 5 (Viewer Synchronization) — COMPLETE
 Plan: 2 of 2 in current phase — COMPLETE
 Status: All phases complete. Milestone finished.
-Last activity: 2026-01-29 — Completed quick task 001: Fix viewer pan limits, zoom, context menu
+Last activity: 2026-01-29 — Completed quick task 002: Add Alt+left click intensity adjustment
 
 Progress: [████████████████████] 100% (5/5 phases, 14/14 plans complete)
 
@@ -128,10 +128,11 @@ None — All 5 phases complete. Milestone finished.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 001 | Fix viewer pan limits, zoom toward cursor, right-click context menu | 2026-01-29 | ef900a4 | [001-fix-viewer-pan-limits-zoom-context-menu](./quick/001-fix-viewer-pan-limits-zoom-context-menu/) |
+| 002 | Add Alt+left click intensity adjustment (window/level) | 2026-01-29 | a9b9212 | [002-add-alt-click-intensity-square](./quick/002-add-alt-click-intensity-square/) |
 
 ## Session Continuity
 
-Last session: 2026-01-29 — Completed quick task 001: Fix viewer pan limits, zoom toward cursor, right-click context menu
-Stopped at: Quick task 001 complete
+Last session: 2026-01-29 — Completed quick task 002: Add Alt+left click intensity adjustment
+Stopped at: Quick task 002 complete
 Resume file: None
 Next action: Milestone audit (optional) or start next milestone
