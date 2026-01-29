@@ -534,6 +534,16 @@ const ViewerGrid = (function() {
             // Use capture phase so we intercept before NiiVue's own handlers.
             const canvas = document.getElementById(canvasId);
             if (canvas) {
+                // Disable NiiVue's default right-click behavior (intensity adjustment square)
+                canvas.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+
+                    // Show custom context menu at cursor position
+                    const rect = canvas.getBoundingClientRect();
+                    showViewerContextMenu(e.clientX, e.clientY, windowIndex, viewer);
+                }, { capture: true });
+
                 // Shift+scroll: fast navigation (5 slices per step)
                 // Ctrl+scroll: zoom in/out via setPan2Dxyzmm
                 canvas.addEventListener('wheel', (e) => {
@@ -545,10 +555,23 @@ const ViewerGrid = (function() {
                         const currentZoom = pan[3] || 1;
                         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                         const newZoom = Math.max(1, Math.min(5, currentZoom * zoomFactor));
-                        // Clamp existing pan to new zoom level
-                        const maxPan = Math.max(0, (newZoom - 1) / newZoom) * (canvas.clientWidth / 2);
-                        const clampedX = Math.max(-maxPan, Math.min(maxPan, pan[0]));
-                        const clampedY = Math.max(-maxPan, Math.min(maxPan, pan[1]));
+
+                        // Calculate mouse position relative to canvas center (in screen pixels)
+                        const rect = canvas.getBoundingClientRect();
+                        const mouseX = e.clientX - rect.left - rect.width / 2;
+                        const mouseY = e.clientY - rect.top - rect.height / 2;
+
+                        // Adjust pan to keep cursor position stationary during zoom
+                        // Formula: newPan = oldPan + mouseOffset * (1 - newZoom/oldZoom)
+                        const zoomRatio = newZoom / currentZoom;
+                        const newPanX = pan[0] + mouseX * (1 - zoomRatio);
+                        const newPanY = pan[1] - mouseY * (1 - zoomRatio); // Y inverted
+
+                        // Apply new clamping formula - image border cannot exceed half window width
+                        const maxPan = (canvas.clientWidth / 2) * (1 - 1/newZoom);
+                        const clampedX = Math.max(-maxPan, Math.min(maxPan, newPanX));
+                        const clampedY = Math.max(-maxPan, Math.min(maxPan, newPanY));
+
                         nv.scene.pan2Dxyzmm = [clampedX, clampedY, pan[2], newZoom];
                         nv.drawScene();
                     } else if (e.shiftKey) {
@@ -589,7 +612,7 @@ const ViewerGrid = (function() {
                     // Clamp pan so image edge can't go past canvas center.
                     // At zoom 1x the image fills the view, so no pan is useful.
                     // At higher zoom, allow proportional panning.
-                    const maxPan = Math.max(0, (zoom - 1) / zoom) * (canvas.clientWidth / 2);
+                    const maxPan = (canvas.clientWidth / 2) * (1 - 1/zoom);
                     const newX = Math.max(-maxPan, Math.min(maxPan, pan[0] + dx));
                     const newY = Math.max(-maxPan, Math.min(maxPan, pan[1] - dy));
                     nv.scene.pan2Dxyzmm = [newX, newY, pan[2], zoom];
@@ -728,22 +751,6 @@ const ViewerGrid = (function() {
      * Initialize context menus for clearing windows
      */
     function initContextMenus() {
-        const windows = document.querySelectorAll('.viewer-window');
-
-        windows.forEach(window => {
-            window.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-
-                const windowIndex = parseInt(window.dataset.windowIndex, 10);
-                const state = windowStates[windowIndex];
-
-                // Only show menu if window has content
-                if (state.modality) {
-                    showContextMenu(e.clientX, e.clientY, windowIndex);
-                }
-            });
-        });
-
         // Close context menu on click elsewhere
         document.addEventListener('click', () => {
             const existingMenu = document.getElementById('viewerContextMenu');
@@ -754,47 +761,133 @@ const ViewerGrid = (function() {
     }
 
     /**
-     * Show context menu at cursor position
+     * Show context menu for viewer window at cursor position
      */
-    function showContextMenu(x, y, windowIndex) {
+    function showViewerContextMenu(x, y, windowIndex, viewer) {
         // Remove existing menu
         const existingMenu = document.getElementById('viewerContextMenu');
         if (existingMenu) {
             existingMenu.remove();
         }
 
+        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+        const currentOrientation = windowStates[windowIndex].currentOrientation;
+        const isFreeScroll = freeScrollWindows[windowIndex];
+
         // Create menu
         const menu = document.createElement('div');
         menu.id = 'viewerContextMenu';
-        menu.style.cssText = `
-            position: fixed;
-            top: ${y}px;
-            left: ${x}px;
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            z-index: 1000;
-            min-width: 120px;
-        `;
+        menu.className = 'viewer-context-menu';
+        menu.style.top = `${y}px`;
+        menu.style.left = `${x}px`;
 
-        // Clear option
-        const clearOption = document.createElement('div');
-        clearOption.style.cssText = 'padding: 8px 16px; cursor: pointer; user-select: none;';
-        clearOption.innerHTML = '<i class="fas fa-times me-2"></i>Clear';
-        clearOption.addEventListener('mouseenter', () => {
-            clearOption.style.background = '#f8f9fa';
-        });
-        clearOption.addEventListener('mouseleave', () => {
-            clearOption.style.background = 'white';
-        });
-        clearOption.addEventListener('click', () => {
-            clearWindow(windowIndex);
-            menu.remove();
-        });
+        // Orientation section
+        const orientSection = document.createElement('div');
+        orientSection.className = 'context-menu-section';
+        orientSection.innerHTML = '<div class="context-menu-label">Orientation</div>';
 
-        menu.appendChild(clearOption);
+        const orientButtons = document.createElement('div');
+        orientButtons.className = 'context-menu-orientation-buttons';
+        ['axial', 'sagittal', 'coronal'].forEach(orient => {
+            const btn = document.createElement('button');
+            btn.textContent = orient[0].toUpperCase();
+            btn.className = 'context-menu-orient-btn' + (orient === currentOrientation ? ' active' : '');
+            btn.onclick = () => {
+                viewer.setOrientation(orient);
+                const menuBtns = windowEl.querySelectorAll('.orientation-btn');
+                menuBtns.forEach(b => b.classList.remove('active'));
+                const targetBtn = windowEl.querySelector(`.orientation-btn[data-orientation="${orient}"]`);
+                if (targetBtn) targetBtn.classList.add('active');
+                windowStates[windowIndex].currentOrientation = orient;
+                updateOrientationGroup(windowIndex, orient);
+                if (!freeScrollWindows[windowIndex]) {
+                    const consensusSlice = getGroupConsensusSlice(orient);
+                    viewer.setSliceIndex(consensusSlice);
+                }
+                menu.remove();
+            };
+            orientButtons.appendChild(btn);
+        });
+        orientSection.appendChild(orientButtons);
+        menu.appendChild(orientSection);
+
+        // Actions section
+        const actionsSection = document.createElement('div');
+        actionsSection.className = 'context-menu-section';
+
+        // Reset view option
+        const resetOption = createMenuOption(
+            'compress-arrows-alt',
+            'Reset View',
+            () => {
+                if (viewer.nv) {
+                    viewer.nv.scene.pan2Dxyzmm = [0, 0, 0, 1];
+                    viewer.nv.drawScene();
+                }
+                menu.remove();
+            }
+        );
+        actionsSection.appendChild(resetOption);
+
+        // Unlink/sync option
+        const unlinkOption = createMenuOption(
+            isFreeScroll ? 'link' : 'link-slash',
+            isFreeScroll ? 'Re-sync Scrolling' : 'Unlink (Free Scroll)',
+            () => {
+                freeScrollWindows[windowIndex] = !freeScrollWindows[windowIndex];
+                const freeScrollBtn = windowEl.querySelector('.free-scroll-btn');
+                if (freeScrollBtn) {
+                    const icon = freeScrollBtn.querySelector('i');
+                    if (freeScrollWindows[windowIndex]) {
+                        freeScrollBtn.classList.add('free-scroll-active');
+                        icon.classList.remove('fa-link');
+                        icon.classList.add('fa-link-slash');
+                    } else {
+                        freeScrollBtn.classList.remove('free-scroll-active');
+                        icon.classList.remove('fa-link-slash');
+                        icon.classList.add('fa-link');
+                        const consensusSlice = getGroupConsensusSlice(windowStates[windowIndex].currentOrientation);
+                        viewer.setSliceIndex(consensusSlice);
+                    }
+                }
+                menu.remove();
+            }
+        );
+        actionsSection.appendChild(unlinkOption);
+
+        // Clear window option
+        const clearOption = createMenuOption(
+            'times',
+            'Clear Window',
+            () => {
+                clearWindow(windowIndex);
+                menu.remove();
+            }
+        );
+        actionsSection.appendChild(clearOption);
+
+        menu.appendChild(actionsSection);
         document.body.appendChild(menu);
+
+        // Position menu to stay on screen
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            menu.style.left = `${x - rect.width}px`;
+        }
+        if (rect.bottom > window.innerHeight) {
+            menu.style.top = `${y - rect.height}px`;
+        }
+    }
+
+    /**
+     * Helper to create context menu option
+     */
+    function createMenuOption(iconClass, text, onClick) {
+        const option = document.createElement('div');
+        option.className = 'context-menu-option';
+        option.innerHTML = `<i class="fas fa-${iconClass} me-2"></i>${text}`;
+        option.onclick = onClick;
+        return option;
     }
 
     /**
