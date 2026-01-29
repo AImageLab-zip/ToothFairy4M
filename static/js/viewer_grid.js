@@ -59,7 +59,51 @@ const ViewerGrid = (function() {
         // Initialize context menus
         initContextMenus();
 
+        // Initialize synchronization system
+        initSynchronization();
+
         console.log('ViewerGrid initialized', { djangoData, windowStates });
+    }
+
+    /**
+     * Initialize synchronization event system
+     * Listens for sliceIndexChanged events and propagates to synchronized windows
+     */
+    function initSynchronization() {
+        window.addEventListener('sliceIndexChanged', (event) => {
+            const { windowIndex, sliceIndex, orientation } = event.detail;
+
+            // Skip if this window has free-scroll enabled
+            if (freeScrollWindows[windowIndex]) {
+                return;
+            }
+
+            // Get all other windows in the same orientation group
+            const group = synchronizationGroups[orientation];
+            if (!group) {
+                return;
+            }
+
+            // Propagate slice change to all other windows in group (except source)
+            for (const targetWindowIndex of group) {
+                if (targetWindowIndex === windowIndex) {
+                    continue; // Skip source window
+                }
+
+                // Skip if target has free-scroll enabled
+                if (freeScrollWindows[targetWindowIndex]) {
+                    continue;
+                }
+
+                const targetViewer = windowStates[targetWindowIndex].niivueInstance;
+                const targetOrientation = windowStates[targetWindowIndex].currentOrientation;
+
+                // Only sync if orientations match and viewer is ready
+                if (targetViewer && targetViewer.isReady() && targetOrientation === orientation) {
+                    targetViewer.setSliceIndex(sliceIndex);
+                }
+            }
+        });
     }
 
     /**
@@ -353,6 +397,24 @@ const ViewerGrid = (function() {
                 loadingDiv.style.display = 'none';
             }
 
+            // Attach slice change callback for synchronization
+            viewer.onSliceChange(() => {
+                const currentSliceIndex = viewer.getSliceIndex();
+                const currentOrientation = windowStates[windowIndex].currentOrientation;
+
+                // Dispatch custom event for synchronization system
+                window.dispatchEvent(new CustomEvent('sliceIndexChanged', {
+                    detail: {
+                        windowIndex: windowIndex,
+                        sliceIndex: currentSliceIndex,
+                        orientation: currentOrientation
+                    }
+                }));
+            });
+
+            // Add to synchronization group
+            updateOrientationGroup(windowIndex, windowStates[windowIndex].currentOrientation);
+
             // Attach orientation menu event handlers
             const menuBtns = windowEl.querySelectorAll('.orientation-btn');
             menuBtns.forEach(btn => {
@@ -363,6 +425,15 @@ const ViewerGrid = (function() {
                     menuBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     windowStates[windowIndex].currentOrientation = orientation;
+
+                    // Update synchronization group
+                    updateOrientationGroup(windowIndex, orientation);
+
+                    // Sync to group consensus slice (unless free-scrolling)
+                    if (!freeScrollWindows[windowIndex]) {
+                        const consensusSlice = getGroupConsensusSlice(orientation);
+                        viewer.setSliceIndex(consensusSlice);
+                    }
                 });
             });
 

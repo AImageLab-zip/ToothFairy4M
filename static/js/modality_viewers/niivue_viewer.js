@@ -25,6 +25,7 @@ class NiiVueViewer {
         this.initialized = false;
         this.currentOrientation = 'axial';
         this.modalitySlug = null;
+        this.onLocationChangeCallback = null;
     }
 
     /**
@@ -228,6 +229,24 @@ class NiiVueViewer {
     }
 
     /**
+     * Attach a callback for slice changes (wraps NiiVue's onLocationChange)
+     * @param {Function} callback - Function called when slice position changes
+     */
+    onSliceChange(callback) {
+        if (!this.nv) {
+            console.warn('NiiVueViewer: Cannot attach onSliceChange - viewer not initialized');
+            return;
+        }
+
+        this.onLocationChangeCallback = callback;
+        this.nv.onLocationChange = (msg) => {
+            if (this.onLocationChangeCallback) {
+                this.onLocationChangeCallback(msg);
+            }
+        };
+    }
+
+    /**
      * Force a redraw of the viewer
      */
     redraw() {
@@ -241,6 +260,12 @@ class NiiVueViewer {
      */
     dispose() {
         if (this.nv) {
+            // Clean up onLocationChange callback
+            if (this.onLocationChangeCallback) {
+                this.nv.onLocationChange = null;
+                this.onLocationChangeCallback = null;
+            }
+
             // Clear all volumes
             if (this.nv.volumes && this.nv.volumes.length > 0) {
                 this.nv.closeVolume(0);
