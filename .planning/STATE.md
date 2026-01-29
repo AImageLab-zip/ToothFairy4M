@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 4 re-verified — All phases complete
+**Current focus:** Phase 5 in progress — Viewer synchronization
 
 ## Current Position
 
-Phase: 4 of 5 (Viewer Display) — RE-VERIFIED ✓
-Plan: 3 of 3 in current phase
-Status: Phase 4 verified (NiiVue fix committed, 5/5 must-haves pass)
-Last activity: 2026-01-28 — Phase 4 re-executed and verified
+Phase: 5 of 5 (Viewer Synchronization) — IN PROGRESS
+Plan: 1 of 1 in current phase — COMPLETE
+Status: Phase 5 Plan 01 complete (synchronized scrolling implemented)
+Last activity: 2026-01-29 — Completed 05-01-PLAN.md
 
-Progress: [████████████████████] 100% (5/5 phases complete)
+Progress: [████████████████████] 100% (5/5 phases, 13/13 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 10 minutes
-- Total execution time: 2h 9m
+- Total execution time: 2h 13m
 
 **By Phase:**
 
@@ -31,11 +31,12 @@ Progress: [████████████████████] 100% (5
 | 02 | 2 | Complete | 20m | 10m |
 | 03 | 3 | Complete | 51m | 17m |
 | 04 | 3 | Complete | 8m | 2.7m |
+| 05 | 1 | Complete | 4m | 4m |
 
 **Recent Trend:**
-- 04-01: Complete - 1m (NiiVue CDN + wrapper class)
 - 04-02: Complete - 2m (NiiVue integration + orientation menu)
 - 04-03: Complete - 5m (Volume caching + error handling)
+- 05-01: Complete - 4m (Event-driven synchronization + free-scroll toggle)
 - Trend: Fast execution on well-planned tasks
 
 *Updated after each plan completion*
@@ -96,6 +97,11 @@ Recent decisions affecting current work:
 - Error messages mapped to HTTP codes — User-friendly messages for 404, 403, network errors
 - Removed volume_viewer.js from brain template — NiiVue handles all volume viewing
 
+**From 05-01:**
+- Event-driven synchronization via custom DOM events — Loose coupling between viewer instances
+- Group consensus from first ready viewer — Simple and predictable re-sync behavior
+- Yellow active state for free-scroll button — High-contrast visual feedback for sync status
+
 ### Pending Todos
 
 1. **Refactor VolumeViewer for modularity and async loading** (frontend)
@@ -105,11 +111,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-None — All phases complete. Milestone ready for audit.
+None — Phase 5 complete. All 5 phases complete. Milestone ready for final verification.
 
 ## Session Continuity
 
-Last session: 2026-01-28 — Phase 4 re-executed and verified
-Stopped at: All phases complete
+Last session: 2026-01-29 — Phase 5 Plan 01 executed
+Stopped at: Completed 05-01-PLAN.md (all phases complete)
 Resume file: None
-Next action: Audit milestone or complete milestone
+Next action: Phase 5 verification testing, then milestone audit
