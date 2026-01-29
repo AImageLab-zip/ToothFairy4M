@@ -71,7 +71,7 @@ const ViewerGrid = (function() {
      */
     function initSynchronization() {
         window.addEventListener('sliceIndexChanged', (event) => {
-            const { windowIndex, sliceIndex, orientation } = event.detail;
+            const { windowIndex, sliceIndex, orientation, crosshairPos } = event.detail;
 
             // Skip if this window has free-scroll enabled
             if (freeScrollWindows[windowIndex]) {
@@ -100,7 +100,22 @@ const ViewerGrid = (function() {
 
                 // Only sync if orientations match and viewer is ready
                 if (targetViewer && targetViewer.isReady() && targetOrientation === orientation) {
-                    targetViewer.setSliceIndex(sliceIndex);
+                    // Sync full crosshair position so red crossbars align
+                    if (crosshairPos && targetViewer.nv) {
+                        targetViewer.nv.scene.crosshairPos = [...crosshairPos];
+                        targetViewer.nv.updateGLVolume();
+                    } else {
+                        targetViewer.setSliceIndex(sliceIndex);
+                    }
+
+                    // Update target's slice counter
+                    const targetEl = document.querySelector(`.viewer-window[data-window-index="${targetWindowIndex}"]`);
+                    const targetCounter = targetEl ? targetEl.querySelector('.slice-counter') : null;
+                    if (targetCounter) {
+                        const total = targetViewer.getSliceCount();
+                        const idx = targetViewer.getSliceIndex();
+                        targetCounter.textContent = `${idx + 1} / ${total}`;
+                    }
                 }
             }
         });
@@ -400,23 +415,45 @@ const ViewerGrid = (function() {
                 loadingDiv.style.display = 'none';
             }
 
-            // Attach slice change callback for synchronization
+            // Attach slice change callback for synchronization and slice counter
             viewer.onSliceChange(() => {
                 const currentSliceIndex = viewer.getSliceIndex();
                 const currentOrientation = windowStates[windowIndex].currentOrientation;
+                const total = viewer.getSliceCount();
+
+                // Update slice counter display
+                const counter = windowEl.querySelector('.slice-counter');
+                if (counter) {
+                    counter.textContent = `${currentSliceIndex + 1} / ${total}`;
+                }
 
                 // Dispatch custom event for synchronization system
                 window.dispatchEvent(new CustomEvent('sliceIndexChanged', {
                     detail: {
                         windowIndex: windowIndex,
                         sliceIndex: currentSliceIndex,
-                        orientation: currentOrientation
+                        orientation: currentOrientation,
+                        crosshairPos: viewer.nv ? [...viewer.nv.scene.crosshairPos] : null
                     }
                 }));
             });
 
-            // Add to synchronization group
+            // Add to synchronization group and sync to existing group slice
             updateOrientationGroup(windowIndex, windowStates[windowIndex].currentOrientation);
+            if (!freeScrollWindows[windowIndex]) {
+                const consensusSlice = getGroupConsensusSlice(windowStates[windowIndex].currentOrientation);
+                if (consensusSlice > 0) {
+                    viewer.setSliceIndex(consensusSlice);
+                }
+            }
+
+            // Add slice counter element
+            const sliceCounter = document.createElement('div');
+            sliceCounter.className = 'slice-counter';
+            const currentSlice = viewer.getSliceIndex();
+            const totalSlices = viewer.getSliceCount();
+            sliceCounter.textContent = `${currentSlice + 1} / ${totalSlices}`;
+            windowEl.querySelector('.niivue-viewer-container').appendChild(sliceCounter);
 
             // Attach orientation menu event handlers
             const menuBtns = windowEl.querySelectorAll('.orientation-btn');
@@ -436,6 +473,14 @@ const ViewerGrid = (function() {
                     if (!freeScrollWindows[windowIndex]) {
                         const consensusSlice = getGroupConsensusSlice(orientation);
                         viewer.setSliceIndex(consensusSlice);
+                    }
+
+                    // Update slice counter for new orientation
+                    const counter = windowEl.querySelector('.slice-counter');
+                    if (counter) {
+                        const idx = viewer.getSliceIndex();
+                        const total = viewer.getSliceCount();
+                        counter.textContent = `${idx + 1} / ${total}`;
                     }
                 });
             });
@@ -471,6 +516,22 @@ const ViewerGrid = (function() {
                     }
 
                     console.log(`Window ${windowIndex} free-scroll: ${freeScrollWindows[windowIndex]}`);
+                });
+            }
+
+            // Add Shift+scroll for fast navigation (5 slices per step)
+            const canvas = document.getElementById(canvasId);
+            if (canvas) {
+                canvas.addEventListener('wheel', (e) => {
+                    if (e.shiftKey) {
+                        e.preventDefault();
+                        const step = e.deltaY > 0 ? 5 : -5;
+                        const current = viewer.getSliceIndex();
+                        const total = viewer.getSliceCount();
+                        const next = Math.max(0, Math.min(total - 1, current + step));
+                        viewer.setSliceIndex(next);
+                        viewer.nv.drawScene();
+                    }
                 });
             }
 
