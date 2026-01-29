@@ -71,45 +71,35 @@ const ViewerGrid = (function() {
      */
     function initSynchronization() {
         window.addEventListener('sliceIndexChanged', (event) => {
-            const { windowIndex, sliceIndex, orientation, crosshairPos } = event.detail;
+            const { windowIndex, crosshairPos } = event.detail;
 
-            // Skip if this window has free-scroll enabled
+            // Skip if source window has free-scroll enabled
             if (freeScrollWindows[windowIndex]) {
                 return;
             }
 
-            // Get all other windows in the same orientation group
-            const group = synchronizationGroups[orientation];
-            if (!group) {
+            if (!crosshairPos) {
                 return;
             }
 
-            // Propagate slice change to all other windows in group (except source)
-            for (const targetWindowIndex of group) {
-                if (targetWindowIndex === windowIndex) {
-                    continue; // Skip source window
-                }
-
-                // Skip if target has free-scroll enabled
-                if (freeScrollWindows[targetWindowIndex]) {
+            // Propagate 3D crosshair position to ALL windows (cross-orientation).
+            // Scrolling in coronal moves the crosshair line in axial/sagittal, etc.
+            for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
+                if (targetIdx === windowIndex) {
                     continue;
                 }
 
-                const targetViewer = windowStates[targetWindowIndex].niivueInstance;
-                const targetOrientation = windowStates[targetWindowIndex].currentOrientation;
+                if (freeScrollWindows[targetIdx]) {
+                    continue;
+                }
 
-                // Only sync if orientations match and viewer is ready
-                if (targetViewer && targetViewer.isReady() && targetOrientation === orientation) {
-                    // Sync full crosshair position so red crossbars align
-                    if (crosshairPos && targetViewer.nv) {
-                        targetViewer.nv.scene.crosshairPos = [...crosshairPos];
-                        targetViewer.nv.updateGLVolume();
-                    } else {
-                        targetViewer.setSliceIndex(sliceIndex);
-                    }
+                const targetViewer = windowStates[targetIdx].niivueInstance;
+                if (targetViewer && targetViewer.isReady() && targetViewer.nv) {
+                    targetViewer.nv.scene.crosshairPos = [...crosshairPos];
+                    targetViewer.nv.updateGLVolume();
 
                     // Update target's slice counter
-                    const targetEl = document.querySelector(`.viewer-window[data-window-index="${targetWindowIndex}"]`);
+                    const targetEl = document.querySelector(`.viewer-window[data-window-index="${targetIdx}"]`);
                     const targetCounter = targetEl ? targetEl.querySelector('.slice-counter') : null;
                     if (targetCounter) {
                         const total = targetViewer.getSliceCount();
