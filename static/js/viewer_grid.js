@@ -342,6 +342,9 @@ const ViewerGrid = (function() {
                     <button class="reset-view-btn" title="Reset zoom and pan">
                         <i class="fas fa-compress-arrows-alt"></i>
                     </button>
+                    <button class="crosshair-toggle-btn" title="Toggle crosshair">
+                        <i class="fas fa-crosshairs"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -530,18 +533,56 @@ const ViewerGrid = (function() {
                 });
             }
 
+            // Attach Crosshair Toggle button handler
+            const crosshairBtn = windowEl.querySelector('.crosshair-toggle-btn');
+            if (crosshairBtn) {
+                crosshairBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (viewer.nv) {
+                        const isVisible = viewer.nv.opts.crosshairWidth > 0;
+                        viewer.nv.opts.crosshairWidth = isVisible ? 0 : 1;
+                        viewer.nv.drawScene();
+                        crosshairBtn.classList.toggle('crosshair-hidden', isVisible);
+                    }
+                });
+            }
+
             // Custom scroll/zoom/pan handlers on canvas.
             // Use capture phase so we intercept before NiiVue's own handlers.
             const canvas = document.getElementById(canvasId);
             if (canvas) {
-                // Disable NiiVue's default right-click behavior (intensity adjustment square)
+                // Track Alt+right-click for intensity adjustment (window/level)
+                let isRightClickIntensity = false;
+
+                // Intercept right-click mousedown BEFORE NiiVue processes it.
+                // Without Alt: block NiiVue's drag (intensity square).
+                // With Alt: let NiiVue handle it for window/level adjustment.
+                canvas.addEventListener('mousedown', (e) => {
+                    if (e.button === 2) {
+                        if (e.altKey) {
+                            isRightClickIntensity = true;
+                        } else {
+                            e.stopImmediatePropagation();
+                        }
+                    }
+                }, { capture: true });
+
+                canvas.addEventListener('mouseup', (e) => {
+                    if (e.button === 2 && isRightClickIntensity) {
+                        isRightClickIntensity = false;
+                    }
+                });
+
+                // Handle contextmenu: always prevent browser menu,
+                // show custom menu only on regular right-click (not Alt+right-click)
                 canvas.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
-                    e.stopImmediatePropagation();
-
-                    // Show custom context menu at cursor position
-                    const rect = canvas.getBoundingClientRect();
-                    showViewerContextMenu(e.clientX, e.clientY, windowIndex, viewer);
+                    if (isRightClickIntensity) {
+                        isRightClickIntensity = false;
+                    } else {
+                        e.stopImmediatePropagation();
+                        showViewerContextMenu(e.clientX, e.clientY, windowIndex, viewer);
+                    }
                 }, { capture: true });
 
                 // Shift+scroll: fast navigation (5 slices per step)
@@ -629,27 +670,6 @@ const ViewerGrid = (function() {
                 canvas.addEventListener('mouseup', stopPan);
                 canvas.addEventListener('mouseleave', stopPan);
 
-                // Alt+left click: intensity adjustment (window/level)
-                let isAdjustingIntensity = false;
-
-                canvas.addEventListener('mousedown', (e) => {
-                    if (e.altKey && e.button === 0) {
-                        isAdjustingIntensity = true;
-                        viewer.nv.opts.dragMode = window.niivue.DRAG_MODE.contrast;
-                        canvas.style.cursor = 'crosshair';
-                        // Do NOT preventDefault - let NiiVue handle the drag
-                    }
-                }, { capture: true });
-
-                const stopIntensityAdjust = () => {
-                    if (isAdjustingIntensity) {
-                        isAdjustingIntensity = false;
-                        viewer.nv.opts.dragMode = window.niivue.DRAG_MODE.none;
-                        canvas.style.cursor = '';
-                    }
-                };
-                canvas.addEventListener('mouseup', stopIntensityAdjust);
-                canvas.addEventListener('mouseleave', stopIntensityAdjust);
             }
 
             // Mark window as loaded
@@ -850,6 +870,25 @@ const ViewerGrid = (function() {
             }
         );
         actionsSection.appendChild(resetOption);
+
+        // Toggle crosshair option
+        const crosshairVisible = viewer.nv ? viewer.nv.opts.crosshairWidth > 0 : true;
+        const crosshairOption = createMenuOption(
+            'crosshairs',
+            crosshairVisible ? 'Hide Crosshair' : 'Show Crosshair',
+            () => {
+                if (viewer.nv) {
+                    viewer.nv.opts.crosshairWidth = crosshairVisible ? 0 : 1;
+                    viewer.nv.drawScene();
+                    const crosshairBtn = windowEl.querySelector('.crosshair-toggle-btn');
+                    if (crosshairBtn) {
+                        crosshairBtn.classList.toggle('crosshair-hidden', crosshairVisible);
+                    }
+                }
+                menu.remove();
+            }
+        );
+        actionsSection.appendChild(crosshairOption);
 
         // Unlink/sync option
         const unlinkOption = createMenuOption(
