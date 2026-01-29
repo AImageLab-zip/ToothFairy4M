@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-26)
 
 ## Current Position
 
-Phase: 5 of 5 (Viewer Synchronization) — IN PROGRESS
-Plan: 1 of 1 in current phase — COMPLETE
-Status: Phase 5 Plan 01 complete (synchronized scrolling implemented)
-Last activity: 2026-01-29 — Completed 05-01-PLAN.md
+Phase: 5 of 5 (Viewer Synchronization) — COMPLETE
+Plan: 2 of 2 in current phase — COMPLETE
+Status: All phases complete. Milestone finished.
+Last activity: 2026-01-29 — Phase 5 verified and closed
 
-Progress: [████████████████████] 100% (5/5 phases, 13/13 plans complete)
+Progress: [████████████████████] 100% (5/5 phases, 14/14 plans complete)
 
 ## Performance Metrics
 
@@ -31,13 +31,13 @@ Progress: [████████████████████] 100% (5
 | 02 | 2 | Complete | 20m | 10m |
 | 03 | 3 | Complete | 51m | 17m |
 | 04 | 3 | Complete | 8m | 2.7m |
-| 05 | 1 | Complete | 4m | 4m |
+| 05 | 2 | Complete | ~60m | ~30m |
 
 **Recent Trend:**
-- 04-02: Complete - 2m (NiiVue integration + orientation menu)
 - 04-03: Complete - 5m (Volume caching + error handling)
 - 05-01: Complete - 4m (Event-driven synchronization + free-scroll toggle)
-- Trend: Fast execution on well-planned tasks
+- 05-02: Complete - ~55m (Human verification with iterative improvements)
+- Trend: Verification checkpoint drove significant user-feedback improvements
 
 *Updated after each plan completion*
 
@@ -102,6 +102,16 @@ Recent decisions affecting current work:
 - Group consensus from first ready viewer — Simple and predictable re-sync behavior
 - Yellow active state for free-scroll button — High-contrast visual feedback for sync status
 
+**From 05-02 (user verification):**
+- Full 3D crosshairPos sync across ALL windows — Not orientation-limited, standard medical imaging behavior
+- New modality adopts crosshair from existing synced windows on load — Maintains navigation context
+- Slice counter (n/total) in bottom-left of each window — Monospace font for readability
+- Ctrl+scroll zoom (1x to 5x) with capture-phase event interception — Overrides NiiVue's default scroll
+- Ctrl+drag pan with proportional clamping — No pan at 1x, max pan scales with zoom level
+- Shift+scroll fast navigation — 5 slices per step
+- Reset view button (compress-arrows icon) — Resets zoom and pan to defaults
+- `nv.scene.pan2Dxyzmm` is the correct NiiVue 0.67.0 property for pan/zoom state
+
 ### Pending Todos
 
 1. **Refactor VolumeViewer for modularity and async loading** (frontend)
@@ -111,11 +121,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-None — Phase 5 complete. All 5 phases complete. Milestone ready for final verification.
+None — All 5 phases complete. Milestone finished.
 
 ## Session Continuity
 
-Last session: 2026-01-29 — Phase 5 Plan 01 executed
-Stopped at: Completed 05-01-PLAN.md (all phases complete)
+Last session: 2026-01-29 — Phase 5 complete, milestone finished
+Stopped at: All phases complete, milestone docs updated
 Resume file: None
-Next action: Phase 5 verification testing, then milestone audit
+Next action: Milestone audit (optional) or start next milestone

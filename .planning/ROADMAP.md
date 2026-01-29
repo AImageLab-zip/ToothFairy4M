@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Brain Upload** - Enable T1/T2/FLAIR/T1c modality uploads
 - [x] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [x] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
-- [ ] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
+- [x] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
 
 ## Phase Details
 
@@ -102,8 +102,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Implement synchronization groups and event-driven slice propagation
-- [ ] 05-02-PLAN.md — Verify synchronized scrolling behavior
+- [x] 05-01-PLAN.md — Implement synchronization groups and event-driven slice propagation
+- [x] 05-02-PLAN.md — Verify synchronized scrolling behavior
 
 ## Progress
 
@@ -116,10 +116,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Brain Upload | 2/2 | Complete | 2026-01-28 |
 | 3. Viewer Grid | 3/3 | Complete | 2026-01-28 |
 | 4. Viewer Display | 3/3 | Complete | 2026-01-28 |
-| 5. Viewer Synchronization | 0/2 | In Progress | - |
+| 5. Viewer Synchronization | 2/2 | Complete | 2026-01-29 |
 
 ## Summary
 
-Phase 4 (Viewer Display) has been completed and verified. The NiiVue library is successfully integrated with the 2x2 viewer grid, enabling multi-plane volume navigation with orientation controls and volume caching.
-
-Phase 5 (Viewer Synchronization) is ready for execution. This phase will implement synchronized scrolling across windows viewing the same orientation, with per-window free-scroll toggle capability for independent examination when needed.
+All 5 phases of the Brain Viewer milestone are complete. Phase 5 delivered synchronized scrolling with full 3D crosshair coordination across all orientations, per-window free-scroll toggle, slice counter, zoom/pan controls, and fast navigation. The milestone provides a complete multi-specialty medical imaging viewer for brain MRI comparison workflows.

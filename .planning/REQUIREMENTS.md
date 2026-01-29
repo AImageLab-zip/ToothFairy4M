@@ -9,29 +9,29 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Refactoring
 
-- [ ] **REF-01**: Consolidate MaxilloUserProfile and BrainUserProfile into ProjectAccess with role field
-- [ ] **REF-02**: Remove can_view and can_upload fields from ProjectAccess (roles handle permissions)
-- [ ] **REF-03**: Update all permission checks to use ProjectAccess.role instead of UserProfile methods
-- [ ] **REF-04**: Remove UserProfile models and related signals after migration
-- [ ] **REF-05**: Update middleware to resolve roles from ProjectAccess instead of UserProfile
+- [x] **REF-01**: Consolidate MaxilloUserProfile and BrainUserProfile into ProjectAccess with role field
+- [x] **REF-02**: Remove can_view and can_upload fields from ProjectAccess (roles handle permissions)
+- [x] **REF-03**: Update all permission checks to use ProjectAccess.role instead of UserProfile methods
+- [x] **REF-04**: Remove UserProfile models and related signals after migration
+- [x] **REF-05**: Update middleware to resolve roles from ProjectAccess instead of UserProfile
 
 ### Brain Upload
 
-- [ ] **UPL-01**: Brain project supports T1 modality upload (nii.gz format)
-- [ ] **UPL-02**: Brain project supports T2 modality upload (nii.gz format)
-- [ ] **UPL-03**: Brain project supports FLAIR modality upload (nii.gz format)
-- [ ] **UPL-04**: Brain project supports T1c modality upload (nii.gz format)
-- [ ] **UPL-05**: Uploaded brain modalities are immediately available (no processing job required)
-- [ ] **UPL-06**: FileRegistry correctly tracks brain modality files with appropriate file_type
+- [x] **UPL-01**: Brain project supports T1 modality upload (nii.gz format)
+- [x] **UPL-02**: Brain project supports T2 modality upload (nii.gz format)
+- [x] **UPL-03**: Brain project supports FLAIR modality upload (nii.gz format)
+- [x] **UPL-04**: Brain project supports T1c modality upload (nii.gz format)
+- [x] **UPL-05**: Uploaded brain modalities are immediately available (no processing job required)
+- [x] **UPL-06**: FileRegistry correctly tracks brain modality files with appropriate file_type
 
 ### Brain Viewer Grid
 
-- [ ] **GRID-01**: Patient detail page shows 2x2 grid of viewer windows for brain project
-- [ ] **GRID-02**: Windows start empty when page loads
-- [ ] **GRID-03**: Modality list (T1/T2/FLAIR/T1c) displayed as draggable elements
-- [ ] **GRID-04**: User can drag modality from list and drop into any window
-- [ ] **GRID-05**: Window displays the dropped modality's volume
-- [ ] **GRID-06**: User can replace modality in window by dropping different one
+- [x] **GRID-01**: Patient detail page shows 2x2 grid of viewer windows for brain project
+- [x] **GRID-02**: Windows start empty when page loads
+- [x] **GRID-03**: Modality list (T1/T2/FLAIR/T1c) displayed as draggable elements
+- [x] **GRID-04**: User can drag modality from list and drop into any window
+- [x] **GRID-05**: Window displays the dropped modality's volume
+- [x] **GRID-06**: User can replace modality in window by dropping different one
 
 ### Brain Viewer Display
 
@@ -43,11 +43,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Brain Viewer Synchronization
 
-- [ ] **SYNC-01**: Windows showing same orientation are synchronized by default
-- [ ] **SYNC-02**: Scrolling in one synchronized window scrolls all others to same slice
-- [ ] **SYNC-03**: Per-window "Free Scroll" toggle button to break synchronization
-- [ ] **SYNC-04**: Clicking "Free Scroll" again re-syncs window to current group slice
-- [ ] **SYNC-05**: Windows with different orientations operate independently
+- [x] **SYNC-01**: Windows showing same orientation are synchronized by default
+- [x] **SYNC-02**: Scrolling in one synchronized window scrolls all others to same slice
+- [x] **SYNC-03**: Per-window "Free Scroll" toggle button to break synchronization
+- [x] **SYNC-04**: Clicking "Free Scroll" again re-syncs window to current group slice
+- [x] **SYNC-05**: Windows with different orientations operate independently
 
 ## v2 Requirements
 
@@ -106,11 +106,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DISP-03 | Phase 4 | Complete |
 | DISP-04 | Phase 4 | Complete |
 | DISP-05 | Phase 4 | Complete |
-| SYNC-01 | Phase 5 | Pending |
-| SYNC-02 | Phase 5 | Pending |
-| SYNC-03 | Phase 5 | Pending |
-| SYNC-04 | Phase 5 | Pending |
-| SYNC-05 | Phase 5 | Pending |
+| SYNC-01 | Phase 5 | Complete |
+| SYNC-02 | Phase 5 | Complete |
+| SYNC-03 | Phase 5 | Complete |
+| SYNC-04 | Phase 5 | Complete |
+| SYNC-05 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 22 total
@@ -119,4 +119,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-01-26*
-*Last updated: 2026-01-28 after Phase 4 completion*
+*Last updated: 2026-01-29 after Phase 5 completion*
