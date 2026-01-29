@@ -515,9 +515,11 @@ const ViewerGrid = (function() {
                 });
             }
 
-            // Add Shift+scroll for fast navigation (5 slices per step)
+            // Custom scroll/zoom/pan handlers on canvas
             const canvas = document.getElementById(canvasId);
             if (canvas) {
+                // Shift+scroll: fast navigation (5 slices per step)
+                // Ctrl+scroll: zoom in/out
                 canvas.addEventListener('wheel', (e) => {
                     if (e.shiftKey) {
                         e.preventDefault();
@@ -527,8 +529,50 @@ const ViewerGrid = (function() {
                         const next = Math.max(0, Math.min(total - 1, current + step));
                         viewer.setSliceIndex(next);
                         viewer.nv.drawScene();
+                    } else if (e.ctrlKey) {
+                        e.preventDefault();
+                        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                        const currentZoom = viewer.nv.volScaleMultiplier || 1;
+                        const newZoom = Math.max(0.5, Math.min(5, currentZoom * zoomFactor));
+                        viewer.nv.volScaleMultiplier = newZoom;
+                        viewer.nv.drawScene();
                     }
                 });
+
+                // Ctrl+drag: pan the view
+                let isPanning = false;
+                let panStart = { x: 0, y: 0 };
+
+                canvas.addEventListener('mousedown', (e) => {
+                    if (e.ctrlKey && e.button === 0) {
+                        isPanning = true;
+                        panStart = { x: e.clientX, y: e.clientY };
+                        e.preventDefault();
+                        canvas.style.cursor = 'grabbing';
+                    }
+                });
+
+                canvas.addEventListener('mousemove', (e) => {
+                    if (!isPanning) return;
+                    e.preventDefault();
+                    const dx = e.clientX - panStart.x;
+                    const dy = e.clientY - panStart.y;
+                    const nv = viewer.nv;
+                    // Pan offset is in screen pixels
+                    nv.opts.pan2Dxyzmm[0] = (nv.opts.pan2Dxyzmm[0] || 0) + dx;
+                    nv.opts.pan2Dxyzmm[1] = (nv.opts.pan2Dxyzmm[1] || 0) - dy;
+                    nv.drawScene();
+                    panStart = { x: e.clientX, y: e.clientY };
+                });
+
+                const stopPan = () => {
+                    if (isPanning) {
+                        isPanning = false;
+                        canvas.style.cursor = '';
+                    }
+                };
+                canvas.addEventListener('mouseup', stopPan);
+                canvas.addEventListener('mouseleave', stopPan);
             }
 
             // Mark window as loaded
