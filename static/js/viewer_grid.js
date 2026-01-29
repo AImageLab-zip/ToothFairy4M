@@ -628,6 +628,28 @@ const ViewerGrid = (function() {
                 };
                 canvas.addEventListener('mouseup', stopPan);
                 canvas.addEventListener('mouseleave', stopPan);
+
+                // Alt+left click: intensity adjustment (window/level)
+                let isAdjustingIntensity = false;
+
+                canvas.addEventListener('mousedown', (e) => {
+                    if (e.altKey && e.button === 0) {
+                        isAdjustingIntensity = true;
+                        viewer.nv.opts.dragMode = window.niivue.DRAG_MODE.contrast;
+                        canvas.style.cursor = 'crosshair';
+                        // Do NOT preventDefault - let NiiVue handle the drag
+                    }
+                }, { capture: true });
+
+                const stopIntensityAdjust = () => {
+                    if (isAdjustingIntensity) {
+                        isAdjustingIntensity = false;
+                        viewer.nv.opts.dragMode = window.niivue.DRAG_MODE.none;
+                        canvas.style.cursor = '';
+                    }
+                };
+                canvas.addEventListener('mouseup', stopIntensityAdjust);
+                canvas.addEventListener('mouseleave', stopIntensityAdjust);
             }
 
             // Mark window as loaded
