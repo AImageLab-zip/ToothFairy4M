@@ -526,11 +526,12 @@ const ViewerGrid = (function() {
                         e.preventDefault();
                         e.stopImmediatePropagation();
                         const nv = viewer.nv;
-                        const pan = nv.uiData.pan2Dxyzmm;
+                        const pan = nv.scene.pan2Dxyzmm;
                         const currentZoom = pan[3] || 1;
                         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                         const newZoom = Math.max(0.5, Math.min(5, currentZoom * zoomFactor));
-                        nv.setPan2Dxyzmm([pan[0], pan[1], pan[2], newZoom]);
+                        nv.scene.pan2Dxyzmm = [pan[0], pan[1], pan[2], newZoom];
+                        nv.drawScene();
                     } else if (e.shiftKey) {
                         e.preventDefault();
                         e.stopImmediatePropagation();
@@ -564,8 +565,9 @@ const ViewerGrid = (function() {
                     const dx = e.clientX - panStart.x;
                     const dy = e.clientY - panStart.y;
                     const nv = viewer.nv;
-                    const pan = nv.uiData.pan2Dxyzmm;
-                    nv.setPan2Dxyzmm([pan[0] + dx, pan[1] - dy, pan[2], pan[3]]);
+                    const pan = nv.scene.pan2Dxyzmm;
+                    nv.scene.pan2Dxyzmm = [pan[0] + dx, pan[1] - dy, pan[2], pan[3]];
+                    nv.drawScene();
                     panStart = { x: e.clientX, y: e.clientY };
                 }, { capture: true });
 
