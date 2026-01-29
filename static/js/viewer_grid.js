@@ -331,6 +331,9 @@ const ViewerGrid = (function() {
                     <button class="orientation-btn active" data-orientation="axial">A</button>
                     <button class="orientation-btn" data-orientation="sagittal">S</button>
                     <button class="orientation-btn" data-orientation="coronal">C</button>
+                    <button class="free-scroll-btn" title="Toggle free scroll">
+                        <i class="fas fa-link"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -436,6 +439,40 @@ const ViewerGrid = (function() {
                     }
                 });
             });
+
+            // Attach Free Scroll button handler
+            const freeScrollBtn = windowEl.querySelector('.free-scroll-btn');
+            if (freeScrollBtn) {
+                freeScrollBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent click from reaching NiiVue canvas
+
+                    // Toggle free-scroll state
+                    freeScrollWindows[windowIndex] = !freeScrollWindows[windowIndex];
+
+                    // Update button appearance
+                    const icon = freeScrollBtn.querySelector('i');
+                    if (freeScrollWindows[windowIndex]) {
+                        // Free-scroll enabled (unlinked)
+                        freeScrollBtn.classList.add('free-scroll-active');
+                        icon.classList.remove('fa-link');
+                        icon.classList.add('fa-link-slash');
+                        freeScrollBtn.title = 'Re-sync scrolling';
+                    } else {
+                        // Free-scroll disabled (re-sync)
+                        freeScrollBtn.classList.remove('free-scroll-active');
+                        icon.classList.remove('fa-link-slash');
+                        icon.classList.add('fa-link');
+                        freeScrollBtn.title = 'Toggle free scroll';
+
+                        // Re-sync to group consensus slice
+                        const currentOrientation = windowStates[windowIndex].currentOrientation;
+                        const consensusSlice = getGroupConsensusSlice(currentOrientation);
+                        viewer.setSliceIndex(consensusSlice);
+                    }
+
+                    console.log(`Window ${windowIndex} free-scroll: ${freeScrollWindows[windowIndex]}`);
+                });
+            }
 
             // Mark window as loaded
             windowEl.classList.add('loaded');
