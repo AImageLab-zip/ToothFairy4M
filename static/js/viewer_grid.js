@@ -515,31 +515,35 @@ const ViewerGrid = (function() {
                 });
             }
 
-            // Custom scroll/zoom/pan handlers on canvas
+            // Custom scroll/zoom/pan handlers on canvas.
+            // Use capture phase so we intercept before NiiVue's own handlers.
             const canvas = document.getElementById(canvasId);
             if (canvas) {
                 // Shift+scroll: fast navigation (5 slices per step)
-                // Ctrl+scroll: zoom in/out
+                // Ctrl+scroll: zoom in/out via setPan2Dxyzmm
                 canvas.addEventListener('wheel', (e) => {
-                    if (e.shiftKey) {
+                    if (e.ctrlKey) {
                         e.preventDefault();
+                        e.stopImmediatePropagation();
+                        const nv = viewer.nv;
+                        const pan = nv.uiData.pan2Dxyzmm;
+                        const currentZoom = pan[3] || 1;
+                        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                        const newZoom = Math.max(0.5, Math.min(5, currentZoom * zoomFactor));
+                        nv.setPan2Dxyzmm([pan[0], pan[1], pan[2], newZoom]);
+                    } else if (e.shiftKey) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
                         const step = e.deltaY > 0 ? 5 : -5;
                         const current = viewer.getSliceIndex();
                         const total = viewer.getSliceCount();
                         const next = Math.max(0, Math.min(total - 1, current + step));
                         viewer.setSliceIndex(next);
                         viewer.nv.drawScene();
-                    } else if (e.ctrlKey) {
-                        e.preventDefault();
-                        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-                        const currentZoom = viewer.nv.volScaleMultiplier || 1;
-                        const newZoom = Math.max(0.5, Math.min(5, currentZoom * zoomFactor));
-                        viewer.nv.volScaleMultiplier = newZoom;
-                        viewer.nv.drawScene();
                     }
-                });
+                }, { capture: true });
 
-                // Ctrl+drag: pan the view
+                // Ctrl+drag: pan the view via setPan2Dxyzmm
                 let isPanning = false;
                 let panStart = { x: 0, y: 0 };
 
@@ -548,22 +552,22 @@ const ViewerGrid = (function() {
                         isPanning = true;
                         panStart = { x: e.clientX, y: e.clientY };
                         e.preventDefault();
+                        e.stopImmediatePropagation();
                         canvas.style.cursor = 'grabbing';
                     }
-                });
+                }, { capture: true });
 
                 canvas.addEventListener('mousemove', (e) => {
                     if (!isPanning) return;
                     e.preventDefault();
+                    e.stopImmediatePropagation();
                     const dx = e.clientX - panStart.x;
                     const dy = e.clientY - panStart.y;
                     const nv = viewer.nv;
-                    // Pan offset is in screen pixels
-                    nv.opts.pan2Dxyzmm[0] = (nv.opts.pan2Dxyzmm[0] || 0) + dx;
-                    nv.opts.pan2Dxyzmm[1] = (nv.opts.pan2Dxyzmm[1] || 0) - dy;
-                    nv.drawScene();
+                    const pan = nv.uiData.pan2Dxyzmm;
+                    nv.setPan2Dxyzmm([pan[0] + dx, pan[1] - dy, pan[2], pan[3]]);
                     panStart = { x: e.clientX, y: e.clientY };
-                });
+                }, { capture: true });
 
                 const stopPan = () => {
                     if (isPanning) {
