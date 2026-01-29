@@ -428,12 +428,18 @@ const ViewerGrid = (function() {
                 }));
             });
 
-            // Add to synchronization group and sync to existing group slice
+            // Add to synchronization group and adopt crosshair from any existing window
             updateOrientationGroup(windowIndex, windowStates[windowIndex].currentOrientation);
             if (!freeScrollWindows[windowIndex]) {
-                const consensusSlice = getGroupConsensusSlice(windowStates[windowIndex].currentOrientation);
-                if (consensusSlice > 0) {
-                    viewer.setSliceIndex(consensusSlice);
+                // Find any other ready viewer and copy its full 3D crosshair position
+                for (let i = 0; i < 4; i++) {
+                    if (i === windowIndex) continue;
+                    const other = windowStates[i].niivueInstance;
+                    if (other && other.isReady() && other.nv && !freeScrollWindows[i]) {
+                        viewer.nv.scene.crosshairPos = [...other.nv.scene.crosshairPos];
+                        viewer.nv.updateGLVolume();
+                        break;
+                    }
                 }
             }
 
