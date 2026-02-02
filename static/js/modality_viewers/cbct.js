@@ -201,7 +201,7 @@ window.CBCTViewer = {
             console.debug('Volume data already loading or loaded');
             return;
         }
-        
+
         console.debug('Loading volume data...');
         this.loading = true;
 
@@ -213,6 +213,63 @@ window.CBCTViewer = {
         if (loadEl) loadEl.style.display = 'block';
         if (viewsEl) viewsEl.style.display = 'none';
 
+        // --- Check preload cache (from VolumeLoader.preload) ---
+        const self = this;
+        const cacheKey = (window.scanId || 'unknown') + ':' + (this.targetModality || 'cbct');
+        const cache = window._volumePreloadCache || {};
+        const cacheEntry = cache[cacheKey];
+
+        if (cacheEntry && cacheEntry.status === 'ready' && cacheEntry.result) {
+            // Cache HIT: use preloaded data immediately
+            console.debug('CBCTViewer: preload cache HIT for', cacheKey);
+            const result = cacheEntry.result;
+            this.volumeData = result.volumeData;
+            this.dimensions = result.dimensions;
+            this.spacing = result.spacing;
+            this.histogram = result.histogram;
+            this.initializeViewers();
+            this.initialized = true;
+            this.loading = false;
+            const idSlug2 = this.targetModality || 'cbct';
+            const loadEl2 = document.getElementById(this.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Loading') : 'cbctLoading'));
+            const viewsEl2 = document.getElementById(this.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Views') : 'cbctViews'));
+            if (loadEl2) loadEl2.style.display = 'none';
+            if (viewsEl2) viewsEl2.style.display = 'block';
+            return;
+        }
+
+        if (cacheEntry && cacheEntry.status === 'loading' && cacheEntry.promise) {
+            // Cache IN-FLIGHT: subscribe to pending preload promise
+            console.debug('CBCTViewer: preload in-flight for', cacheKey, '- subscribing');
+            cacheEntry.promise
+                .then(result => {
+                    self.volumeData = result.volumeData;
+                    self.dimensions = result.dimensions;
+                    self.spacing = result.spacing;
+                    self.histogram = result.histogram;
+                    self.initializeViewers();
+                    self.initialized = true;
+                    self.loading = false;
+                    const idSlug2 = self.targetModality || 'cbct';
+                    const loadEl2 = document.getElementById(self.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Loading') : 'cbctLoading'));
+                    const viewsEl2 = document.getElementById(self.containerPrefix + (idSlug2 !== 'cbct' ? (idSlug2 + 'Views') : 'cbctViews'));
+                    if (loadEl2) loadEl2.style.display = 'none';
+                    if (viewsEl2) viewsEl2.style.display = 'block';
+                })
+                .catch(errObj => {
+                    self.loading = false;
+                    if (errObj && errObj.type === 'processing') {
+                        self.showError(errObj.message || 'CBCT is being processed. Please check back later.', 'info');
+                    } else if (errObj && errObj.type === 'failed') {
+                        self.showError(errObj.message || 'CBCT processing failed.', 'danger');
+                    } else {
+                        self.showError('Failed to load volume data');
+                    }
+                });
+            return;
+        }
+
+        // --- Cache MISS: perform fresh fetch ---
         // Fetch volume data (CBCT vs generic)
         const url = (this.targetModality && this.targetModality !== 'cbct')
             ? `/${window.projectNamespace}/api/patient/${window.scanId}/volume/${this.targetModality}/`
@@ -239,7 +296,7 @@ window.CBCTViewer = {
             })
             .then(async compressedData => {
                 console.debug('Compressed CBCT data loaded, size:', compressedData.byteLength);
-                
+
                 try {
                     if (nifti.isCompressed(compressedData)) {
                         console.debug('Decompressing gzipped NIFTI data...');
@@ -263,7 +320,7 @@ window.CBCTViewer = {
             .catch(error => {
                 console.error('Error loading CBCT data:', error);
                 this.loading = false;
-                
+
                 if (error.message.startsWith('processing:')) {
                     const message = error.message.substring('processing:'.length);
                     this.showError(message || 'CBCT is being processed. Please check back later.', 'info');
