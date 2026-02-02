@@ -30,6 +30,9 @@
 {# Core volume rendering #}
 <script src="{% static 'js/volume_renderer.js' %}"></script>
 
+{# Volume loading (preload cache + Web Worker support) #}
+<script src="{% static 'js/modality_viewers/volume_loader.js' %}"></script>
+
 {# Modality-specific viewers #}
 <script src="{% static 'js/modality_viewers/ios.js' %}"></script>
 <script src="{% static 'js/modality_viewers/cbct.js' %}"></script>

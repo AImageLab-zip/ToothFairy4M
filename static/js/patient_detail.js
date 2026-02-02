@@ -603,7 +603,12 @@ document.addEventListener('DOMContentLoaded', function() {
     console.debug('Scan ID:', window.scanId);
     console.debug('Has CBCT:', window.hasCBCT);
     console.debug('Is CBCT processed:', window.isCBCTProcessed);
-    
+
+    // Preload CBCT volume in background (fetches + parses off main thread)
+    if (window.hasCBCT && window.isCBCTProcessed && typeof window.VolumeLoader !== 'undefined') {
+        window.VolumeLoader.preload('cbct');
+    }
+
     // Initialize modality viewers
     if (window.hasIOS && typeof window.IOSViewer !== 'undefined') {
         console.debug('Initializing IOS viewer');
