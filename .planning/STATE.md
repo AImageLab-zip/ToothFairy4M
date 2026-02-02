@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 5 in progress — Viewer synchronization
+**Current focus:** Phase 6 — VolumeViewer Refactoring
 
 ## Current Position
 
-Phase: 5 of 5 (Viewer Synchronization) — COMPLETE
-Plan: 2 of 2 in current phase — COMPLETE
-Status: All phases complete. Milestone finished.
-Last activity: 2026-01-29 — Completed quick task 003: Fix right-click intensity, add crosshair toggle
+Phase: 6 of 6 (VolumeViewer Refactoring) — IN PROGRESS
+Plan: 1 of 3 in current phase
+Status: Executing phase 6
+Last activity: 2026-02-02 — Completed 06-01-PLAN.md (modular split)
 
-Progress: [████████████████████] 100% (5/5 phases, 14/14 plans complete)
+Progress: [████████████████░░░░] 83% (5/6 phases complete, 1/3 plans in phase 6)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 10 minutes
-- Total execution time: 2h 13m
+- Total plans completed: 15
+- Average duration: ~10 minutes
+- Total execution time: ~2h 19m
 
 **By Phase:**
 
@@ -32,12 +32,12 @@ Progress: [████████████████████] 100% (5
 | 03 | 3 | Complete | 51m | 17m |
 | 04 | 3 | Complete | 8m | 2.7m |
 | 05 | 2 | Complete | ~60m | ~30m |
+| 06 | 1/3 | In Progress | 5.5m | 5.5m |
 
 **Recent Trend:**
-- 04-03: Complete - 5m (Volume caching + error handling)
-- 05-01: Complete - 4m (Event-driven synchronization + free-scroll toggle)
 - 05-02: Complete - ~55m (Human verification with iterative improvements)
-- Trend: Verification checkpoint drove significant user-feedback improvements
+- 06-01: Complete - 5.5m (Modular split of VolumeViewer)
+- Trend: Refactoring plans execute faster than feature plans
 
 *Updated after each plan completion*
 
@@ -112,16 +112,22 @@ Recent decisions affecting current work:
 - Reset view button (compress-arrows icon) — Resets zoom and pan to defaults
 - `nv.scene.pan2Dxyzmm` is the correct NiiVue 0.67.0 property for pan/zoom state
 
+**From 06-01:**
+- IIFE + window globals for module pattern — Django script-tag constraint, no bundler
+- Constructor-prototype pattern in modules — Consistent with project patterns
+- Delegation orchestrator for VolumeViewer — Thin coordinator delegates to focused modules
+- Crosshair `_addLine()` helper — DRY refactor of repetitive crosshair line creation
+
 ### Pending Todos
 
-1. **Refactor VolumeViewer for modularity and async loading** (frontend)
-   - Split large monolithic file into focused modules
-   - Use Web Workers for background volume loading
-   - Preload volumes on page load
+1. **Web Workers for background volume loading** (frontend, 06-02)
+   - VolumeLoader is now isolated and ready for Worker extraction
+2. **Preload volumes on page load** (frontend, 06-03)
+   - VolumeLoader can be invoked independently before viewer init
 
 ### Blockers/Concerns
 
-None — All 5 phases complete. Milestone finished.
+None — Phase 6 plan 1 complete, plans 2 and 3 ready to execute.
 
 ### Quick Tasks Completed
 
@@ -133,7 +139,7 @@ None — All 5 phases complete. Milestone finished.
 
 ## Session Continuity
 
-Last session: 2026-01-29 — Completed quick task 003: Fix right-click intensity, add crosshair toggle
-Stopped at: Quick task 003 complete
+Last session: 2026-02-02 — Completed 06-01-PLAN.md (modular split of VolumeViewer)
+Stopped at: Plan 06-01 complete
 Resume file: None
-Next action: Milestone audit (optional) or start next milestone
+Next action: Execute 06-02-PLAN.md (Web Workers for background loading)
