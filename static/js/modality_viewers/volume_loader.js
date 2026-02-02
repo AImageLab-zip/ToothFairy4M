@@ -47,6 +47,17 @@
         window._volumePreloadCache = {};
     }
 
+    /**
+     * Path to the Web Worker script.
+     * Set to null to disable Worker-based parsing (falls back to main thread).
+     */
+    var WORKER_URL = '/static/js/worker/volume_worker.js';
+
+    /**
+     * Detect Web Worker support once.
+     */
+    var _workerSupported = (typeof Worker !== 'undefined');
+
     function VolumeLoader() {
         this.loading = false;
     }
@@ -127,7 +138,7 @@
             })
             .then(function (compressedData) {
                 console.debug('VolumeLoader.preload: data received for', key, 'size:', compressedData.byteLength);
-                return loader._decompress(compressedData).then(function (raw) { return loader._parseNifti(raw); });
+                return loader._parseWithWorker(compressedData);
             })
             .then(function (result) {
                 entry.result = result;
@@ -273,7 +284,7 @@
             })
             .then(function (compressedData) {
                 console.debug('VolumeLoader: compressed data received, size:', compressedData.byteLength);
-                return self._decompress(compressedData).then(function (raw) { return self._parseNifti(raw); });
+                return self._parseWithWorker(compressedData);
             })
             .then(function (result) {
                 self.loading = false;
@@ -304,8 +315,70 @@
     };
 
     /**
+     * Parse NIfTI data using a Web Worker (off main thread).
+     * Sends the compressed/raw ArrayBuffer to the Worker via Transferable,
+     * receives the parsed result with zero-copy Float32Array transfer.
+     *
+     * Falls back to main-thread parsing if Workers are unsupported.
+     *
+     * @param {ArrayBuffer} compressedData - Raw or gzipped NIfTI data
+     * @returns {Promise<{volumeData: Float32Array, dimensions: {x,y,z}, spacing: {x,y,z}, histogram: {min,max}}>}
+     */
+    VolumeLoader.prototype._parseWithWorker = function (compressedData) {
+        var self = this;
+
+        if (!_workerSupported || !WORKER_URL) {
+            console.debug('VolumeLoader: Worker not available, using main-thread parsing');
+            return self._decompress(compressedData).then(function (raw) { return self._parseNifti(raw); });
+        }
+
+        return new Promise(function (resolve, reject) {
+            var worker;
+            try {
+                worker = new Worker(WORKER_URL);
+            } catch (e) {
+                console.warn('VolumeLoader: Worker creation failed, falling back to main thread:', e.message);
+                self._decompress(compressedData)
+                    .then(function (raw) { resolve(self._parseNifti(raw)); })
+                    .catch(reject);
+                return;
+            }
+
+            worker.onmessage = function (e) {
+                var msg = e.data;
+                if (msg.type === 'result') {
+                    console.debug('VolumeLoader: Worker parsing complete');
+                    worker.terminate();
+                    resolve(msg.data);
+                } else if (msg.type === 'error') {
+                    console.warn('VolumeLoader: Worker error:', msg.message);
+                    worker.terminate();
+                    reject(new Error(msg.message));
+                } else if (msg.type === 'log') {
+                    // Forward Worker log messages
+                    console[msg.level || 'debug']('VolumeLoader [Worker]:', msg.message);
+                }
+            };
+
+            worker.onerror = function (e) {
+                console.warn('VolumeLoader: Worker runtime error, falling back to main thread');
+                worker.terminate();
+                // Fallback: re-parse on main thread
+                self._decompress(compressedData)
+                    .then(function (raw) { resolve(self._parseNifti(raw)); })
+                    .catch(reject);
+            };
+
+            // Transfer the ArrayBuffer to the Worker (zero-copy)
+            console.debug('VolumeLoader: sending', compressedData.byteLength, 'bytes to Worker');
+            worker.postMessage({ type: 'parse', buffer: compressedData }, [compressedData]);
+        });
+    };
+
+    /**
      * Decompress gzipped NIfTI data if needed.
      * Uses micro-task yielding to avoid blocking the UI thread.
+     * Main-thread fallback when Worker is unavailable.
      * @param {ArrayBuffer} compressedData
      * @returns {Promise<ArrayBuffer>}
      */
