@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Clinicians can quickly visualize and compare multiple MRI modalities side-by-side with synchronized navigation, enabling efficient diagnostic workflows.
-**Current focus:** Phase 6 — VolumeViewer Refactoring
+**Current focus:** Milestone Complete — All 6 phases done
 
 ## Current Position
 
-Phase: 6 of 6 (VolumeViewer Refactoring) — IN PROGRESS
-Plan: 1 of 3 in current phase
-Status: Executing phase 6
-Last activity: 2026-02-02 — Completed 06-01-PLAN.md (modular split)
+Phase: 6 of 6 (VolumeViewer Refactoring) — COMPLETE
+Plan: 3 of 3 in current phase
+Status: All phases complete
+Last activity: 2026-02-02 — Completed 06-02 and 06-03 (Worker + preloading)
 
-Progress: [████████████████░░░░] 83% (5/6 phases complete, 1/3 plans in phase 6)
+Progress: [████████████████████] 100% (6/6 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 17
 - Average duration: ~10 minutes
-- Total execution time: ~2h 19m
+- Total execution time: ~2h 30m
 
 **By Phase:**
 
@@ -32,11 +32,12 @@ Progress: [████████████████░░░░] 83% (5/
 | 03 | 3 | Complete | 51m | 17m |
 | 04 | 3 | Complete | 8m | 2.7m |
 | 05 | 2 | Complete | ~60m | ~30m |
-| 06 | 1/3 | In Progress | 5.5m | 5.5m |
+| 06 | 3 | Complete | ~11m | ~3.7m |
 
 **Recent Trend:**
-- 05-02: Complete - ~55m (Human verification with iterative improvements)
 - 06-01: Complete - 5.5m (Modular split of VolumeViewer)
+- 06-02: Complete - ~3m (Web Worker for background NIfTI parsing)
+- 06-03: Complete - ~3m (Preload cache + DOMContentLoaded trigger)
 - Trend: Refactoring plans execute faster than feature plans
 
 *Updated after each plan completion*
@@ -118,16 +119,23 @@ Recent decisions affecting current work:
 - Delegation orchestrator for VolumeViewer — Thin coordinator delegates to focused modules
 - Crosshair `_addLine()` helper — DRY refactor of repetitive crosshair line creation
 
+**From 06-02:**
+- Web Worker with `self.window = self` shim for nifti-reader.js — Workers have no window global
+- Transferable ArrayBuffer for zero-copy data return — Avoids cloning large Float32Arrays
+- Automatic fallback to main-thread parsing — Graceful degradation if Worker unavailable
+
+**From 06-03:**
+- Preload cache keyed by `scanId:modalitySlug` — Shared between VolumeLoader.preload() and cbct.js
+- Promise-based subscription for in-flight cache entries — No duplicate requests
+- DOMContentLoaded preload only if CBCT available and processed — Avoids unnecessary fetches
+
 ### Pending Todos
 
-1. **Web Workers for background volume loading** (frontend, 06-02)
-   - VolumeLoader is now isolated and ready for Worker extraction
-2. **Preload volumes on page load** (frontend, 06-03)
-   - VolumeLoader can be invoked independently before viewer init
+None — All milestone phases complete.
 
 ### Blockers/Concerns
 
-None — Phase 6 plan 1 complete, plans 2 and 3 ready to execute.
+None — Milestone complete.
 
 ### Quick Tasks Completed
 
@@ -139,7 +147,7 @@ None — Phase 6 plan 1 complete, plans 2 and 3 ready to execute.
 
 ## Session Continuity
 
-Last session: 2026-02-02 — Completed 06-01-PLAN.md (modular split of VolumeViewer)
-Stopped at: Plan 06-01 complete
+Last session: 2026-02-02 — Completed all Phase 6 plans (modular split, Worker, preloading)
+Stopped at: Milestone complete
 Resume file: None
-Next action: Execute 06-02-PLAN.md (Web Workers for background loading)
+Next action: /gsd:complete-milestone or /gsd:new-milestone

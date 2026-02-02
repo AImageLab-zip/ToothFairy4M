@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Viewer Grid** - Build 2x2 grid with drag-drop modality loading
 - [x] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
 - [x] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
+- [x] **Phase 6: VolumeViewer Refactoring** - Modular architecture and async loading
 
 ## Phase Details
 
@@ -108,7 +109,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-----|----------------|--------|-----|--|
@@ -117,7 +118,24 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. Viewer Grid | 3/3 | Complete | 2026-01-28 |
 | 4. Viewer Display | 3/3 | Complete | 2026-01-28 |
 | 5. Viewer Synchronization | 2/2 | Complete | 2026-01-29 |
+| 6. VolumeViewer Refactoring | 3/3 | Complete | 2026-02-02 |
 
 ## Summary
 
-All 5 phases of the Brain Viewer milestone are complete. Phase 5 delivered synchronized scrolling with full 3D crosshair coordination across all orientations, per-window free-scroll toggle, slice counter, zoom/pan controls, and fast navigation. The milestone provides a complete multi-specialty medical imaging viewer for brain MRI comparison workflows.
+All 6 phases of the Brain Viewer milestone are complete. The milestone delivers a complete multi-specialty medical imaging viewer with brain MRI comparison workflows, modular VolumeViewer architecture, Web Worker-based background parsing, and volume preloading for instant viewer initialization.
+
+### Phase 6: VolumeViewer Refactoring
+**Goal**: Modular architecture and async loading for improved maintainability and performance
+**Depends on**: Phase 5
+**Requirements**: MOD-01, MOD-02, MOD-03, MOD-04
+**Success Criteria** (what must be TRUE):
+  1. VolumeViewer code is split into smaller focused modules (volume-loader.js, slice-renderer.js, volume-interaction.js, windowing.js, volume-viewer.js)
+  2. Volume loading uses Web Workers for background processing
+  3. Volumes preload on page load for faster user experience
+  4. Code maintainability and testability are improved
+**Plans**: 3 plans
+
+Plans:
+- [x] 06-01-PLAN.md — Split monolithic VolumeViewer into modular components
+- [x] 06-02-PLAN.md — Implement Web Workers for background volume loading
+- [x] 06-03-PLAN.md — Add volume preloading and performance optimization
