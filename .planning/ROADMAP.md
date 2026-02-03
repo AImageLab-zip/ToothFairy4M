@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Viewer Display** - Integrate NiiVue for multi-plane volume viewing
 - [x] **Phase 5: Viewer Synchronization** - Synchronized scrolling across windows
 - [x] **Phase 6: VolumeViewer Refactoring** - Modular architecture and async loading
+- [ ] **Phase 7: Maxillo NiiVue Migration** - Replace Three.js cbct.js with NiiVue-based viewer
 
 ## Phase Details
 
@@ -109,7 +110,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-----|----------------|--------|-----|--|
@@ -119,6 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 4. Viewer Display | 3/3 | Complete | 2026-01-28 |
 | 5. Viewer Synchronization | 2/2 | Complete | 2026-01-29 |
 | 6. VolumeViewer Refactoring | 3/3 | Complete | 2026-02-02 |
+| 7. Maxillo NiiVue Migration | 0/4 | Pending | - |
 
 ## Summary
 
@@ -139,3 +141,22 @@ Plans:
 - [x] 06-01-PLAN.md — Split monolithic VolumeViewer into modular components
 - [x] 06-02-PLAN.md — Implement Web Workers for background volume loading
 - [x] 06-03-PLAN.md — Add volume preloading and performance optimization
+
+### Phase 7: Maxillo NiiVue Migration
+**Goal**: Replace Three.js-based CBCT viewer with NiiVue for unified codebase and optimized performance
+**Depends on**: Phase 6
+**Requirements**: MIG-01, MIG-02, MIG-03, MIG-04, MIG-05
+**Success Criteria** (what must be TRUE):
+  1. Maxillo CBCT viewer uses NiiVue instead of Three.js for volume rendering
+  2. Fixed 2x2 layout shows Axial, Sagittal, Coronal, and 3D placeholder views
+  3. Cross-view synchronization works (scrolling in one view updates crosshairs in others)
+  4. Panoramic view remains as a separate 2D image (not NiiVue)
+  5. Performance is improved (rAF throttling, drawScene instead of full re-render)
+  6. Windowing controls continue to function for adjusting contrast
+**Plans**: 4 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Create MaxilloNiiVueViewer class with windowing adapter
+- [ ] 07-02-PLAN.md — Update Maxillo templates for NiiVue integration
+- [ ] 07-03-PLAN.md — Complete interactions and human verification
+- [ ] 07-04-PLAN.md — Clean up legacy Three.js code
