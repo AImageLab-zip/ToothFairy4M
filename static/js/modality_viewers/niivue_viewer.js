@@ -256,6 +256,96 @@ class NiiVueViewer {
     }
 
     /**
+     * Set windowing using percent-based values (0-100%)
+     * Maps percent range to NiiVue's calMin/calMax based on volume's data range.
+     * @param {number} percentMin - Lower window percent (0-100)
+     * @param {number} percentMax - Upper window percent (0-100)
+     */
+    setWindowing(percentMin, percentMax) {
+        if (!this.nv || !this.initialized) {
+            console.warn('NiiVueViewer: Cannot set windowing - viewer not initialized');
+            return;
+        }
+
+        const volumes = this.nv.volumes;
+        if (!volumes || volumes.length === 0) {
+            console.warn('NiiVueViewer: Cannot set windowing - no volume loaded');
+            return;
+        }
+
+        const volume = volumes[0];
+        const dataMin = volume.global_min;
+        const dataMax = volume.global_max;
+
+        // Clamp and order percent values
+        const pMin = Math.max(0, Math.min(100, percentMin));
+        const pMax = Math.max(0, Math.min(100, percentMax));
+        const lowP = Math.min(pMin, pMax);
+        const highP = Math.max(pMin, pMax);
+
+        // Map percent to absolute data values
+        volume.cal_min = dataMin + (dataMax - dataMin) * (lowP / 100);
+        volume.cal_max = dataMin + (dataMax - dataMin) * (highP / 100);
+
+        // Trigger GPU shader update
+        this.nv.updateGLVolume();
+    }
+
+    /**
+     * Get current windowing as percent values
+     * @returns {{percentMin: number, percentMax: number}} Current windowing in percent
+     */
+    getWindowing() {
+        if (!this.nv || !this.initialized) {
+            return { percentMin: 0, percentMax: 100 };
+        }
+
+        const volumes = this.nv.volumes;
+        if (!volumes || volumes.length === 0) {
+            return { percentMin: 0, percentMax: 100 };
+        }
+
+        const volume = volumes[0];
+        const dataMin = volume.global_min;
+        const dataMax = volume.global_max;
+        const dataRange = dataMax - dataMin;
+
+        if (dataRange <= 0) {
+            return { percentMin: 0, percentMax: 100 };
+        }
+
+        // Map calMin/calMax back to percent
+        const percentMin = ((volume.cal_min - dataMin) / dataRange) * 100;
+        const percentMax = ((volume.cal_max - dataMin) / dataRange) * 100;
+
+        return {
+            percentMin: Math.max(0, Math.min(100, percentMin)),
+            percentMax: Math.max(0, Math.min(100, percentMax))
+        };
+    }
+
+    /**
+     * Get the volume's actual data range
+     * @returns {{min: number, max: number}} Volume's global min and max values
+     */
+    getDataRange() {
+        if (!this.nv || !this.initialized) {
+            return { min: 0, max: 1 };
+        }
+
+        const volumes = this.nv.volumes;
+        if (!volumes || volumes.length === 0) {
+            return { min: 0, max: 1 };
+        }
+
+        const volume = volumes[0];
+        return {
+            min: volume.global_min,
+            max: volume.global_max
+        };
+    }
+
+    /**
      * Dispose of the viewer and clean up resources
      */
     dispose() {
