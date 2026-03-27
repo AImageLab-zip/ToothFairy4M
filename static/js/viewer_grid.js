@@ -8,9 +8,12 @@
 const ViewerGrid = (function() {
     'use strict';
 
+    let isInitialized = false;
+
     // Cache for fetched volume blobs (keyed by fileId)
     // Note: Cache persists across window clears for network optimization
     const volumeCache = {};
+    const volumeFetchPromises = {};
 
     // Window state for 4 grid positions
     const windowStates = {
@@ -35,11 +38,44 @@ const ViewerGrid = (function() {
         3: false
     };
 
+    // rAF-throttled synchronization state — coalesces multiple crosshair
+    // updates per frame into a single sync pass using drawScene() instead
+    // of the heavier updateGLVolume().
+    let _syncRAF = null;
+    let _isSyncing = false;
+    let _syncSourceWindow = -1;
+    const _syncCrosshairPos = [0, 0, 0];
+
+    const TOOL_IDS = {
+        NONE: 'none',
+        MEASURE: 'measure'
+    };
+
+    const toolRegistry = {};
+    let activeTool = TOOL_IDS.NONE;
+
+    const measurementState = {
+        pendingStartPoint: null,
+        measurements: [],
+        nextId: 1
+    };
+
+    const measurementOverlayState = {
+        0: { projected: [], hover: null },
+        1: { projected: [], hover: null },
+        2: { projected: [], hover: null },
+        3: { projected: [], hover: null }
+    };
+
     // Global data from Django template
     let djangoData = {
         scanId: null,
         projectNamespace: null,
-        modalityFiles: {}
+        modalityFiles: {},
+        fixedMode: false,
+        enableDragDrop: true,
+        enableContextMenu: true,
+        allowClearWindow: true
     };
 
     /**
@@ -47,68 +83,622 @@ const ViewerGrid = (function() {
      * Called on DOMContentLoaded for brain project pages
      */
     function init() {
+        if (isInitialized) {
+            return;
+        }
+
         // Load Django data from template script
         loadDjangoData();
 
         // Populate file IDs on modality chips
         populateChipFileIds();
 
-        // Initialize drag-drop interaction
-        initDragDrop();
+        // Initialize drag-drop interaction (disabled in fixed layouts)
+        if (djangoData.enableDragDrop) {
+            initDragDrop();
+        }
 
-        // Initialize context menus
+        // Initialize context menu lifecycle handlers (outside-click close, etc.)
         initContextMenus();
 
         // Initialize synchronization system
         initSynchronization();
 
+        // Initialize tool system (measurement and future tools)
+        initToolSystem();
+
+        window.addEventListener('resize', () => {
+            renderMeasurementOverlays();
+        });
+
+        isInitialized = true;
         console.log('ViewerGrid initialized', { djangoData, windowStates });
     }
 
+    function initToolSystem() {
+        registerMeasurementTool();
+        initGlobalToolbar();
+        updateToolbarState();
+    }
+
+    function registerTool(toolId, toolDefinition) {
+        toolRegistry[toolId] = toolDefinition;
+    }
+
+    function setActiveTool(toolId) {
+        const nextTool = (toolId && toolRegistry[toolId]) ? toolId : TOOL_IDS.NONE;
+        if (nextTool === activeTool) {
+            if (toolRegistry[activeTool] && typeof toolRegistry[activeTool].onDeactivate === 'function') {
+                toolRegistry[activeTool].onDeactivate();
+            }
+            activeTool = TOOL_IDS.NONE;
+        } else {
+            if (toolRegistry[activeTool] && typeof toolRegistry[activeTool].onDeactivate === 'function') {
+                toolRegistry[activeTool].onDeactivate();
+            }
+            activeTool = nextTool;
+        }
+
+        updateToolbarState();
+        updateToolCursors();
+        renderMeasurementOverlays();
+    }
+
+    function updateToolbarState() {
+        const measureButtons = document.querySelectorAll('.viewer-tool-btn[data-tool="measure"]');
+        measureButtons.forEach((button) => {
+            button.classList.toggle('active', activeTool === TOOL_IDS.MEASURE);
+            button.setAttribute('aria-pressed', activeTool === TOOL_IDS.MEASURE ? 'true' : 'false');
+        });
+
+        const statusEls = document.querySelectorAll('.viewer-tool-status');
+        let statusText = 'Tool: None';
+        if (activeTool === TOOL_IDS.MEASURE) {
+            statusText = measurementState.pendingStartPoint
+                ? 'Measure: select second point'
+                : 'Measure: select first point';
+        }
+        statusEls.forEach((el) => {
+            el.textContent = statusText;
+        });
+    }
+
+    function updateToolCursors() {
+        const windows = document.querySelectorAll('.viewer-window');
+        windows.forEach((windowEl) => {
+            windowEl.classList.toggle('measure-tool-active', activeTool === TOOL_IDS.MEASURE);
+        });
+    }
+
+    function initGlobalToolbar() {
+        const grids = document.querySelectorAll('.viewer-grid');
+        grids.forEach((gridEl) => {
+            if (!gridEl || gridEl.previousElementSibling && gridEl.previousElementSibling.classList.contains('viewer-tools-bar')) {
+                return;
+            }
+
+            const toolbar = document.createElement('div');
+            toolbar.className = 'viewer-tools-bar';
+            toolbar.innerHTML = `
+                <div class="viewer-tools-left">
+                    <button type="button" class="viewer-tool-btn" data-tool="measure" title="Distance measurement">
+                        <i class="fas fa-ruler"></i>
+                    </button>
+                    <button type="button" class="viewer-tool-btn" data-tool-action="clear-measurements" title="Clear measurements">
+                        <i class="fas fa-eraser"></i>
+                    </button>
+                </div>
+                <div class="viewer-tool-status">Tool: None</div>
+            `;
+
+            const measureBtn = toolbar.querySelector('[data-tool="measure"]');
+            if (measureBtn) {
+                measureBtn.addEventListener('click', () => {
+                    setActiveTool(TOOL_IDS.MEASURE);
+                });
+            }
+
+            const clearBtn = toolbar.querySelector('[data-tool-action="clear-measurements"]');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    measurementState.pendingStartPoint = null;
+                    measurementState.measurements = [];
+                    for (let i = 0; i < 4; i++) {
+                        measurementOverlayState[i].hover = null;
+                    }
+                    updateToolbarState();
+                    renderMeasurementOverlays();
+                });
+            }
+
+            gridEl.parentNode.insertBefore(toolbar, gridEl);
+        });
+    }
+
+    function orientationToSliceType(viewer, orientation) {
+        if (!viewer || !viewer.nv) {
+            return null;
+        }
+        if (orientation === 'axial') {
+            return viewer.nv.sliceTypeAxial;
+        }
+        if (orientation === 'sagittal') {
+            return viewer.nv.sliceTypeSagittal;
+        }
+        return viewer.nv.sliceTypeCoronal;
+    }
+
+    function getCanvasPixelPosition(event, canvas, viewer) {
+        if (!canvas || !viewer || !viewer.nv) {
+            return null;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const dpr = (viewer.nv.uiData && viewer.nv.uiData.dpr) ? viewer.nv.uiData.dpr : (window.devicePixelRatio || 1);
+        return [
+            (event.clientX - rect.left) * dpr,
+            (event.clientY - rect.top) * dpr
+        ];
+    }
+
+    function getWorldMMAtEvent(event, canvas, viewer) {
+        if (!viewer || !viewer.nv) {
+            return null;
+        }
+
+        const pixelPosition = getCanvasPixelPosition(event, canvas, viewer);
+        if (!pixelPosition) {
+            return null;
+        }
+
+        const frac = viewer.nv.canvasPos2frac(pixelPosition);
+        if (!frac || frac[0] < 0 || frac[1] < 0 || frac[2] < 0) {
+            return null;
+        }
+
+        const mm = viewer.nv.frac2mm(frac);
+        if (!mm || Number.isNaN(mm[0]) || Number.isNaN(mm[1]) || Number.isNaN(mm[2])) {
+            return null;
+        }
+
+        return [Number(mm[0]), Number(mm[1]), Number(mm[2])];
+    }
+
+    function projectMMToCanvas(windowIndex, viewer, pointMM) {
+        if (!viewer || !viewer.nv || !pointMM) {
+            return null;
+        }
+
+        const preferredSliceType = orientationToSliceType(viewer, windowStates[windowIndex].currentOrientation);
+        const frac = viewer.nv.mm2frac(pointMM);
+        const canvasPosition = viewer.nv.frac2canvasPosWithTile(frac, preferredSliceType);
+
+        if (!canvasPosition || !canvasPosition.pos) {
+            return null;
+        }
+
+        return [canvasPosition.pos[0], canvasPosition.pos[1]];
+    }
+
+    function isPrimaryUnmodifiedClick(event) {
+        return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+    }
+
+    function registerMeasurementTool() {
+        registerTool(TOOL_IDS.MEASURE, {
+            onPrimaryClick: ({ windowIndex, event, canvas, viewer }) => {
+                if (!viewer || !viewer.nv) {
+                    return false;
+                }
+
+                const pixelPosition = getCanvasPixelPosition(event, canvas, viewer);
+                if (!pixelPosition) {
+                    return false;
+                }
+
+                const frac = viewer.nv.canvasPos2frac(pixelPosition);
+                if (!frac || frac[0] < 0 || frac[1] < 0 || frac[2] < 0) {
+                    return false;
+                }
+
+                const mm = viewer.nv.frac2mm(frac);
+                const currentPoint = {
+                    windowIndex: windowIndex,
+                    pointMM: [Number(mm[0]), Number(mm[1]), Number(mm[2])]
+                };
+
+                if (!measurementState.pendingStartPoint) {
+                    measurementState.pendingStartPoint = currentPoint;
+                    updateToolbarState();
+                    renderMeasurementOverlays();
+                    return true;
+                }
+
+                const start = measurementState.pendingStartPoint.pointMM;
+                const end = currentPoint.pointMM;
+                const dx = end[0] - start[0];
+                const dy = end[1] - start[1];
+                const dz = end[2] - start[2];
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                measurementState.measurements.push({
+                    id: measurementState.nextId++,
+                    startMM: start,
+                    endMM: end,
+                    distanceMM: distance,
+                    createdAt: Date.now()
+                });
+
+                measurementState.pendingStartPoint = null;
+                updateToolbarState();
+                renderMeasurementOverlays();
+                return true;
+            },
+            onDeactivate: () => {
+                measurementState.pendingStartPoint = null;
+                updateToolbarState();
+            }
+        });
+    }
+
+    function drawDottedLine(ctx, x1, y1, x2, y2, dpr) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 230, 120, 0.95)';
+        ctx.lineWidth = Math.max(1.5, 2 * dpr);
+        ctx.setLineDash([6 * dpr, 6 * dpr]);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawMeasurementPoint(ctx, x, y, dpr, highlighted) {
+        ctx.save();
+        ctx.fillStyle = highlighted ? 'rgba(255, 249, 160, 1)' : 'rgba(255, 230, 120, 0.95)';
+        ctx.strokeStyle = 'rgba(20, 20, 20, 0.95)';
+        ctx.lineWidth = Math.max(1, dpr);
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(3, 3.5 * dpr), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawTooltip(ctx, text, x, y, dpr) {
+        ctx.save();
+        ctx.font = `${Math.max(11, 12 * dpr)}px monospace`;
+        const paddingX = 6 * dpr;
+        const paddingY = 4 * dpr;
+        const textWidth = ctx.measureText(text).width;
+        const boxWidth = textWidth + paddingX * 2;
+        const boxHeight = 18 * dpr;
+        const boxX = x + 10 * dpr;
+        const boxY = y - 10 * dpr - boxHeight;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = Math.max(1, dpr * 0.8);
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+        ctx.fillText(text, boxX + paddingX, boxY + boxHeight - paddingY - 2 * dpr);
+        ctx.restore();
+    }
+
+    function formatDistance(distanceMM) {
+        if (distanceMM >= 100) {
+            return `${distanceMM.toFixed(0)} mm`;
+        }
+        if (distanceMM >= 10) {
+            return `${distanceMM.toFixed(1)} mm`;
+        }
+        return `${distanceMM.toFixed(2)} mm`;
+    }
+
+    function distancePointToSegment(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        if (dx === 0 && dy === 0) {
+            const ddx = px - x1;
+            const ddy = py - y1;
+            return Math.sqrt(ddx * ddx + ddy * ddy);
+        }
+        const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        const sx = px - projX;
+        const sy = py - projY;
+        return Math.sqrt(sx * sx + sy * sy);
+    }
+
+    function projectMeasurementToWindow(windowIndex, viewer, measurement) {
+        if (!viewer || !viewer.nv) {
+            return null;
+        }
+        const preferredSliceType = orientationToSliceType(viewer, windowStates[windowIndex].currentOrientation);
+        const startFrac = viewer.nv.mm2frac(measurement.startMM);
+        const endFrac = viewer.nv.mm2frac(measurement.endMM);
+        const startCanvas = viewer.nv.frac2canvasPosWithTile(startFrac, preferredSliceType);
+        const endCanvas = viewer.nv.frac2canvasPosWithTile(endFrac, preferredSliceType);
+
+        if (!startCanvas || !endCanvas || !startCanvas.pos || !endCanvas.pos) {
+            return null;
+        }
+
+        return {
+            id: measurement.id,
+            distanceMM: measurement.distanceMM,
+            startPx: [startCanvas.pos[0], startCanvas.pos[1]],
+            endPx: [endCanvas.pos[0], endCanvas.pos[1]]
+        };
+    }
+
+    function renderMeasurementOverlayForWindow(windowIndex) {
+        const state = windowStates[windowIndex];
+        if (!state || !state.niivueInstance || !state.niivueInstance.isReady()) {
+            return;
+        }
+
+        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+        if (!windowEl) {
+            return;
+        }
+
+        const baseCanvas = windowEl.querySelector('.niivue-canvas');
+        const overlayCanvas = windowEl.querySelector('.measurement-overlay');
+        if (!baseCanvas || !overlayCanvas) {
+            return;
+        }
+
+        if (overlayCanvas.width !== baseCanvas.width || overlayCanvas.height !== baseCanvas.height) {
+            overlayCanvas.width = baseCanvas.width;
+            overlayCanvas.height = baseCanvas.height;
+        }
+
+        const ctx = overlayCanvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        const dpr = (state.niivueInstance.nv.uiData && state.niivueInstance.nv.uiData.dpr)
+            ? state.niivueInstance.nv.uiData.dpr
+            : (window.devicePixelRatio || 1);
+
+        const projected = [];
+        measurementState.measurements.forEach((measurement) => {
+            const projectedMeasurement = projectMeasurementToWindow(windowIndex, state.niivueInstance, measurement);
+            if (!projectedMeasurement) {
+                return;
+            }
+
+            const hover = measurementOverlayState[windowIndex].hover;
+            const isHoveredMeasurement = hover && hover.measurementId === projectedMeasurement.id;
+            const highlightStart = isHoveredMeasurement && hover.part === 'start';
+            const highlightEnd = isHoveredMeasurement && hover.part === 'end';
+
+            drawDottedLine(
+                ctx,
+                projectedMeasurement.startPx[0],
+                projectedMeasurement.startPx[1],
+                projectedMeasurement.endPx[0],
+                projectedMeasurement.endPx[1],
+                dpr
+            );
+            drawMeasurementPoint(ctx, projectedMeasurement.startPx[0], projectedMeasurement.startPx[1], dpr, highlightStart);
+            drawMeasurementPoint(ctx, projectedMeasurement.endPx[0], projectedMeasurement.endPx[1], dpr, highlightEnd);
+            projected.push(projectedMeasurement);
+        });
+
+        measurementOverlayState[windowIndex].projected = projected;
+
+        if (measurementState.pendingStartPoint) {
+            const pendingMeasurement = {
+                id: -1,
+                startMM: measurementState.pendingStartPoint.pointMM,
+                endMM: measurementState.pendingStartPoint.pointMM,
+                distanceMM: 0
+            };
+            const projectedPending = projectMeasurementToWindow(windowIndex, state.niivueInstance, pendingMeasurement);
+            if (projectedPending) {
+                drawMeasurementPoint(ctx, projectedPending.startPx[0], projectedPending.startPx[1], dpr, true);
+            }
+        }
+
+        const hover = measurementOverlayState[windowIndex].hover;
+        if (hover) {
+            drawTooltip(ctx, hover.text, hover.x, hover.y, dpr);
+        }
+    }
+
+    function renderMeasurementOverlays() {
+        for (let i = 0; i < 4; i++) {
+            renderMeasurementOverlayForWindow(i);
+        }
+    }
+
+    function updateMeasurementHover(windowIndex, event, canvas, viewer) {
+        if (!viewer || !viewer.nv) {
+            return;
+        }
+
+        const position = getCanvasPixelPosition(event, canvas, viewer);
+        if (!position) {
+            return;
+        }
+
+        const [px, py] = position;
+        const projected = measurementOverlayState[windowIndex].projected || [];
+        const dpr = (viewer.nv.uiData && viewer.nv.uiData.dpr) ? viewer.nv.uiData.dpr : (window.devicePixelRatio || 1);
+        const endpointThreshold = Math.max(6, 7 * dpr);
+        const lineThreshold = Math.max(5, 6 * dpr);
+
+        let nextHover = null;
+        for (let i = 0; i < projected.length; i++) {
+            const measurement = projected[i];
+            const ds = Math.hypot(px - measurement.startPx[0], py - measurement.startPx[1]);
+            if (ds <= endpointThreshold) {
+                nextHover = {
+                    measurementId: measurement.id,
+                    part: 'start',
+                    x: px,
+                    y: py,
+                    text: formatDistance(measurement.distanceMM)
+                };
+                break;
+            }
+
+            const de = Math.hypot(px - measurement.endPx[0], py - measurement.endPx[1]);
+            if (de <= endpointThreshold) {
+                nextHover = {
+                    measurementId: measurement.id,
+                    part: 'end',
+                    x: px,
+                    y: py,
+                    text: formatDistance(measurement.distanceMM)
+                };
+                break;
+            }
+
+            const dl = distancePointToSegment(
+                px,
+                py,
+                measurement.startPx[0],
+                measurement.startPx[1],
+                measurement.endPx[0],
+                measurement.endPx[1]
+            );
+            if (dl <= lineThreshold) {
+                nextHover = {
+                    measurementId: measurement.id,
+                    part: 'line',
+                    x: px,
+                    y: py,
+                    text: formatDistance(measurement.distanceMM)
+                };
+                break;
+            }
+        }
+
+        const currentHover = measurementOverlayState[windowIndex].hover;
+        let changed = false;
+        if (!currentHover && !nextHover) {
+            changed = false;
+        } else if (!currentHover || !nextHover) {
+            changed = true;
+        } else {
+            changed =
+                currentHover.measurementId !== nextHover.measurementId ||
+                currentHover.part !== nextHover.part ||
+                Math.abs(currentHover.x - nextHover.x) > 1 ||
+                Math.abs(currentHover.y - nextHover.y) > 1;
+        }
+
+        measurementOverlayState[windowIndex].hover = nextHover;
+        if (changed) {
+            renderMeasurementOverlayForWindow(windowIndex);
+        }
+    }
+
     /**
-     * Initialize synchronization event system
-     * Listens for sliceIndexChanged events and propagates to synchronized windows
+     * Initialize synchronization event system.
+     * Uses requestAnimationFrame to coalesce multiple crosshair updates
+     * per frame into a single sync pass, and drawScene() instead of
+     * updateGLVolume() since only the crosshair position changed.
      */
     function initSynchronization() {
         window.addEventListener('sliceIndexChanged', (event) => {
+            // Ignore events triggered by sync itself to prevent cascade
+            if (_isSyncing) return;
+
             const { windowIndex, crosshairPos } = event.detail;
 
             // Skip if source window has free-scroll enabled
-            if (freeScrollWindows[windowIndex]) {
-                return;
-            }
+            if (freeScrollWindows[windowIndex]) return;
+            if (!crosshairPos) return;
 
-            if (!crosshairPos) {
-                return;
-            }
+            // Store pending sync data (last writer wins within a frame)
+            _syncSourceWindow = windowIndex;
+            _syncCrosshairPos[0] = crosshairPos[0];
+            _syncCrosshairPos[1] = crosshairPos[1];
+            _syncCrosshairPos[2] = crosshairPos[2];
 
-            // Propagate 3D crosshair position to ALL windows (cross-orientation).
-            // Scrolling in coronal moves the crosshair line in axial/sagittal, etc.
-            for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
-                if (targetIdx === windowIndex) {
-                    continue;
-                }
-
-                if (freeScrollWindows[targetIdx]) {
-                    continue;
-                }
-
-                const targetViewer = windowStates[targetIdx].niivueInstance;
-                if (targetViewer && targetViewer.isReady() && targetViewer.nv) {
-                    targetViewer.nv.scene.crosshairPos = [...crosshairPos];
-                    targetViewer.nv.updateGLVolume();
-
-                    // Update target's slice counter
-                    const targetEl = document.querySelector(`.viewer-window[data-window-index="${targetIdx}"]`);
-                    const targetCounter = targetEl ? targetEl.querySelector('.slice-counter') : null;
-                    if (targetCounter) {
-                        const total = targetViewer.getSliceCount();
-                        const idx = targetViewer.getSliceIndex();
-                        targetCounter.textContent = `${idx + 1} / ${total}`;
-                    }
-                }
+            // Coalesce into single rAF — multiple scroll ticks within one
+            // frame result in only one sync pass.
+            if (!_syncRAF) {
+                _syncRAF = requestAnimationFrame(applyCrosshairSync);
             }
         });
+    }
+
+    function emitSliceChanged(windowIndex, viewer, windowEl) {
+        if (!viewer) {
+            return;
+        }
+
+        const currentSliceIndex = viewer.getSliceIndex();
+        const currentOrientation = windowStates[windowIndex].currentOrientation;
+        const total = viewer.getSliceCount();
+
+        const counterEl = windowEl ? windowEl.querySelector('.slice-counter') : null;
+        if (counterEl) {
+            counterEl.textContent = `${currentSliceIndex + 1} / ${total}`;
+        }
+
+        window.dispatchEvent(new CustomEvent('sliceIndexChanged', {
+            detail: {
+                windowIndex: windowIndex,
+                sliceIndex: currentSliceIndex,
+                orientation: currentOrientation,
+                crosshairPos: viewer.nv ? [...viewer.nv.scene.crosshairPos] : null
+            }
+        }));
+
+        renderMeasurementOverlayForWindow(windowIndex);
+    }
+
+    /**
+     * Apply batched crosshair synchronization to all target windows.
+     * Uses drawScene() instead of updateGLVolume() — the crosshair
+     * position is sampled by the shader from the existing 3D texture,
+     * so no volume texture recalculation is needed.
+     */
+    function applyCrosshairSync() {
+        _syncRAF = null;
+        _isSyncing = true;
+
+        const sourceIdx = _syncSourceWindow;
+
+        for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
+            if (targetIdx === sourceIdx) continue;
+            if (freeScrollWindows[targetIdx]) continue;
+
+            const targetViewer = windowStates[targetIdx].niivueInstance;
+            if (targetViewer && targetViewer.isReady() && targetViewer.nv) {
+                // Write directly into NiiVue's crosshairPos array — avoids
+                // allocating a new array on every sync.
+                const pos = targetViewer.nv.scene.crosshairPos;
+                pos[0] = _syncCrosshairPos[0];
+                pos[1] = _syncCrosshairPos[1];
+                pos[2] = _syncCrosshairPos[2];
+                targetViewer.nv.drawScene();
+
+                // Update target's slice counter
+                const targetEl = document.querySelector(`.viewer-window[data-window-index="${targetIdx}"]`);
+                const targetCounter = targetEl ? targetEl.querySelector('.slice-counter') : null;
+                if (targetCounter) {
+                    const total = targetViewer.getSliceCount();
+                    const idx = targetViewer.getSliceIndex();
+                    targetCounter.textContent = `${idx + 1} / ${total}`;
+                }
+
+                renderMeasurementOverlayForWindow(targetIdx);
+            }
+        }
+
+        _isSyncing = false;
     }
 
     /**
@@ -167,7 +757,11 @@ const ViewerGrid = (function() {
                 djangoData = {
                     scanId: data.scanId,
                     projectNamespace: data.projectNamespace,
-                    modalityFiles: data.modalityFiles || {}
+                    modalityFiles: data.modalityFiles || {},
+                    fixedMode: !!data.fixedMode,
+                    enableDragDrop: data.enableDragDrop !== false,
+                    enableContextMenu: data.enableContextMenu !== false,
+                    allowClearWindow: data.allowClearWindow !== false
                 };
             } catch (e) {
                 console.error('Error parsing Django data:', e);
@@ -332,6 +926,7 @@ const ViewerGrid = (function() {
                     </div>
                 </div>
                 <canvas id="${canvasId}" class="niivue-canvas"></canvas>
+                <canvas class="measurement-overlay"></canvas>
                 <div class="orientation-menu">
                     <button class="orientation-btn active" data-orientation="axial">A</button>
                     <button class="orientation-btn" data-orientation="sagittal">S</button>
@@ -383,14 +978,25 @@ const ViewerGrid = (function() {
             if (volumeCache[fileId]) {
                 console.log(`Using cached blob for fileId ${fileId}`);
                 fileBlob = volumeCache[fileId];
+            } else if (volumeFetchPromises[fileId]) {
+                console.log(`Awaiting in-flight blob fetch for fileId ${fileId}`);
+                fileBlob = await volumeFetchPromises[fileId];
             } else {
                 console.log(`Fetching blob for fileId ${fileId}`);
-                const response = await fetch(`/api/processing/files/serve/${fileId}/`);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                volumeFetchPromises[fileId] = (async () => {
+                    const response = await fetch(`/api/processing/files/serve/${fileId}/`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.blob();
+                })();
+
+                try {
+                    fileBlob = await volumeFetchPromises[fileId];
+                    volumeCache[fileId] = fileBlob;
+                } finally {
+                    delete volumeFetchPromises[fileId];
                 }
-                fileBlob = await response.blob();
-                volumeCache[fileId] = fileBlob;
                 console.log(`File blob received and cached: ${fileBlob.size} bytes`);
             }
 
@@ -413,25 +1019,7 @@ const ViewerGrid = (function() {
 
             // Attach slice change callback for synchronization and slice counter
             viewer.onSliceChange(() => {
-                const currentSliceIndex = viewer.getSliceIndex();
-                const currentOrientation = windowStates[windowIndex].currentOrientation;
-                const total = viewer.getSliceCount();
-
-                // Update slice counter display
-                const counter = windowEl.querySelector('.slice-counter');
-                if (counter) {
-                    counter.textContent = `${currentSliceIndex + 1} / ${total}`;
-                }
-
-                // Dispatch custom event for synchronization system
-                window.dispatchEvent(new CustomEvent('sliceIndexChanged', {
-                    detail: {
-                        windowIndex: windowIndex,
-                        sliceIndex: currentSliceIndex,
-                        orientation: currentOrientation,
-                        crosshairPos: viewer.nv ? [...viewer.nv.scene.crosshairPos] : null
-                    }
-                }));
+                emitSliceChanged(windowIndex, viewer, windowEl);
             });
 
             // Add to synchronization group and adopt crosshair from any existing window
@@ -456,6 +1044,8 @@ const ViewerGrid = (function() {
             const totalSlices = viewer.getSliceCount();
             sliceCounter.textContent = `${currentSlice + 1} / ${totalSlices}`;
             windowEl.querySelector('.niivue-viewer-container').appendChild(sliceCounter);
+
+            renderMeasurementOverlayForWindow(windowIndex);
 
             // Attach orientation menu event handlers
             const menuBtns = windowEl.querySelectorAll('.orientation-btn');
@@ -484,6 +1074,8 @@ const ViewerGrid = (function() {
                         const total = viewer.getSliceCount();
                         counter.textContent = `${idx + 1} / ${total}`;
                     }
+
+                    renderMeasurementOverlayForWindow(windowIndex);
                 });
             });
 
@@ -518,6 +1110,7 @@ const ViewerGrid = (function() {
                     }
 
                     console.log(`Window ${windowIndex} free-scroll: ${freeScrollWindows[windowIndex]}`);
+                    renderMeasurementOverlayForWindow(windowIndex);
                 });
             }
 
@@ -529,6 +1122,7 @@ const ViewerGrid = (function() {
                     if (viewer.nv) {
                         viewer.nv.scene.pan2Dxyzmm = [0, 0, 0, 1];
                         viewer.nv.drawScene();
+                        renderMeasurementOverlayForWindow(windowIndex);
                     }
                 });
             }
@@ -543,6 +1137,7 @@ const ViewerGrid = (function() {
                         viewer.nv.opts.crosshairWidth = isVisible ? 0 : 1;
                         viewer.nv.drawScene();
                         crosshairBtn.classList.toggle('crosshair-hidden', isVisible);
+                        renderMeasurementOverlayForWindow(windowIndex);
                     }
                 });
             }
@@ -558,6 +1153,18 @@ const ViewerGrid = (function() {
                 // Without Alt: block NiiVue's drag (intensity square).
                 // With Alt: let NiiVue handle it for window/level adjustment.
                 canvas.addEventListener('mousedown', (e) => {
+                    if (activeTool === TOOL_IDS.MEASURE && isPrimaryUnmodifiedClick(e)) {
+                        const tool = toolRegistry[activeTool];
+                        const handled = tool && typeof tool.onPrimaryClick === 'function'
+                            ? tool.onPrimaryClick({ windowIndex, event: e, canvas, viewer })
+                            : false;
+                        if (handled) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            return;
+                        }
+                    }
+
                     if (e.button === 2) {
                         if (e.altKey) {
                             isRightClickIntensity = true;
@@ -586,55 +1193,124 @@ const ViewerGrid = (function() {
                 }, { capture: true });
 
                 // Shift+scroll: fast navigation (5 slices per step)
-                // Ctrl+scroll: zoom in/out via setPan2Dxyzmm
+                // Ctrl+scroll: zoom in/out anchored at mouse position
                 canvas.addEventListener('wheel', (e) => {
                     if (e.ctrlKey) {
                         e.preventDefault();
                         e.stopImmediatePropagation();
+
                         const nv = viewer.nv;
+                        if (!nv) {
+                            return;
+                        }
+
                         const pan = nv.scene.pan2Dxyzmm;
                         const currentZoom = pan[3] || 1;
-                        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                        const primaryDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+                        if (primaryDelta === 0) {
+                            return;
+                        }
+                        const zoomFactor = primaryDelta > 0 ? 0.9 : 1.1;
                         const newZoom = Math.max(1, Math.min(5, currentZoom * zoomFactor));
 
-                        // Calculate mouse position relative to canvas center (in screen pixels)
-                        const rect = canvas.getBoundingClientRect();
-                        const mouseX = e.clientX - rect.left - rect.width / 2;
-                        const mouseY = e.clientY - rect.top - rect.height / 2;
-
-                        // Adjust pan to keep cursor position stationary during zoom
-                        // Formula: newPan = oldPan + mouseOffset * (1 - newZoom/oldZoom)
-                        const zoomRatio = newZoom / currentZoom;
-                        const newPanX = pan[0] + mouseX * (1 - zoomRatio);
-                        const newPanY = pan[1] - mouseY * (1 - zoomRatio); // Y inverted
-
-                        // Apply new clamping formula - image border cannot exceed half window width
-                        const maxPan = (canvas.clientWidth / 2) * (1 - 1/newZoom);
-                        const clampedX = Math.max(-maxPan, Math.min(maxPan, newPanX));
-                        const clampedY = Math.max(-maxPan, Math.min(maxPan, newPanY));
-
-                        nv.scene.pan2Dxyzmm = [clampedX, clampedY, pan[2], newZoom];
+                        const beforeMM = getWorldMMAtEvent(e, canvas, viewer);
+                        nv.scene.pan2Dxyzmm = [pan[0], pan[1], pan[2], newZoom];
                         nv.drawScene();
+
+                        if (beforeMM) {
+                            const mousePx = getCanvasPixelPosition(e, canvas, viewer);
+                            const anchorPx = projectMMToCanvas(windowIndex, viewer, beforeMM);
+                            if (mousePx && anchorPx && typeof nv.dragForPanZoom === 'function' && nv.uiData) {
+                                const basePan = [
+                                    nv.scene.pan2Dxyzmm[0],
+                                    nv.scene.pan2Dxyzmm[1],
+                                    nv.scene.pan2Dxyzmm[2],
+                                    nv.scene.pan2Dxyzmm[3]
+                                ];
+
+                                const evaluateCandidate = (startPx, endPx) => {
+                                    nv.scene.pan2Dxyzmm = [basePan[0], basePan[1], basePan[2], basePan[3]];
+                                    nv.uiData.pan2DxyzmmAtMouseDown = [basePan[0], basePan[1], basePan[2], basePan[3]];
+                                    nv.dragForPanZoom([startPx[0], startPx[1], endPx[0], endPx[1]]);
+                                    nv.drawScene();
+
+                                    const projected = projectMMToCanvas(windowIndex, viewer, beforeMM);
+                                    if (!projected) {
+                                        return {
+                                            score: Number.POSITIVE_INFINITY,
+                                            pan: [
+                                                nv.scene.pan2Dxyzmm[0],
+                                                nv.scene.pan2Dxyzmm[1],
+                                                nv.scene.pan2Dxyzmm[2],
+                                                nv.scene.pan2Dxyzmm[3]
+                                            ]
+                                        };
+                                    }
+
+                                    return {
+                                        score: Math.hypot(projected[0] - mousePx[0], projected[1] - mousePx[1]),
+                                        pan: [
+                                            nv.scene.pan2Dxyzmm[0],
+                                            nv.scene.pan2Dxyzmm[1],
+                                            nv.scene.pan2Dxyzmm[2],
+                                            nv.scene.pan2Dxyzmm[3]
+                                        ]
+                                    };
+                                };
+
+                                const candidateAnchorToMouse = evaluateCandidate(anchorPx, mousePx);
+                                const candidateMouseToAnchor = evaluateCandidate(mousePx, anchorPx);
+                                const bestCandidate = candidateAnchorToMouse.score <= candidateMouseToAnchor.score
+                                    ? candidateAnchorToMouse
+                                    : candidateMouseToAnchor;
+
+                                nv.scene.pan2Dxyzmm = [
+                                    bestCandidate.pan[0],
+                                    bestCandidate.pan[1],
+                                    bestCandidate.pan[2],
+                                    bestCandidate.pan[3]
+                                ];
+                            }
+                        }
+
+                        nv.drawScene();
+                        renderMeasurementOverlayForWindow(windowIndex);
                     } else if (e.shiftKey) {
                         e.preventDefault();
                         e.stopImmediatePropagation();
-                        const step = e.deltaY > 0 ? 5 : -5;
+                        const primaryDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+                        if (primaryDelta === 0) {
+                            return;
+                        }
+                        const step = primaryDelta > 0 ? 5 : -5;
                         const current = viewer.getSliceIndex();
                         const total = viewer.getSliceCount();
                         const next = Math.max(0, Math.min(total - 1, current + step));
                         viewer.setSliceIndex(next);
-                        viewer.nv.drawScene();
+                        emitSliceChanged(windowIndex, viewer, windowEl);
                     }
-                }, { capture: true });
+                }, { capture: true, passive: false });
 
-                // Ctrl+drag: pan the view via setPan2Dxyzmm
+                // Ctrl+drag: pan using NiiVue native drag pan logic
                 let isPanning = false;
-                let panStart = { x: 0, y: 0 };
+                let panStartPx = null;
+                const panSensitivity = 1.5;
 
                 canvas.addEventListener('mousedown', (e) => {
                     if (e.ctrlKey && e.button === 0) {
+                        const startPx = getCanvasPixelPosition(e, canvas, viewer);
+                        if (!startPx || !viewer.nv) {
+                            return;
+                        }
+
                         isPanning = true;
-                        panStart = { x: e.clientX, y: e.clientY };
+                        panStartPx = [startPx[0], startPx[1]];
+                        viewer.nv.uiData.pan2DxyzmmAtMouseDown = [
+                            viewer.nv.scene.pan2Dxyzmm[0],
+                            viewer.nv.scene.pan2Dxyzmm[1],
+                            viewer.nv.scene.pan2Dxyzmm[2],
+                            viewer.nv.scene.pan2Dxyzmm[3]
+                        ];
                         e.preventDefault();
                         e.stopImmediatePropagation();
                         canvas.style.cursor = 'grabbing';
@@ -642,33 +1318,44 @@ const ViewerGrid = (function() {
                 }, { capture: true });
 
                 canvas.addEventListener('mousemove', (e) => {
+                    updateMeasurementHover(windowIndex, e, canvas, viewer);
+
                     if (!isPanning) return;
                     e.preventDefault();
                     e.stopImmediatePropagation();
-                    const dx = e.clientX - panStart.x;
-                    const dy = e.clientY - panStart.y;
+
+                    if (!panStartPx || !viewer.nv || typeof viewer.nv.dragForPanZoom !== 'function') {
+                        return;
+                    }
+
+                    const currentPx = getCanvasPixelPosition(e, canvas, viewer);
+                    if (!currentPx) {
+                        return;
+                    }
+
                     const nv = viewer.nv;
-                    const pan = nv.scene.pan2Dxyzmm;
-                    const zoom = pan[3] || 1;
-                    // Clamp pan so image edge can't go past canvas center.
-                    // At zoom 1x the image fills the view, so no pan is useful.
-                    // At higher zoom, allow proportional panning.
-                    const maxPan = (canvas.clientWidth / 2) * (1 - 1/zoom);
-                    const newX = Math.max(-maxPan, Math.min(maxPan, pan[0] + dx));
-                    const newY = Math.max(-maxPan, Math.min(maxPan, pan[1] - dy));
-                    nv.scene.pan2Dxyzmm = [newX, newY, pan[2], zoom];
+                    const scaledEndX = panStartPx[0] + (currentPx[0] - panStartPx[0]) * panSensitivity;
+                    const scaledEndY = panStartPx[1] + (currentPx[1] - panStartPx[1]) * panSensitivity;
+                    nv.dragForPanZoom([panStartPx[0], panStartPx[1], scaledEndX, scaledEndY]);
                     nv.drawScene();
-                    panStart = { x: e.clientX, y: e.clientY };
+                    renderMeasurementOverlayForWindow(windowIndex);
                 }, { capture: true });
 
                 const stopPan = () => {
                     if (isPanning) {
                         isPanning = false;
+                        panStartPx = null;
                         canvas.style.cursor = '';
                     }
                 };
                 canvas.addEventListener('mouseup', stopPan);
                 canvas.addEventListener('mouseleave', stopPan);
+                canvas.addEventListener('mouseleave', () => {
+                    if (measurementOverlayState[windowIndex].hover) {
+                        measurementOverlayState[windowIndex].hover = null;
+                        renderMeasurementOverlayForWindow(windowIndex);
+                    }
+                });
 
             }
 
@@ -800,12 +1487,34 @@ const ViewerGrid = (function() {
                 existingMenu.remove();
             }
         });
+
+        // Ensure left click outside closes menu even when other handlers stop propagation.
+        document.addEventListener('mousedown', (event) => {
+            if (event.button !== 0) {
+                return;
+            }
+
+            const existingMenu = document.getElementById('viewerContextMenu');
+            if (!existingMenu) {
+                return;
+            }
+
+            if (existingMenu.contains(event.target)) {
+                return;
+            }
+
+            existingMenu.remove();
+        }, true);
     }
 
     /**
      * Show context menu for viewer window at cursor position
      */
     function showViewerContextMenu(x, y, windowIndex, viewer) {
+        if (!djangoData.enableContextMenu) {
+            return;
+        }
+
         // Remove existing menu
         const existingMenu = document.getElementById('viewerContextMenu');
         if (existingMenu) {
@@ -846,6 +1555,7 @@ const ViewerGrid = (function() {
                     const consensusSlice = getGroupConsensusSlice(orient);
                     viewer.setSliceIndex(consensusSlice);
                 }
+                renderMeasurementOverlayForWindow(windowIndex);
                 menu.remove();
             };
             orientButtons.appendChild(btn);
@@ -865,6 +1575,7 @@ const ViewerGrid = (function() {
                 if (viewer.nv) {
                     viewer.nv.scene.pan2Dxyzmm = [0, 0, 0, 1];
                     viewer.nv.drawScene();
+                    renderMeasurementOverlayForWindow(windowIndex);
                 }
                 menu.remove();
             }
@@ -884,6 +1595,7 @@ const ViewerGrid = (function() {
                     if (crosshairBtn) {
                         crosshairBtn.classList.toggle('crosshair-hidden', crosshairVisible);
                     }
+                    renderMeasurementOverlayForWindow(windowIndex);
                 }
                 menu.remove();
             }
@@ -911,21 +1623,24 @@ const ViewerGrid = (function() {
                         viewer.setSliceIndex(consensusSlice);
                     }
                 }
+                renderMeasurementOverlayForWindow(windowIndex);
                 menu.remove();
             }
         );
         actionsSection.appendChild(unlinkOption);
 
         // Clear window option
-        const clearOption = createMenuOption(
-            'times',
-            'Clear Window',
-            () => {
-                clearWindow(windowIndex);
-                menu.remove();
-            }
-        );
-        actionsSection.appendChild(clearOption);
+        if (djangoData.allowClearWindow) {
+            const clearOption = createMenuOption(
+                'times',
+                'Clear Window',
+                () => {
+                    clearWindow(windowIndex);
+                    menu.remove();
+                }
+            );
+            actionsSection.appendChild(clearOption);
+        }
 
         menu.appendChild(actionsSection);
         document.body.appendChild(menu);
@@ -977,6 +1692,8 @@ const ViewerGrid = (function() {
 
         // Reset free scroll state
         freeScrollWindows[windowIndex] = false;
+        measurementOverlayState[windowIndex].projected = [];
+        measurementOverlayState[windowIndex].hover = null;
 
         // Reset state
         windowStates[windowIndex] = {
@@ -989,7 +1706,37 @@ const ViewerGrid = (function() {
         };
 
         updateWindowUI(windowIndex);
+        renderMeasurementOverlays();
         console.log(`Cleared window ${windowIndex}`);
+    }
+
+    function setWindowOrientation(windowIndex, orientation) {
+        const state = windowStates[windowIndex];
+        if (!state || !state.niivueInstance) {
+            return;
+        }
+
+        const viewer = state.niivueInstance;
+        viewer.setOrientation(orientation);
+        windowStates[windowIndex].currentOrientation = orientation;
+        updateOrientationGroup(windowIndex, orientation);
+
+        const windowEl = document.querySelector(`.viewer-window[data-window-index="${windowIndex}"]`);
+        if (windowEl) {
+            const menuBtns = windowEl.querySelectorAll('.orientation-btn');
+            menuBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.orientation === orientation);
+            });
+        }
+
+        const counter = windowEl ? windowEl.querySelector('.slice-counter') : null;
+        if (counter) {
+            const idx = viewer.getSliceIndex();
+            const total = viewer.getSliceCount();
+            counter.textContent = `${idx + 1} / ${total}`;
+        }
+
+        renderMeasurementOverlayForWindow(windowIndex);
     }
 
     // Public API
@@ -997,9 +1744,13 @@ const ViewerGrid = (function() {
         init: init,
         windowStates: windowStates,
         loadModalityInWindow: loadModalityInWindow,
-        clearWindow: clearWindow
+        clearWindow: clearWindow,
+        setWindowOrientation: setWindowOrientation
     };
 })();
+
+// Expose globally for adapters/integration scripts.
+window.ViewerGrid = ViewerGrid;
 
 // Initialize on DOMContentLoaded for brain project pages
 document.addEventListener('DOMContentLoaded', function() {
