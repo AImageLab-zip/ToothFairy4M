@@ -186,29 +186,45 @@ function startStatusPolling(exportId) {
             .then(data => {
                 const badge = document.getElementById(`status-badge-${exportId}`);
                 if (!badge) {
-                    // Badge not found, stop polling
                     clearInterval(pollingIntervals[exportId]);
                     delete pollingIntervals[exportId];
                     return;
                 }
-                
-                // Update badge
-                badge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
-                
-                // Update badge class based on status
+
+                const progressWrap = document.getElementById(`export-progress-wrap-${exportId}`);
+                const progressBar = document.getElementById(`export-progress-bar-${exportId}`);
+                const progressMsg = document.getElementById(`export-progress-msg-${exportId}`);
+
+                // Update badge text
+                let badgeText = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                if (data.status === 'processing' && data.patient_count != null) {
+                    badgeText += ' (' + data.patient_count + ' patients)';
+                }
+                badge.textContent = badgeText;
+
+                // Update badge class
                 badge.className = 'badge';
                 if (data.status === 'pending') {
                     badge.classList.add('bg-secondary');
                 } else if (data.status === 'processing') {
                     badge.classList.add('bg-info');
+                    // Live progress: bar and message
+                    if (progressBar && data.progress_percent != null) {
+                        progressBar.style.width = data.progress_percent + '%';
+                        progressBar.setAttribute('aria-valuenow', data.progress_percent);
+                    }
+                    if (progressMsg && data.progress_message) {
+                        progressMsg.textContent = data.progress_message;
+                    }
                 } else if (data.status === 'completed') {
                     badge.classList.add('bg-success');
+                    if (progressWrap) progressWrap.style.display = 'none';
                     clearInterval(pollingIntervals[exportId]);
                     delete pollingIntervals[exportId];
-                    // Reload page to show download button
                     setTimeout(() => location.reload(), 1000);
                 } else if (data.status === 'failed') {
                     badge.classList.add('bg-danger');
+                    if (progressWrap) progressWrap.style.display = 'none';
                     clearInterval(pollingIntervals[exportId]);
                     delete pollingIntervals[exportId];
                 }

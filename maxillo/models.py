@@ -814,7 +814,11 @@ class Export(models.Model):
     
     # Error handling
     error_message = models.TextField(blank=True, help_text='Error message if export failed')
-    
+
+    # Live progress (during processing)
+    progress_message = models.CharField(max_length=255, blank=True, help_text='Current phase or progress text')
+    progress_percent = models.IntegerField(null=True, blank=True, help_text='Progress 0-100')
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
@@ -836,6 +840,8 @@ class Export(models.Model):
         """Mark export as completed and set file information"""
         self.status = 'completed'
         self.completed_at = timezone.now()
+        self.progress_message = ''
+        self.progress_percent = None
         if file_path:
             self.file_path = file_path
         if file_size is not None:

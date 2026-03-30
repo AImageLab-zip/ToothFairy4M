@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import UserProfile, Dataset, Patient, Classification, VoiceCaption
+from .models import UserProfile, Dataset, Patient, Classification, VoiceCaption, Export
 from common.models import Project, Modality, ProjectAccess, Job, FileRegistry, Invitation
 from .models import Tag, Folder
 from common.models import Project, Modality, ProjectAccess
@@ -297,4 +297,33 @@ class FolderAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_filter = ['created_at']
 
 
+@admin.register(Export)
+class ExportAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['id', 'user', 'status', 'patient_count', 'file_size_display', 'created_at', 'started_at', 'completed_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['user__username', 'query_summary', 'error_message']
+    readonly_fields = ['created_at', 'started_at', 'completed_at', 'query_params', 'query_summary']
+
+    fieldsets = (
+        ('Status', {
+            'fields': ('user', 'status', 'error_message')
+        }),
+        ('Query', {
+            'fields': ('query_params', 'query_summary')
+        }),
+        ('Result', {
+            'fields': ('file_path', 'file_size', 'patient_count')
+        }),
+        ('Timing', {
+            'fields': ('created_at', 'started_at', 'completed_at')
+        }),
+    )
+
+    def file_size_display(self, obj):
+        """Display file size in human-readable format"""
+        if obj.file_size:
+            size_mb = obj.file_size / (1024 * 1024)
+            return f"{size_mb:.2f} MB"
+        return "-"
+    file_size_display.short_description = "File size"
 
