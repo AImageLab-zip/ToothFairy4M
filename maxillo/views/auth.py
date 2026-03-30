@@ -1,14 +1,21 @@
 """Authentication and invitation-related views."""
+import logging
+import uuid
+
+from django.core.mail import send_mail
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.urls import reverse
-import uuid
 
 from ..models import Invitation
 from ..forms import InvitationForm, InvitedUserCreationForm
 from common.models import ProjectAccess   
+
+
+logger = logging.getLogger(__name__)
 
 
 def register(request):
@@ -18,16 +25,18 @@ def register(request):
             invitation = Invitation.objects.get(code=form.cleaned_data['invitation_code'])
             user = form.save()
 
-            # Create ProjectAccess entry if invitation has a project
-            if invitation.project:
+            invitation_projects = list(invitation.projects.all())
+            if not invitation_projects and invitation.project:
+                invitation_projects = [invitation.project]
+
+            for invitation_project in invitation_projects:
                 access, created = ProjectAccess.objects.get_or_create(
                     user=user,
-                    project=invitation.project,
+                    project=invitation_project,
                     defaults={
                         'role': invitation.role
                     }
                 )
-                # Update role if access already exists
                 if not created and access.role != invitation.role:
                     access.role = invitation.role
                     access.save()
@@ -54,7 +63,7 @@ def register(request):
 @login_required
 @user_passes_test(lambda u: u.is_staff)
 def invitation_list(request):
-    invitations = Invitation.objects.all().order_by('-created_at')
+    invitations = Invitation.objects.all().prefetch_related('projects').order_by('-created_at')
     if request.method == 'POST':
         form = InvitationForm(request.POST)
         if form.is_valid():
@@ -62,7 +71,44 @@ def invitation_list(request):
             invitation.code = str(uuid.uuid4())
             invitation.created_by = request.user
             invitation.save()
-            messages.success(request, 'Invitation created successfully!')
+            invitation.projects.set(form.cleaned_data['projects'])
+
+            if invitation.email:
+                register_url = f"{request.build_absolute_uri(reverse('register'))}?code={invitation.code}"
+                expires_at = timezone.localtime(invitation.expires_at).strftime('%Y-%m-%d %H:%M %Z')
+                invitation_projects = list(invitation.projects.all())
+                if not invitation_projects and invitation.project:
+                    invitation_projects = [invitation.project]
+                email_context = {
+                    'invitation': invitation,
+                    'project_names': [project.name for project in invitation_projects],
+                    'role_display': invitation.get_role_display(),
+                    'expires_at': expires_at,
+                    'register_url': register_url,
+                }
+                subject = render_to_string('registration/emails/invitation_subject.txt', email_context).strip()
+                message = render_to_string('registration/emails/invitation_body.txt', email_context)
+
+                try:
+                    send_mail(subject, message, None, [invitation.email], fail_silently=False)
+                    invitation.email_sent_at = timezone.now()
+                    invitation.email_send_error = ''
+                    invitation.save(update_fields=['email_sent_at', 'email_send_error'])
+                    messages.success(request, f'Invitation created and email sent to {invitation.email}.')
+                except Exception as exc:
+                    invitation.email_send_error = str(exc)
+                    invitation.save(update_fields=['email_send_error'])
+                    logger.error('Failed to send invitation email for invitation %s', invitation.code, exc_info=True)
+                    messages.warning(
+                        request,
+                        'Invitation created, but email delivery failed. Please send the invitation link manually.'
+                    )
+            else:
+                messages.success(
+                    request,
+                    'Invitation created successfully. No email was sent because no recipient email was provided.'
+                )
+
             return redirect('invitation_list')
     else:
         form = InvitationForm()
@@ -81,4 +127,3 @@ def delete_invitation(request, code):
         invitation.delete()
         messages.success(request, 'Invitation deleted successfully!')
     return redirect('invitation_list')
-

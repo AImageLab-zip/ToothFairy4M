@@ -265,10 +265,14 @@ class FileRegistryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Invitation)
 class InvitationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['code', 'email', 'role', 'created_by', 'created_at', 'expires_at', 'used_at', 'used_by']
+    list_display = ['code', 'email', 'role', 'project_list', 'created_by', 'created_at', 'expires_at', 'used_at', 'used_by']
     list_filter = ['role', 'created_at', 'expires_at']
     search_fields = ['code', 'email', 'created_by__username', 'used_by__username']
     readonly_fields = ['code', 'created_at', 'used_at', 'used_by']
+
+    def project_list(self, obj):
+        return ', '.join(obj.projects.values_list('name', flat=True))
+    project_list.short_description = 'Projects'
 
     def get_readonly_fields(self, request, obj=None):
         if obj:  # Editing existing object
@@ -287,6 +291,5 @@ class FolderAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ['name', 'parent', 'created_at', 'created_by']
     search_fields = ['name']
     list_filter = ['created_at']
-
 
 

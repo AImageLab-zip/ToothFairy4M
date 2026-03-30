@@ -126,11 +126,13 @@ class Invitation(models.Model):
 	code = models.CharField(max_length=64, unique=True)
 	email = models.EmailField(blank=True, null=True)
 	role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='standard')
-	#project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name='invitations', help_text='Project the user will have access to')
+	projects = models.ManyToManyField(Project, related_name='invitations_multi', help_text='Projects the user will have access to')
 	project = models.ForeignKey(Project, on_delete=models.CASCADE, null=False, blank=False, related_name='invitations', help_text='Project the user will have access to')
 	created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	expires_at = models.DateTimeField()
+	email_sent_at = models.DateTimeField(null=True, blank=True)
+	email_send_error = models.TextField(blank=True, null=True)
 	used_at = models.DateTimeField(null=True, blank=True)
 	used_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='used_invitation')
 
@@ -140,7 +142,13 @@ class Invitation(models.Model):
 		return self.used_at is None and self.expires_at > timezone.now()
 
 	def __str__(self):
-		project_str = f" - {self.project.name}" if self.project else ""
+		project_count = self.projects.count() if self.pk else 0
+		if project_count == 1:
+			project_str = f" - {self.projects.first().name}"
+		elif project_count > 1:
+			project_str = f" - {project_count} projects"
+		else:
+			project_str = f" - {self.project.name}" if self.project else ""
 		return f"Invitation {self.code} - {self.role}{project_str}"
 
 	class Meta:
@@ -499,4 +507,3 @@ class FileRegistry(models.Model):
 		"""
 		choices_dict = cls.get_file_type_choices_dict()
 		return choices_dict.get(file_type, file_type.replace('_', ' ').title())
-

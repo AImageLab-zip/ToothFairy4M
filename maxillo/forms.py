@@ -253,20 +253,25 @@ class InvitationForm(forms.ModelForm):
     
     class Meta:
         model = Invitation
-        fields = ['email', 'role', 'project', 'expiry_days']
+        fields = ['email', 'role', 'projects', 'expiry_days']
         widgets = {
             'role': forms.Select(attrs={'class': 'form-control'}),
-            'project': forms.Select(attrs={'class': 'form-control'}),
+            'projects': forms.SelectMultiple(attrs={'class': 'form-control', 'size': '6'}),
         }
         help_texts = {
-            'project': 'Optional: Project the user will have access to upon registration',
+            'projects': 'Select one or more projects the user will have access to upon registration',
         }
     
     def save(self, commit=True):
         instance = super().save(False)
+        selected_projects = list(self.cleaned_data.get('projects', []))
+        if selected_projects:
+            instance.project = selected_projects[0]
         instance.expires_at = timezone.now() + timedelta(days=self.cleaned_data['expiry_days'])
         if commit:
             instance.save()
+            if selected_projects:
+                instance.projects.set(selected_projects)
         return instance
 
 
