@@ -10,7 +10,6 @@ from django.utils import timezone
 import os
 import json
 import logging
-import threading
 
 from ..models import Export, Folder, Patient, VoiceCaption
 from common.models import Modality, FileRegistry
@@ -82,9 +81,8 @@ def export_new(request):
             messages.error(request, 'Please select at least one folder.')
             return redirect('maxillo:export_new')
         
-        # Filter out 'reports' for validation (it's optional)
-        actual_modalities = [slug for slug in modality_slugs if slug != 'reports']
-        if not actual_modalities:
+        # Require at least one selection (can be a modality and/or reports only)
+        if not modality_slugs:
             messages.error(request, 'Please select at least one modality.')
             return redirect('maxillo:export_new')
         
@@ -217,13 +215,14 @@ def export_preview(request):
         for key, value in filters.items():
             if key.startswith('has_') and not key.startswith('has_reports_') and value:
                 modality_slug = key.replace('has_', '')
-                # Map modality slug to file types (only processed)
+                # Map modality slug to file types
                 file_type_map = {
                     'cbct': ['cbct_processed'],
                     'ios': ['ios_processed_upper', 'ios_processed_lower'],
-                    'teleradiography': ['teleradiography_processed'],
-                    'panoramic': ['panoramic_processed'],
-                    'intraoral': ['intraoral_processed'],
+                    'teleradiography': ['teleradiography_raw'],
+                    'panoramic': ['panoramic_raw'],
+                    'intraoral': ['intraoral_raw'],
+                    'intraoral-photo': ['intraoral_raw'],
                 }
                 file_types = file_type_map.get(modality_slug, [])
                 if file_types:
@@ -250,41 +249,43 @@ def export_preview(request):
         
         patient_count = patients.count()
         folder_count = len(folder_ids) if folder_ids else 0
-        # Count modalities excluding 'reports'
         actual_modality_slugs = [slug for slug in modality_slugs if slug != 'reports'] if modality_slugs else []
-        modality_count = len(actual_modality_slugs)
+        # When reports-only, count as 1 modality for display
+        modality_count = len(actual_modality_slugs) if actual_modality_slugs else (1 if modality_slugs else 0)
         
         # Calculate file count and size estimate
         # Separate reports from actual modalities
         include_reports = 'reports' in modality_slugs
         actual_modality_slugs = [slug for slug in modality_slugs if slug != 'reports']
         
-        if actual_modality_slugs and patient_count > 0:
-            # Get files for selected modalities and patients (only processed files)
-            file_type_map = {
-                'cbct': ['cbct_processed'],  # Only processed
-                'ios': ['ios_processed_upper', 'ios_processed_lower'],  # Only processed
-                'teleradiography': ['teleradiography_processed'],  # Only processed
-                'panoramic': ['panoramic_processed'],  # Only processed
-                'intraoral': ['intraoral_processed'],  # Only processed
-            }
-            
-            file_types = []
-            for slug in actual_modality_slugs:
-                file_types.extend(file_type_map.get(slug, []))
-            
-            files = FileRegistry.objects.filter(
-                patient__in=patients,
-                file_type__in=file_types
-            )
-            
-            file_count = files.count()
-            total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
-            
-            # Add voice caption text files if reports are explicitly selected
+        if patient_count > 0:
+            file_count = 0
+            total_size = 0
+            if actual_modality_slugs:
+                # Get files for selected modalities
+                file_type_map = {
+                    'cbct': ['cbct_processed'],
+                    'ios': ['ios_processed_upper', 'ios_processed_lower'],
+                    'teleradiography': ['teleradiography_raw'],
+                    'panoramic': ['panoramic_raw'],
+                    'intraoral': ['intraoral_processed'],
+                }
+                file_types = []
+                for slug in actual_modality_slugs:
+                    file_types.extend(file_type_map.get(slug, []))
+                files = FileRegistry.objects.filter(
+                    patient__in=patients,
+                    file_type__in=file_types
+                )
+                file_count = files.count()
+                total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
+
+            # Add voice caption reports if reports are selected (selected modalities or all when reports-only)
             if include_reports:
-                # Get reports only for selected modalities
-                modality_objects = Modality.objects.filter(slug__in=actual_modality_slugs)
+                report_modality_slugs = actual_modality_slugs if actual_modality_slugs else list(
+                    Modality.objects.filter(is_active=True).values_list('slug', flat=True)
+                )
+                modality_objects = Modality.objects.filter(slug__in=report_modality_slugs)
                 voice_captions = VoiceCaption.objects.filter(
                     patient__in=patients,
                     modality__in=modality_objects,
@@ -292,7 +293,6 @@ def export_preview(request):
                 ).exclude(text_caption='')
                 voice_caption_count = voice_captions.count()
                 file_count += voice_caption_count
-                # Calculate actual text file size
                 for vc in voice_captions:
                     total_size += len(vc.text_caption.encode('utf-8'))
         else:
@@ -325,36 +325,78 @@ def export_preview(request):
         }, status=500)
 
 
+def _recover_stuck_export(export):
+    """
+    If export is stuck in 'processing' but a completed ZIP exists on disk
+    (process died after writing), mark the export as completed.
+    """
+    if export.status != 'processing':
+        return export
+    export_dir = getattr(settings, 'DATASET_PATH', '/dataset')
+    export_dir = os.path.join(export_dir, 'exports')
+    if not os.path.isdir(export_dir):
+        return export
+    import glob
+    pattern = os.path.join(export_dir, f'export_{export.id}_*.zip')
+    matches = glob.glob(pattern)
+    if not matches:
+        return export
+    # Use the most recent file (by mtime) in case of multiple matches
+    path = max(matches, key=lambda p: os.path.getmtime(p))
+    mtime = os.path.getmtime(path)
+    age_seconds = timezone.now().timestamp() - mtime
+    if age_seconds < 120:
+        # File was modified in last 2 minutes - process might still be writing
+        return export
+    try:
+        size = os.path.getsize(path)
+        export.mark_completed(file_path=path, file_size=size)
+        export.refresh_from_db()
+        logger.info(f"Recovered stuck export {export.id}: marked completed from existing file {path}")
+    except Exception as e:
+        logger.warning(f"Could not recover export {export.id}: {e}")
+    return export
+
+
 @login_required
 @user_passes_test(is_admin)
 def export_status(request, export_id):
     """AJAX endpoint to get current export status."""
     export = get_object_or_404(Export, id=export_id)
-    
+
     # Check permissions
     if export.user != request.user and not request.user.is_staff:
         return JsonResponse({'error': 'Permission denied'}, status=403)
-    
+
+    # Recover stuck exports: if still "processing" but ZIP exists and is old, mark completed
+    export = _recover_stuck_export(export)
+
     response_data = {
         'id': export.id,
         'status': export.status,
         'query_summary': export.query_summary,
     }
-    
+
     if export.status == 'completed':
         response_data['file_size'] = export.file_size
         response_data['file_size_human'] = format_file_size(export.file_size)
         response_data['patient_count'] = export.patient_count
         if export.completed_at:
             response_data['completed_at'] = export.completed_at.isoformat()
-    
+
     if export.status == 'failed':
         response_data['error_message'] = export.error_message
-    
+
     if export.status == 'processing':
         if export.started_at:
             response_data['started_at'] = export.started_at.isoformat()
-    
+        if export.patient_count:
+            response_data['patient_count'] = export.patient_count
+        if getattr(export, 'progress_message', None):
+            response_data['progress_message'] = export.progress_message
+        if getattr(export, 'progress_percent', None) is not None:
+            response_data['progress_percent'] = export.progress_percent
+
     return JsonResponse(response_data)
 
 

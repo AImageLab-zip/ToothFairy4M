@@ -1,8 +1,9 @@
 """Export processor for background export generation."""
 import os
+import sys
 import zipfile
 import logging
-import threading
+import subprocess
 from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
@@ -13,16 +14,22 @@ logger = logging.getLogger(__name__)
 
 class ExportProcessor:
     """Processes export jobs by querying patients, collecting files, and creating ZIP archives."""
+
+    RAW_ONLY_MODALITY_SLUGS = {
+        'teleradiography',
+        'panoramic',
+    }
     
-    # Map modality slugs to file types (only processed files)
+    # Map modality slugs to file types (only processed files, except intraoral which has no processing step)
     MODALITY_TO_FILE_TYPES = {
         'cbct': ['cbct_processed'],  # Only processed
         'ios': ['ios_processed_upper', 'ios_processed_lower'],  # Only processed
         'audio': ['audio_processed'],  # Only processed
         'bite_classification': ['bite_classification'],
-        'intraoral': ['intraoral_processed'],  # Only processed
-        'teleradiography': ['teleradiography_processed'],  # Only processed
-        'panoramic': ['panoramic_processed'],  # Only processed
+        'intraoral': ['intraoral_raw'],  # No processing step; raw IS the usable file
+        'intraoral-photo': ['intraoral_raw'],  # Actual DB slug; same as above
+        'teleradiography': ['teleradiography_raw'],  # Raw by default
+        'panoramic': ['panoramic_raw'],  # Raw by default
         'braintumor-mri-t1': ['braintumor_mri_t1_processed'],  # Only processed
         'braintumor-mri-t1c': ['braintumor_mri_t1c_processed'],  # Only processed
         'braintumor-mri-t2': ['braintumor_mri_t2_processed'],  # Only processed
@@ -37,7 +44,15 @@ class ExportProcessor:
         self.folder_ids = self.query_params.get('folder_ids', [])
         self.modality_slugs = self.query_params.get('modality_slugs', [])
         self.filters = self.query_params.get('filters', {})
-    
+
+    def _update_progress(self, message, percent=None):
+        """Update progress on the Export record for live feedback."""
+        from ..models import Export
+        update_kw = {'progress_message': message}
+        if percent is not None:
+            update_kw['progress_percent'] = min(100, max(0, int(percent)))
+        Export.objects.filter(pk=self.export.pk).update(**update_kw)
+
     def query_patients(self):
         """Query patients based on folder_ids and filters. Apply AND logic for all filters."""
         from ..models import Patient, VoiceCaption
@@ -107,9 +122,14 @@ class ExportProcessor:
             file_types.extend(self.MODALITY_TO_FILE_TYPES.get(modality_slug, []))
         
         logger.info(f"Collecting files for modalities: {actual_modality_slugs}, file_types: {file_types}")
+
+        processed_fallback_slugs = [
+            slug for slug in actual_modality_slugs if slug not in self.RAW_ONLY_MODALITY_SLUGS
+        ]
         
         # Also check by modality relationship
         modality_objects = Modality.objects.filter(slug__in=actual_modality_slugs)
+        fallback_modality_objects = Modality.objects.filter(slug__in=processed_fallback_slugs)
         logger.info(f"Found {modality_objects.count()} modality objects")
         
         for patient in patients:
@@ -121,14 +141,14 @@ class ExportProcessor:
             
             # For modality-based matching, also include files that match by modality relationship
             # (even if file_type is not in our explicit list, but modality matches)
-            if modality_objects.exists():
+            if fallback_modality_objects.exists():
                 # Match by modality relationship (for files that have modality set)
                 # Only include processed files
                 query |= Q(
-                    modality__in=modality_objects,
+                    modality__in=fallback_modality_objects,
                     file_type__endswith='_processed'
                 ) | Q(
-                    modality__in=modality_objects,
+                    modality__in=fallback_modality_objects,
                     file_type='bite_classification'
                 )
             
@@ -137,8 +157,20 @@ class ExportProcessor:
             
             for file_reg in patient_files:
                 logger.debug(f"  Processing file: {file_reg.file_type}, path: {file_reg.file_path}, modality: {file_reg.modality}")
-                # Double-check: only export processed files (or bite_classification)
-                if file_reg.file_type.endswith('_processed') or file_reg.file_type == 'bite_classification':
+                # Double-check: only export files that are in the explicitly requested file_types
+                # list (handles ios_processed_upper / ios_processed_lower which don't end with
+                # '_processed'), or any other processed/bite_classification file from a modality
+                # relationship match.
+                is_mapped_file_type = file_reg.file_type in file_types
+                is_processed_fallback = (
+                    file_reg.modality is not None and
+                    file_reg.modality.slug in processed_fallback_slugs and
+                    (
+                        file_reg.file_type.endswith('_processed') or
+                        file_reg.file_type == 'bite_classification'
+                    )
+                )
+                if is_mapped_file_type or is_processed_fallback:
                     # Determine modality slug for file organization
                     if file_reg.modality:
                         modality_slug = file_reg.modality.slug
@@ -150,6 +182,12 @@ class ExportProcessor:
                             modality_slug = 'cbct'
                         elif file_reg.file_type.startswith('audio_'):
                             modality_slug = 'audio'
+                        elif file_reg.file_type.startswith('intraoral_'):
+                            modality_slug = 'intraoral-photo'
+                        elif file_reg.file_type.startswith('teleradiography_'):
+                            modality_slug = 'teleradiography'
+                        elif file_reg.file_type.startswith('panoramic_'):
+                            modality_slug = 'panoramic'
                         else:
                             modality_slug = None
                     
@@ -192,13 +230,17 @@ class ExportProcessor:
                     else:
                         logger.warning(f"File not found: {file_reg.file_path} (file_type: {file_reg.file_type}, patient: {patient.patient_id})")
                 else:
-                    logger.debug(f"  Skipping file {file_reg.file_type}: does not end with '_processed' and is not 'bite_classification'")
+                    logger.debug(f"  Skipping file {file_reg.file_type}: not in expected mapped types and not eligible processed fallback")
             
             # Collect VoiceCaption text files for reports (only if 'reports' is selected)
             if 'reports' in self.modality_slugs:
-                # Get actual modalities (excluding 'reports')
-                actual_modality_slugs = [slug for slug in self.modality_slugs if slug != 'reports']
-                for modality_slug in actual_modality_slugs:
+                # When reports-only: use all active modalities; otherwise use selected modalities
+                report_modality_slugs = [s for s in self.modality_slugs if s != 'reports']
+                if not report_modality_slugs:
+                    report_modality_slugs = list(
+                        Modality.objects.filter(is_active=True).values_list('slug', flat=True)
+                    )
+                for modality_slug in report_modality_slugs:
                     try:
                         modality = Modality.objects.get(slug=modality_slug)
                         voice_captions = VoiceCaption.objects.filter(
@@ -208,13 +250,14 @@ class ExportProcessor:
                         ).exclude(text_caption='')
                         
                         for vc in voice_captions:
-                            # Create a virtual file entry for the text caption
+                            # Create a virtual file entry for the text caption (user_id = annotator for unique filename)
                             files_to_export.append({
                                 'type': 'report',
                                 'patient': patient,
                                 'voice_caption': vc,
                                 'modality_slug': modality_slug,
                                 'content': vc.text_caption,
+                                'user_id': vc.user_id,
                             })
                             # Estimate text file size
                             total_size += len(vc.text_caption.encode('utf-8'))
@@ -227,29 +270,42 @@ class ExportProcessor:
     def create_zip(self, files_to_export, export_path):
         """Create ZIP file with structure: patient_{id}_{name}/modality/files and reports/."""
         os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        
+
+        # Organize files by patient
+        patient_files = {}
+        for file_info in files_to_export:
+            patient = file_info['patient']
+            patient_key = patient.patient_id
+
+            if patient_key not in patient_files:
+                patient_files[patient_key] = {
+                    'patient': patient,
+                    'files': [],
+                    'reports': {},
+                }
+
+            if file_info['type'] == 'file':
+                patient_files[patient_key]['files'].append(file_info)
+            elif file_info['type'] == 'report':
+                modality_slug = file_info['modality_slug']
+                if modality_slug not in patient_files[patient_key]['reports']:
+                    patient_files[patient_key]['reports'][modality_slug] = []
+                patient_files[patient_key]['reports'][modality_slug].append(file_info)
+
+        # Count total ZIP entries for progress
+        total_entries = 0
+        for patient_data in patient_files.values():
+            modality_files = {}
+            for file_info in patient_data['files']:
+                modality_slug = file_info.get('modality_slug') or 'unknown'
+                modality_files.setdefault(modality_slug, []).append(file_info)
+            total_entries += sum(len(f) for f in modality_files.values())
+            total_entries += sum(len(r) for r in patient_data['reports'].values())
+
+        progress_interval = max(1, total_entries // 50)  # ~50 updates over the ZIP phase
+        current_entry = [0]  # use list so inner closure can mutate
+
         with zipfile.ZipFile(export_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Organize files by patient
-            patient_files = {}
-            for file_info in files_to_export:
-                patient = file_info['patient']
-                patient_key = patient.patient_id
-                
-                if patient_key not in patient_files:
-                    patient_files[patient_key] = {
-                        'patient': patient,
-                        'files': [],
-                        'reports': {},
-                    }
-                
-                if file_info['type'] == 'file':
-                    patient_files[patient_key]['files'].append(file_info)
-                elif file_info['type'] == 'report':
-                    modality_slug = file_info['modality_slug']
-                    if modality_slug not in patient_files[patient_key]['reports']:
-                        patient_files[patient_key]['reports'][modality_slug] = []
-                    patient_files[patient_key]['reports'][modality_slug].append(file_info)
-            
             # Add files to ZIP
             for patient_key, patient_data in patient_files.items():
                 patient = patient_data['patient']
@@ -311,17 +367,32 @@ class ExportProcessor:
                             zipf.write(source_path, dest_path)
                         except Exception as e:
                             logger.error(f"Error adding file {source_path} to ZIP: {e}")
-                
-                # Add report files
+                        current_entry[0] += 1
+                        if total_entries and current_entry[0] % progress_interval == 0:
+                            pct = 20 + int(75 * current_entry[0] / total_entries)
+                            self._update_progress(
+                                f'Writing ZIP ({current_entry[0]}/{total_entries} files)',
+                                pct
+                            )
+
+                # Add report files (filename includes annotator user_id to avoid overwriting)
                 for modality_slug, reports in patient_data['reports'].items():
                     for report_info in reports:
                         content = report_info['content']
-                        filename = f"{modality_slug}.txt"
+                        user_id = report_info.get('user_id', 'unknown')
+                        filename = f"{modality_slug}_{user_id}.txt"
                         dest_path = f"{patient_folder}/reports/{filename}"
-                        
+
                         # Write text content to ZIP
                         zipf.writestr(dest_path, content)
-        
+                        current_entry[0] += 1
+                        if total_entries and current_entry[0] % progress_interval == 0:
+                            pct = 20 + int(75 * current_entry[0] / total_entries)
+                            self._update_progress(
+                                f'Writing ZIP ({current_entry[0]}/{total_entries} files)',
+                                pct
+                            )
+
         return os.path.getsize(export_path)
     
     def process_export(self):
@@ -335,13 +406,15 @@ class ExportProcessor:
                 self.export.mark_failed('No patients match the selected criteria.')
                 return
             
-            # Update patient count
+            # Update patient count early so status API shows progress
             self.export.patient_count = patient_count
-            self.export.save()
-            
+            self.export.save(update_fields=['patient_count'])
+            self._update_progress(f'Collected {patient_count} patients', 5)
+
             # Collect files
+            self._update_progress('Collecting files...', 10)
             files_to_export, estimated_size = self.collect_files(patients)
-            
+
             if not files_to_export:
                 self.export.mark_failed('No files found for the selected patients and modalities.')
                 return
@@ -358,8 +431,9 @@ class ExportProcessor:
             timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
             filename = f"export_{self.export.id}_{timestamp}.zip"
             export_path = export_dir / filename
-            
-            # Create ZIP
+
+            self._update_progress('Writing ZIP...', 15)
+            # Create ZIP (reports progress 20–95%)
             actual_size = self.create_zip(files_to_export, str(export_path))
             
             # Update export with results
@@ -376,25 +450,29 @@ class ExportProcessor:
 
 
 def start_export_processing(export_id):
-    """Start background processing for an export."""
+    """Start background processing for an export in a subprocess.
+
+    Uses a subprocess instead of a daemon thread so the export completes even
+    after the HTTP request ends (web workers can recycle and kill threads).
+    """
     from ..models import Export
-    
+
     try:
         export = Export.objects.get(id=export_id)
         export.mark_processing()
-        
-        # Create processor
-        processor = ExportProcessor(export)
-        
-        # Start background thread
-        thread = threading.Thread(
-            target=processor.process_export,
-            daemon=True,  # Daemon thread doesn't block shutdown
+
+        # Run in a detached subprocess so it survives the request/worker
+        base_dir = Path(settings.BASE_DIR)
+        manage_py = base_dir / "manage.py"
+        cmd = [sys.executable, str(manage_py), "run_export", str(export_id)]
+        subprocess.Popen(
+            cmd,
+            cwd=str(base_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
-        thread.start()
-        
-        logger.info(f"Started background processing for export {export_id}")
-        
+        logger.info(f"Started background subprocess for export {export_id}")
     except Export.DoesNotExist:
         logger.error(f"Export {export_id} not found")
     except Exception as e:
@@ -402,5 +480,5 @@ def start_export_processing(export_id):
         try:
             export = Export.objects.get(id=export_id)
             export.mark_failed(str(e))
-        except:
+        except Exception:
             pass
