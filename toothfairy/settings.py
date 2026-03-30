@@ -121,7 +121,6 @@ DATABASES = {
         "HOST": config('DB_HOST', default='localhost'),
         "PORT": config('DB_PORT', default='3306'),
         "OPTIONS": {
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
         },
     }
 }
