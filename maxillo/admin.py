@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import UserProfile, Dataset, Patient, Classification, VoiceCaption, Export
+from .models import Dataset, Patient, Classification, VoiceCaption, Export
 from common.models import Project, Modality, ProjectAccess, Job, FileRegistry, Invitation
 from .models import Tag, Folder
 
