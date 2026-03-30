@@ -189,3 +189,7 @@ GitHub.sublime-settings
 
 # Database
 prod_db.sql
+*.sql
+
+# Local scripts
+scripts/
