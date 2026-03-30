@@ -28,8 +28,7 @@ def current_project(request):
             else:
                 # Regular users only see projects they have access to
                 accessible_project_ids = ProjectAccess.objects.filter(
-                    user=user,
-                    can_view=True
+                    user=user
                 ).values_list('project_id', flat=True)
                 all_projects = Project.objects.filter(
                     is_active=True,

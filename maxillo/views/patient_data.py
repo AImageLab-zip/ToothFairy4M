@@ -179,13 +179,17 @@ def patient_cbct_data(request, patient_id):
     # Fallback to raw CBCT if no processed version available
     if not file_path:
         try:
-            # Check FileRegistry for raw CBCT
-            raw_cbct = scan_pair.get_cbct_raw_file()
-            if raw_cbct and os.path.exists(raw_cbct.file_path):
-                # Only use raw file if it's already in .nii.gz format
-                if raw_cbct.file_path.endswith('.nii.gz'):
-                    file_path = raw_cbct.file_path
-        except:
+            # Do not rely on get_cbct_raw_file() because legacy data may contain
+            # multiple cbct_raw rows (including non-NIfTI files).
+            raw_entries = scan_pair.files.filter(file_type='cbct_raw').order_by('-created_at')
+            for raw_entry in raw_entries:
+                raw_path = raw_entry.file_path
+                if not raw_path:
+                    continue
+                if (raw_path.endswith('.nii') or raw_path.endswith('.nii.gz')) and os.path.exists(raw_path):
+                    file_path = raw_path
+                    break
+        except Exception:
             pass
     
     if not file_path or not os.path.exists(file_path):
@@ -513,7 +517,6 @@ def patient_teleradiography_data(request, patient_id):
     except Exception as e:
         logger.error(f"Error serving teleradiography data: {e}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
-
 
 
 

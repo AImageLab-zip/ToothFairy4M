@@ -181,7 +181,7 @@ class NiiVueViewer {
         }
 
         this.nv.scene.crosshairPos = crosshair;
-        this.nv.updateGLVolume();
+        this.nv.drawScene();
     }
 
     /**
@@ -261,7 +261,7 @@ class NiiVueViewer {
      * @param {number} percentMin - Lower window percent (0-100)
      * @param {number} percentMax - Upper window percent (0-100)
      */
-    setWindowing(percentMin, percentMax) {
+    setWindowing(percentMin, percentMax, options = {}) {
         if (!this.nv || !this.initialized) {
             console.warn('NiiVueViewer: Cannot set windowing - viewer not initialized');
             return;
@@ -287,7 +287,8 @@ class NiiVueViewer {
         volume.cal_min = dataMin + (dataMax - dataMin) * (lowP / 100);
         volume.cal_max = dataMin + (dataMax - dataMin) * (highP / 100);
 
-        // Trigger GPU shader update
+        // NiiVue needs updateGLVolume() to apply cal_min/cal_max updates.
+        // Interactive smoothness is handled by throttling callers.
         this.nv.updateGLVolume();
     }
 

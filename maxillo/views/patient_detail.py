@@ -286,7 +286,16 @@ def patient_detail(request, patient_id):
                 from common.models import Modality as _Modality
                 modality_obj = _Modality.objects.filter(slug=slug).first()
                 if modality_obj:
-                    file_obj = patient.files.filter(modality=modality_obj).first()
+                    files_qs = patient.files.filter(modality=modality_obj)
+
+                    if slug == 'cbct':
+                        # Prefer processed CBCT entry, then latest raw NIfTI-capable entry.
+                        file_obj = files_qs.filter(file_type='cbct_processed').order_by('-created_at').first()
+                        if not file_obj:
+                            file_obj = files_qs.filter(file_type='cbct_raw').order_by('-created_at').first()
+                    else:
+                        file_obj = files_qs.order_by('-created_at').first()
+
                     if file_obj:
                         modality_files[slug] = {
                             'id': file_obj.id,
@@ -363,5 +372,4 @@ def update_patient_name(request, patient_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
 

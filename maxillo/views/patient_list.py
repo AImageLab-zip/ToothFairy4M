@@ -21,8 +21,7 @@ def home(request):
             projects = all_projects.order_by('name')
         else:
             accessible_project_ids = ProjectAccess.objects.filter(
-                user=request.user,
-                can_view=True
+                user=request.user
             ).values_list('project_id', flat=True)
             projects = all_projects.filter(id__in=accessible_project_ids).order_by('name')
 
@@ -58,8 +57,7 @@ def select_project(request, project_id: int):
         # Regular users need explicit access
         has_access = ProjectAccess.objects.filter(
             user=request.user,
-            project=project,
-            can_view=True
+            project=project
         ).exists()
         if not has_access:
             messages.error(request, f"You don't have access to the {project.name} project.")
@@ -100,7 +98,7 @@ def patient_list(request):
     current_project_id = request.session.get('current_project_id')
     has_access = True
     if not user_profile.is_admin() and current_project_id:
-        has_access = ProjectAccess.objects.filter(user=request.user, project_id=current_project_id, can_view=True).exists()
+        has_access = ProjectAccess.objects.filter(user=request.user, project_id=current_project_id).exists()
         if not has_access:
             messages.error(request, 'You are not allowed to access this project.')
             return redirect('home')

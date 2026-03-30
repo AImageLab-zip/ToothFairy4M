@@ -15,6 +15,7 @@ services:
         condition: service_healthy
     environment:
       VIRTUAL_HOST: ${DOMAIN:-}
+      VIRTUAL_PORT: 8000
       LETSENCRYPT_HOST: ${DOMAIN:-}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
     env_file:
@@ -23,6 +24,7 @@ services:
     restart: unless-stopped
     networks:
       - dev-network
+      - proxy-net
 
   db:
     image: mysql:8.0
@@ -52,3 +54,5 @@ volumes:
 networks:
   dev-network:
     driver: bridge
+  proxy-net:
+    external: true

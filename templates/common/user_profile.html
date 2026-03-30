@@ -180,7 +180,7 @@
                                     {% for classification in recent_classifications %}
                                     <tr>
                                         <td>
-                                            <i class="fas fa-tooth text-muted me-1"></i>
+                                            <i class="fas fa-user text-muted me-1"></i>
                                             <strong>{{ classification.patient.name }}</strong>
                                             <br>
                                             <small class="text-muted">ID: {{ classification.patient.patient_id }}</small>
@@ -238,7 +238,7 @@
                                     <tr>
                                         <td>
                                             {% if caption.patient %}
-                                                <i class="fas fa-tooth text-muted me-1"></i>
+                                                <i class="fas fa-user text-muted me-1"></i>
                                                 <strong>{{ caption.patient.name }}</strong>
                                                 <br>
                                                 <small class="text-muted">ID: {{ caption.patient.patient_id }}</small>
@@ -306,7 +306,7 @@
                                     {% for patient in recent_uploads %}
                                     <tr>
                                         <td>
-                                            <i class="fas fa-tooth text-muted me-1"></i>
+                                            <i class="fas fa-user text-muted me-1"></i>
                                             <strong>{{ patient.name }}</strong>
                                             <br>
                                             <small class="text-muted">ID: {{ patient.patient_id }}</small>
@@ -369,7 +369,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-3">You can view the profile of any user in the system.</p>
-                    <form method="get" action="{% url 'maxillo:user_profile_by_username' 'PLACEHOLDER' %}" class="row g-3" id="userSelectForm">
+                    <form method="get" action="{% url ns|add:':user_profile_by_username' 'PLACEHOLDER' %}" class="row g-3" id="userSelectForm">
                         <div class="col-auto">
                             <select class="form-select" id="userSelect" name="username">
                                 <option value="">Select a user...</option>
@@ -399,7 +399,7 @@ function viewUserProfile() {
     const username = select.value;
     if (username) {
         {% firstof request.resolver_match.namespace 'maxillo' as ns %}
-        window.location.href = "{% url 'maxillo:user_profile_by_username' 'PLACEHOLDER' %}".replace('PLACEHOLDER', username);
+        window.location.href = "{% url ns|add:':user_profile_by_username' 'PLACEHOLDER' %}".replace('PLACEHOLDER', username);
     } else {
         alert('Please select a user.');
     }
@@ -412,4 +412,3 @@ function viewUserProfile() {
 }
 </style>
 {% endblock %}
-

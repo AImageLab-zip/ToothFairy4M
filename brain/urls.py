@@ -13,8 +13,7 @@ def set_brain(request):
 	if not (request.user.profile.is_admin or request.user.profile.is_student_developer):
 		has_access = ProjectAccess.objects.filter(
 			user=request.user,
-			project=proj,
-			can_view=True
+			project=proj
 		).exists()
 		if not has_access:
 			messages.error(request, "You don't have access to the Brain project.")

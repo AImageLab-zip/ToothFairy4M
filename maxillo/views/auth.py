@@ -24,9 +24,7 @@ def register(request):
                     user=user,
                     project=invitation.project,
                     defaults={
-                        'role': invitation.role,
-                        'can_view': True,
-                        'can_upload': False  # Default: view-only access
+                        'role': invitation.role
                     }
                 )
                 # Update role if access already exists

@@ -35,15 +35,25 @@ def user_profile(request, username=None):
         # Get the target user
         target_user = get_object_or_404(User, username=username)
     
-    # Statistics
+    # Resolve active project from URL-bound profile first (set by middleware),
+    # fallback to session for safety.
+    active_project_id = getattr(getattr(request.user, 'profile', None), 'project_id', None)
+    if not active_project_id:
+        active_project_id = request.session.get('current_project_id')
+
+    # Statistics (strictly scoped to active project)
     # 1. Patients uploaded
-    patients_uploaded = Patient.objects.filter(uploaded_by=target_user).order_by('-uploaded_at')
+    patients_uploaded = Patient.objects.filter(
+        uploaded_by=target_user,
+        project_id=active_project_id
+    ).order_by('-uploaded_at')
     total_patients_uploaded = patients_uploaded.count()
     
     # 2. Bite classifications (manual annotations)
     classifications = Classification.objects.filter(
         annotator=target_user,
-        classifier='manual'
+        classifier='manual',
+        patient__project_id=active_project_id
     ).select_related('patient').order_by('-timestamp')
     total_classifications = classifications.count()
     
@@ -52,7 +62,8 @@ def user_profile(request, username=None):
     
     # 3. Voice captions
     voice_captions = VoiceCaption.objects.filter(
-        user=target_user
+        user=target_user,
+        patient__project_id=active_project_id
     ).select_related('patient').order_by('-created_at')
     total_voice_captions = voice_captions.count()
     
@@ -88,28 +99,30 @@ def user_profile(request, username=None):
     
     uploads_last_7_days = Patient.objects.filter(
         uploaded_by=target_user,
+        project_id=active_project_id,
         uploaded_at__gte=seven_days_ago
     ).count()
     
     classifications_last_7_days = Classification.objects.filter(
         annotator=target_user,
         classifier='manual',
+        patient__project_id=active_project_id,
         timestamp__gte=seven_days_ago
     ).count()
     
     voice_captions_last_7_days = VoiceCaption.objects.filter(
         user=target_user,
+        patient__project_id=active_project_id,
         created_at__gte=seven_days_ago
     ).count()
 
     # Get target user's ProjectAccess for current project
-    current_project_id = request.session.get('current_project_id')
     target_profile = None
-    if current_project_id:
+    if active_project_id:
         try:
             target_profile = ProjectAccess.objects.get(
                 user=target_user,
-                project_id=current_project_id
+                project_id=active_project_id
             )
         except ProjectAccess.DoesNotExist:
             target_profile = None
@@ -147,4 +160,3 @@ def user_profile(request, username=None):
         context['all_users'] = all_users
     
     return render_with_fallback(request, 'user_profile', context)
-

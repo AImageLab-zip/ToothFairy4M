@@ -16,6 +16,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% firstof request.resolver_match.namespace 'maxillo' as ns %}
 <script id="django-data" type="application/json">
 {
     "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
@@ -35,7 +36,14 @@
 
 {# Modality-specific viewers #}
 <script src="{% static 'js/modality_viewers/ios.js' %}"></script>
+{% if ns == 'maxillo' %}
+<script src="https://cdn.jsdelivr.net/npm/@niivue/niivue@0.67.0/dist/niivue.umd.min.js"></script>
+<script src="{% static 'js/modality_viewers/niivue_viewer.js' %}"></script>
+<script src="{% static 'js/viewer_grid.js' %}"></script>
+<script src="{% static 'js/modality_viewers/maxillo_cbct_grid_adapter.js' %}"></script>
+{% else %}
 <script src="{% static 'js/modality_viewers/cbct.js' %}"></script>
+{% endif %}
 <script src="{% static 'js/modality_viewers/intraoral.js' %}"></script>
 <script src="{% static 'js/modality_viewers/teleradiography.js' %}"></script>
 <script src="{% static 'js/modality_viewers/panoramic.js' %}"></script>
@@ -49,5 +57,4 @@
 <script src="{% static 'js/collapse_sections.js' %}"></script>
 <script src="{% static 'js/cbct_upload.js' %}"></script>
 {% endblock %}
-
 

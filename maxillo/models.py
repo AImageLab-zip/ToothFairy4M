@@ -763,7 +763,7 @@ class Export(models.Model):
             models.Index(fields=['user', 'status']),
             models.Index(fields=['status', 'created_at']),
         ]
-        db_table = 'scans_export'
+        db_table = 'maxillo_export'
     
     def __str__(self):
         return f"Export {self.id} - {self.get_status_display()} - {self.user.username} - {self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else 'N/A'}"

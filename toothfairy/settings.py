@@ -35,26 +35,29 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=str)
 # Environment-aware SSL settings
 ENABLE_SSL = config('ENABLE_SSL', default=False, cast=bool)
 ENABLE_HTTPS_REDIRECT = config('ENABLE_HTTPS_REDIRECT', default=False, cast=bool)
+FORCE_HTTPS = config('FORCE_HTTPS', default=False, cast=bool)
 
-if ENABLE_SSL:
+# Disable HTTPS redirect in development (DEBUG mode)
+# HTTPS can be handled by reverse proxy (e.g., nginx) via proxy-net
+if ENABLE_SSL and not DEBUG:
     # HTTPS settings - enforce HTTPS everywhere (production only)
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT = ENABLE_HTTPS_REDIRECT
+    SECURE_SSL_REDIRECT = ENABLE_HTTPS_REDIRECT or FORCE_HTTPS
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 else:
+    # Development mode: no HTTPS redirect, allow HTTP
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    # Still set proxy header for reverse proxy scenarios, but don't enforce redirect
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
-
-# Force HTTPS detection for proxy environments
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 

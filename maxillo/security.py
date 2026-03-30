@@ -117,8 +117,7 @@ def check_project_access(user, project, require_admin: bool = False) -> Authoriz
     from maxillo.models import ProjectAccess
     has_access = ProjectAccess.objects.filter(
         user=user,
-        project=project,
-        can_view=True
+        project=project
     ).exists()
     
     if not has_access:
@@ -130,9 +129,9 @@ def check_project_access(user, project, require_admin: bool = False) -> Authoriz
         has_admin_access = ProjectAccess.objects.filter(
             user=user,
             project=project,
-            can_admin=True
+            role='admin'
         ).exists()
-        
+
         if not has_admin_access:
             logger.warning(f"User {user.id} denied admin access to project {project.id}")
             return AuthorizationResult(False, "You do not have admin access to this project")

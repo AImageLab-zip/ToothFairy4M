@@ -144,7 +144,7 @@ class Invitation(models.Model):
 		return f"Invitation {self.code} - {self.role}{project_str}"
 
 	class Meta:
-		db_table = 'scans_invitation'
+		db_table = 'maxillo_invitation'
 
 
 class Job(models.Model):
@@ -188,7 +188,7 @@ class Job(models.Model):
 			models.Index(fields=['status', 'created_at']),
 			models.Index(fields=['patient', 'modality_slug', 'status']),  # Optimize patient list queries
 		]
-		db_table = 'scans_job'
+		db_table = 'maxillo_job'
 
 	def __str__(self):
 		related_obj = self.patient or self.voice_caption
@@ -318,7 +318,7 @@ class ProcessingJob(models.Model):
 			models.Index(fields=['job_type', 'status']),
 			models.Index(fields=['status', 'created_at']),
 		]
-		db_table = 'scans_processingjob'
+		db_table = 'maxillo_processingjob'
 
 	def __str__(self):
 		related_obj = self.patient or self.voice_caption
@@ -454,7 +454,7 @@ class FileRegistry(models.Model):
 			models.Index(fields=['modality', 'subtype', 'patient']),
 			models.Index(fields=['file_path']),
 		]
-		db_table = 'scans_fileregistry'
+		db_table = 'maxillo_fileregistry'
 
 	def __str__(self):
 		return f"FileRegistry {self.id} - {self.file_type} - {self.file_path}"
