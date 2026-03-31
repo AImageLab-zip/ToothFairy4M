@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AuthorizationResult:
     """Result of an authorization check."""
     
-    def __init__(self, allowed: bool, reason: str = "", redirect_url: str = None):
+    def __init__(self, allowed: bool, reason: str = "", redirect_url: Optional[str] = None):
         self.allowed = allowed
         self.reason = reason
         self.redirect_url = redirect_url
@@ -114,7 +114,7 @@ def check_project_access(user, project, require_admin: bool = False) -> Authoriz
         return AuthorizationResult(True)
     
     # Check project-specific access
-    from maxillo.models import ProjectAccess
+    from common.models import ProjectAccess
     has_access = ProjectAccess.objects.filter(
         user=user,
         project=project
@@ -157,8 +157,10 @@ def check_file_access(user, file_obj) -> AuthorizationResult:
         logger.warning(f"User {user.id} has no profile - denying file access")
         return AuthorizationResult(False, "Invalid user profile")
     
+    patient = file_obj.patient or getattr(file_obj, 'brain_patient', None)
+
     # If file is not associated with a patient, only admins can access it
-    if not file_obj.patient:
+    if not patient:
         user_profile = user.profile
         if not user_profile.is_admin():
             logger.warning(f"User {user.id} denied access to orphaned file {file_obj.id}")
@@ -166,13 +168,16 @@ def check_file_access(user, file_obj) -> AuthorizationResult:
         return AuthorizationResult(True)
     
     # Check patient access
-    patient_result = check_patient_access(user, file_obj.patient)
+    patient_result = check_patient_access(user, patient)
     if not patient_result.is_allowed():
         return patient_result
     
-    # Check project access if patient belongs to a project
-    if file_obj.patient.project:
-        project_result = check_project_access(user, file_obj.patient.project)
+    # Check project access based on file domain
+    from common.models import Project
+    file_domain = file_obj.domain or ('brain' if getattr(file_obj, 'brain_patient_id', None) else 'maxillo')
+    project = Project.objects.filter(slug=file_domain).first()
+    if project:
+        project_result = check_project_access(user, project)
         if not project_result.is_allowed():
             logger.warning(f"User {user.id} denied project access for file {file_obj.id}")
             return AuthorizationResult(False, "Project access denied")
@@ -194,7 +199,11 @@ def require_patient_access(require_modify: bool = False):
     """
     def decorator(view_func):
         def wrapper(request, patient_id, *args, **kwargs):
-            from maxillo.models import Patient
+            from django.apps import apps
+
+            namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+            app_label = 'brain' if namespace == 'brain' else 'maxillo'
+            Patient = apps.get_model(app_label, 'Patient')
             
             try:
                 patient = Patient.objects.get(patient_id=patient_id)

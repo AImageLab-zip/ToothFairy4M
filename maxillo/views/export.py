@@ -11,8 +11,9 @@ import os
 import json
 import logging
 
-from ..models import Export, Folder, Patient, VoiceCaption
 from common.models import Modality, FileRegistry
+from .domain import get_domain_models, get_namespace
+from .helpers import redirect_with_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ def is_admin(user):
 @user_passes_test(is_admin)
 def export_list(request):
     """Display export history page with all previous exports."""
-    exports = Export.objects.filter(user=request.user).order_by('-created_at')
+    ExportModel = get_domain_models(request)['Export']
+    exports = ExportModel.objects.filter(user=request.user).order_by('-created_at')
     
     # Format file sizes for display
     exports_with_sizes = []
@@ -56,6 +58,7 @@ def export_list(request):
     return render(request, 'maxillo/export_list.html', {
         'exports': page_obj,
         'page_obj': page_obj,
+        'ns': get_namespace(request),
     })
 
 
@@ -64,6 +67,11 @@ def export_list(request):
 @require_http_methods(["GET", "POST"])
 def export_new(request):
     """Create new export page with folder/modality selection."""
+    domain_models = get_domain_models(request)
+    ExportModel = domain_models['Export']
+    FolderModel = domain_models['Folder']
+    PatientModel = domain_models['Patient']
+
     if request.method == 'POST':
         # Get form data
         folder_ids = request.POST.getlist('folder_ids')
@@ -79,12 +87,12 @@ def export_new(request):
         # Validate selections
         if not folder_ids:
             messages.error(request, 'Please select at least one folder.')
-            return redirect('maxillo:export_new')
+            return redirect_with_namespace(request, 'export_new')
         
         # Require at least one selection (can be a modality and/or reports only)
         if not modality_slugs:
             messages.error(request, 'Please select at least one modality.')
-            return redirect('maxillo:export_new')
+            return redirect_with_namespace(request, 'export_new')
         
         # Create export record
         query_params = {
@@ -133,7 +141,7 @@ def export_new(request):
         
         query_summary = ', '.join(query_summary_parts)
         
-        export = Export.objects.create(
+        export = ExportModel.objects.create(
             user=request.user,
             status='pending',
             query_params=query_params,
@@ -142,18 +150,18 @@ def export_new(request):
         
         # Start background processing
         from ..utils.export_processor import start_export_processing
-        start_export_processing(export.id)
+        start_export_processing(export.id, get_namespace(request))
         
         messages.success(request, f'Export #{export.id} created and processing started.')
-        return redirect('maxillo:export_list')
+        return redirect_with_namespace(request, 'export_list')
     
     # GET request - show form
-    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    folders = FolderModel.objects.filter(parent__isnull=True).order_by('name')
     
     # Get patient counts for folders
     folders_with_counts = []
     for folder in folders:
-        patient_count = Patient.objects.filter(folder=folder).count()
+        patient_count = PatientModel.objects.filter(folder=folder).count()
         folders_with_counts.append({
             'folder': folder,
             'patient_count': patient_count,
@@ -165,6 +173,7 @@ def export_new(request):
     return render(request, 'maxillo/export_new.html', {
         'folders': folders_with_counts,
         'modalities': modalities,
+        'ns': get_namespace(request),
     })
 
 
@@ -174,6 +183,11 @@ def export_new(request):
 def export_preview(request):
     """AJAX endpoint to get export statistics based on selected criteria."""
     try:
+        domain_models = get_domain_models(request)
+        PatientModel = domain_models['Patient']
+        VoiceCaptionModel = domain_models['VoiceCaption']
+        domain = get_namespace(request)
+
         # Get parameters from request
         if request.method == 'POST':
             data = json.loads(request.body) if request.body else {}
@@ -194,21 +208,27 @@ def export_preview(request):
             modality_slugs = modality_slugs.split(',') if modality_slugs else []
         
         # Query patients based on folders
-        patients = Patient.objects.filter(folder_id__in=folder_ids) if folder_ids else Patient.objects.none()
-        
+        patients = PatientModel.objects.filter(folder_id__in=folder_ids) if folder_ids else PatientModel.objects.none()
+
+        file_patient_filter = 'brain_patient__in' if domain == 'brain' else 'patient__in'
+
         # Apply filters (checking for processed files)
         if filters.get('has_cbct'):
             # Patients with CBCT processed files
-            cbct_patients = Patient.objects.filter(
-                files__file_type='cbct_processed'
-            ).distinct()
+            cbct_patient_ids = FileRegistry.objects.filter(
+                domain=domain,
+                file_type='cbct_processed'
+            ).values_list('brain_patient_id' if domain == 'brain' else 'patient_id', flat=True)
+            cbct_patients = PatientModel.objects.filter(patient_id__in=cbct_patient_ids).distinct()
             patients = patients.filter(patient_id__in=cbct_patients.values_list('patient_id', flat=True))
         
         if filters.get('has_ios'):
             # Patients with IOS processed files
-            ios_patients = Patient.objects.filter(
-                files__file_type__in=['ios_processed_upper', 'ios_processed_lower']
-            ).distinct()
+            ios_patient_ids = FileRegistry.objects.filter(
+                domain=domain,
+                file_type__in=['ios_processed_upper', 'ios_processed_lower']
+            ).values_list('brain_patient_id' if domain == 'brain' else 'patient_id', flat=True)
+            ios_patients = PatientModel.objects.filter(patient_id__in=ios_patient_ids).distinct()
             patients = patients.filter(patient_id__in=ios_patients.values_list('patient_id', flat=True))
         
         # Dynamic modality presence filters
@@ -226,9 +246,11 @@ def export_preview(request):
                 }
                 file_types = file_type_map.get(modality_slug, [])
                 if file_types:
-                    modality_patients = Patient.objects.filter(
-                        files__file_type__in=file_types
-                    ).distinct()
+                    modality_patient_ids = FileRegistry.objects.filter(
+                        domain=domain,
+                        file_type__in=file_types
+                    ).values_list('brain_patient_id' if domain == 'brain' else 'patient_id', flat=True)
+                    modality_patients = PatientModel.objects.filter(patient_id__in=modality_patient_ids).distinct()
                     patients = patients.filter(patient_id__in=modality_patients.values_list('patient_id', flat=True))
         
         # Report presence filters
@@ -239,7 +261,7 @@ def export_preview(request):
                 try:
                     modality = Modality.objects.get(slug=modality_slug)
                     # Get patients with voice captions for this modality
-                    report_patients = Patient.objects.filter(
+                    report_patients = PatientModel.objects.filter(
                         voice_captions__modality=modality,
                         voice_captions__text_caption__isnull=False
                     ).exclude(voice_captions__text_caption='').distinct()
@@ -273,10 +295,12 @@ def export_preview(request):
                 file_types = []
                 for slug in actual_modality_slugs:
                     file_types.extend(file_type_map.get(slug, []))
-                files = FileRegistry.objects.filter(
-                    patient__in=patients,
-                    file_type__in=file_types
-                )
+                file_filter = {
+                    'domain': domain,
+                    file_patient_filter: patients,
+                    'file_type__in': file_types,
+                }
+                files = FileRegistry.objects.filter(**file_filter)
                 file_count = files.count()
                 total_size = files.aggregate(total=Sum('file_size'))['total'] or 0
 
@@ -286,7 +310,7 @@ def export_preview(request):
                     Modality.objects.filter(is_active=True).values_list('slug', flat=True)
                 )
                 modality_objects = Modality.objects.filter(slug__in=report_modality_slugs)
-                voice_captions = VoiceCaption.objects.filter(
+                voice_captions = VoiceCaptionModel.objects.filter(
                     patient__in=patients,
                     modality__in=modality_objects,
                     text_caption__isnull=False
@@ -362,7 +386,7 @@ def _recover_stuck_export(export):
 @user_passes_test(is_admin)
 def export_status(request, export_id):
     """AJAX endpoint to get current export status."""
-    export = get_object_or_404(Export, id=export_id)
+    export = get_object_or_404(get_domain_models(request)['Export'], id=export_id)
 
     # Check permissions
     if export.user != request.user and not request.user.is_staff:
@@ -404,23 +428,23 @@ def export_status(request, export_id):
 @user_passes_test(is_admin)
 def export_download(request, export_id):
     """Download export ZIP file."""
-    export = get_object_or_404(Export, id=export_id)
+    export = get_object_or_404(get_domain_models(request)['Export'], id=export_id)
     
     # Check permissions
     if export.user != request.user and not request.user.is_staff:
         messages.error(request, 'You do not have permission to download this export.')
-        return redirect('maxillo:export_list')
+        return redirect_with_namespace(request, 'export_list')
     
     # Check status
     if export.status != 'completed':
         messages.error(request, 'Export is not yet completed.')
-        return redirect('maxillo:export_list')
+        return redirect_with_namespace(request, 'export_list')
     
     # Check file exists
     if not export.file_path or not os.path.exists(export.file_path):
         messages.error(request, 'Export file not found.')
         export.mark_failed('Export file not found on disk')
-        return redirect('maxillo:export_list')
+        return redirect_with_namespace(request, 'export_list')
     
     # Serve file
     try:
@@ -434,7 +458,7 @@ def export_download(request, export_id):
     except Exception as e:
         logger.error(f"Error serving export file: {e}", exc_info=True)
         messages.error(request, 'Error serving export file.')
-        return redirect('maxillo:export_list')
+        return redirect_with_namespace(request, 'export_list')
 
 
 @login_required
@@ -442,7 +466,7 @@ def export_download(request, export_id):
 @require_POST
 def export_delete(request, export_id):
     """Delete export record and optionally the ZIP file."""
-    export = get_object_or_404(Export, id=export_id)
+    export = get_object_or_404(get_domain_models(request)['Export'], id=export_id)
     
     # Check permissions
     if export.user != request.user and not request.user.is_staff:

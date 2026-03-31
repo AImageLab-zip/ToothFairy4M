@@ -1,14 +1,13 @@
 """NIFTI metadata management views."""
 from django.shortcuts import get_object_or_404
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 import json
 import os
 import shutil
 import logging
 
-from ..models import Patient
+from .domain import get_domain_models, get_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
 def get_nifti_metadata(request, patient_id):
     """Get NIFTI metadata including origin, affine matrix, and orientation"""
     try:
+        Patient = get_domain_models(request)['Patient']
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
         
@@ -202,7 +202,9 @@ def get_nifti_metadata(request, patient_id):
 def update_nifti_metadata(request, patient_id):
     """Update NIFTI metadata (admin only)"""
     try:
+        Patient = get_domain_models(request)['Patient']
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        domain = get_namespace(request)
         
         # Check if CBCT exists
         if not scan_pair.has_cbct_scan():
@@ -256,9 +258,10 @@ def update_nifti_metadata(request, patient_id):
         # Load NIFTI file
         import nibabel as nib
         import numpy as np
+        backup_path = ''
+        backup_path = cbct_path + '.backup'
         
         try:
-            backup_path = cbct_path + '.backup'
             shutil.copy2(cbct_path, backup_path)
             
             nifti_img = nib.load(cbct_path)
@@ -288,18 +291,34 @@ def update_nifti_metadata(request, patient_id):
             os.remove(backup_path)
 
             from common.models import Job
-            Job.objects.create(
-                scanpair=scan_pair,
-                job_type='metadata_update',
-                status='completed',
-                metadata={
-                    'updated_by': request.user.username,
-                    'changes': {
-                        'origin': new_origin,
-                        'affine': new_affine is not None
+            if domain == 'brain':
+                Job.objects.create(
+                    domain='brain',
+                    brain_patient=scan_pair,
+                    modality_slug='metadata_update',
+                    status='completed',
+                    output_files={
+                        'updated_by': request.user.username,
+                        'changes': {
+                            'origin': new_origin,
+                            'affine': new_affine is not None
+                        }
                     }
-                }
-            )
+                )
+            else:
+                Job.objects.create(
+                    domain='maxillo',
+                    patient=scan_pair,
+                    modality_slug='metadata_update',
+                    status='completed',
+                    output_files={
+                        'updated_by': request.user.username,
+                        'changes': {
+                            'origin': new_origin,
+                            'affine': new_affine is not None
+                        }
+                    }
+                )
             
             # Return updated metadata
             return get_nifti_metadata(request, patient_id)
@@ -314,5 +333,3 @@ def update_nifti_metadata(request, patient_id):
     except Exception as e:
         logger.error(f"Error in update_nifti_metadata: {e}")
         return JsonResponse({'error': str(e)}, status=500)
-
-

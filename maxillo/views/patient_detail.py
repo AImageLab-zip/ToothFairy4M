@@ -2,20 +2,24 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.http import JsonResponse
 import json
 import os
 import logging
 
-from ..models import Patient, Classification
-from ..forms import PatientManagementForm
+from .domain import get_domain_forms, get_domain_models
 from .helpers import redirect_with_namespace, render_with_fallback
 
 logger = logging.getLogger(__name__)
 
 @login_required
 def patient_detail(request, patient_id):
+    domain_models = get_domain_models(request)
+    domain_forms = get_domain_forms(request)
+    Patient = domain_models['Patient']
+    Classification = domain_models['Classification']
+    PatientManagementForm = domain_forms['PatientManagementForm']
+
     patient = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
@@ -118,7 +122,7 @@ def patient_detail(request, patient_id):
                     
                     try:
                         result = save_ios_to_dataset(
-                            patient, 
+                            patient,
                             request.FILES.get('upper_scan'),
                             request.FILES.get('lower_scan')
                         )
@@ -162,13 +166,11 @@ def patient_detail(request, patient_id):
                     if detected_modalities:
                         patient.modalities.add(*detected_modalities)
                 except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.error(f"Error detecting modalities: {e}")
                 return redirect_with_namespace(request, 'patient_detail', patient_id=patient_id)
             else:
                 messages.warning(request, 'No files were selected for upload.')
-                return redirect('patient_detail', patient_id=patient_id)
+                return redirect_with_namespace(request, 'patient_detail', patient_id=patient_id)
     
     # Build patient's modalities list (slug + name + subtypes) using relations and FileRegistry.modality only
     try:
@@ -266,8 +268,6 @@ def patient_detail(request, patient_id):
             else:
                 patient_files['other'].append(file_data)
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error organizing patient files: {e}")
 
 
@@ -345,6 +345,7 @@ def patient_detail(request, patient_id):
 def update_patient_name(request, patient_id):
     """AJAX endpoint for updating scan name"""
     user_profile = request.user.profile
+    Patient = get_domain_models(request)['Patient']
     
     try:
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
@@ -372,4 +373,3 @@ def update_patient_name(request, patient_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-

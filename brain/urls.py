@@ -2,12 +2,14 @@ from django.urls import path, include
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from maxillo.models import Project, ProjectAccess
+from common.models import Project, ProjectAccess
 
 
 @login_required
 def set_brain(request):
-	proj, _ = Project.objects.get_or_create(name='Brain')
+	proj = Project.objects.filter(slug='brain').first() or Project.objects.filter(name__iexact='brain').first()
+	if not proj:
+		proj = Project.objects.create(name='brain', slug='brain')
 	
 	# Check if user has access to Brain project
 	if not (request.user.profile.is_admin or request.user.profile.is_student_developer):

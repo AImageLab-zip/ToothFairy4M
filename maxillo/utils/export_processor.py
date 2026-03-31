@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
-from django.db import models
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +36,10 @@ class ExportProcessor:
         'rawzip': ['generic_processed'],  # Only processed
     }
     
-    def __init__(self, export):
+    def __init__(self, export, domain='maxillo'):
         """Initialize processor with export instance."""
         self.export = export
+        self.domain = domain
         self.query_params = export.query_params
         self.folder_ids = self.query_params.get('folder_ids', [])
         self.modality_slugs = self.query_params.get('modality_slugs', [])
@@ -47,7 +47,10 @@ class ExportProcessor:
 
     def _update_progress(self, message, percent=None):
         """Update progress on the Export record for live feedback."""
-        from ..models import Export
+        if self.domain == 'brain':
+            from brain.models import Export
+        else:
+            from ..models import Export
         update_kw = {'progress_message': message}
         if percent is not None:
             update_kw['progress_percent'] = min(100, max(0, int(percent)))
@@ -55,7 +58,10 @@ class ExportProcessor:
 
     def query_patients(self):
         """Query patients based on folder_ids and filters. Apply AND logic for all filters."""
-        from ..models import Patient, VoiceCaption
+        if self.domain == 'brain':
+            from brain.models import Patient, VoiceCaption
+        else:
+            from ..models import Patient, VoiceCaption
         from common.models import FileRegistry, Modality
         
         # Start with folder filter
@@ -66,15 +72,25 @@ class ExportProcessor:
         
         # Apply modality presence filters (checking for processed files)
         if self.filters.get('has_cbct'):
-            cbct_patients = Patient.objects.filter(
-                files__file_type='cbct_processed'
-            ).distinct()
+            file_filter = {'file_type': 'cbct_processed', 'domain': self.domain}
+            if self.domain == 'brain':
+                cbct_patients = Patient.objects.filter(patient_id__in=FileRegistry.objects.filter(**file_filter).values_list('brain_patient_id', flat=True)).distinct()
+            else:
+                cbct_patients = Patient.objects.filter(files__file_type='cbct_processed').distinct()
             patients = patients.filter(patient_id__in=cbct_patients.values_list('patient_id', flat=True))
         
         if self.filters.get('has_ios'):
-            ios_patients = Patient.objects.filter(
-                files__file_type__in=['ios_processed_upper', 'ios_processed_lower']
-            ).distinct()
+            if self.domain == 'brain':
+                ios_patients = Patient.objects.filter(
+                    patient_id__in=FileRegistry.objects.filter(
+                        domain='brain',
+                        file_type__in=['ios_processed_upper', 'ios_processed_lower']
+                    ).values_list('brain_patient_id', flat=True)
+                ).distinct()
+            else:
+                ios_patients = Patient.objects.filter(
+                    files__file_type__in=['ios_processed_upper', 'ios_processed_lower']
+                ).distinct()
             patients = patients.filter(patient_id__in=ios_patients.values_list('patient_id', flat=True))
         
         # Dynamic modality presence filters
@@ -83,9 +99,17 @@ class ExportProcessor:
                 modality_slug = key.replace('has_', '')
                 file_types = self.MODALITY_TO_FILE_TYPES.get(modality_slug, [])
                 if file_types:
-                    modality_patients = Patient.objects.filter(
-                        files__file_type__in=file_types
-                    ).distinct()
+                    if self.domain == 'brain':
+                        modality_patients = Patient.objects.filter(
+                            patient_id__in=FileRegistry.objects.filter(
+                                domain='brain',
+                                file_type__in=file_types
+                            ).values_list('brain_patient_id', flat=True)
+                        ).distinct()
+                    else:
+                        modality_patients = Patient.objects.filter(
+                            files__file_type__in=file_types
+                        ).distinct()
                     patients = patients.filter(patient_id__in=modality_patients.values_list('patient_id', flat=True))
         
         # Report presence filters
@@ -107,7 +131,10 @@ class ExportProcessor:
     
     def collect_files(self, patients):
         """Collect files from FileRegistry for each patient and selected modalities."""
-        from ..models import VoiceCaption
+        if self.domain == 'brain':
+            from brain.models import VoiceCaption
+        else:
+            from ..models import VoiceCaption
         from common.models import FileRegistry, Modality
         
         files_to_export = []
@@ -152,7 +179,10 @@ class ExportProcessor:
                     file_type='bite_classification'
                 )
             
-            patient_files = FileRegistry.objects.filter(patient=patient).filter(query).distinct()
+            if self.domain == 'brain':
+                patient_files = FileRegistry.objects.filter(domain='brain', brain_patient=patient).filter(query).distinct()
+            else:
+                patient_files = FileRegistry.objects.filter(domain='maxillo', patient=patient).filter(query).distinct()
             logger.info(f"Patient {patient.patient_id}: found {patient_files.count()} files matching query")
             
             for file_reg in patient_files:
@@ -449,22 +479,31 @@ class ExportProcessor:
             self.export.mark_failed(str(e))
 
 
-def start_export_processing(export_id):
+def start_export_processing(export_id, domain='maxillo'):
     """Start background processing for an export in a subprocess.
 
     Uses a subprocess instead of a daemon thread so the export completes even
     after the HTTP request ends (web workers can recycle and kill threads).
     """
-    from ..models import Export
+    from ..models import Export as MaxilloExport
+    from brain.models import Export as BrainExport
 
     try:
-        export = Export.objects.get(id=export_id)
+        if domain == 'brain':
+            export = BrainExport.objects.filter(id=export_id).first()
+        else:
+            export = MaxilloExport.objects.filter(id=export_id).first()
+
+        if not export:
+            logger.error(f"Export {export_id} not found for domain {domain}")
+            return
+
         export.mark_processing()
 
         # Run in a detached subprocess so it survives the request/worker
         base_dir = Path(settings.BASE_DIR)
         manage_py = base_dir / "manage.py"
-        cmd = [sys.executable, str(manage_py), "run_export", str(export_id)]
+        cmd = [sys.executable, str(manage_py), "run_export", str(export_id), "--domain", domain]
         subprocess.Popen(
             cmd,
             cwd=str(base_dir),
@@ -473,12 +512,12 @@ def start_export_processing(export_id):
             start_new_session=True,
         )
         logger.info(f"Started background subprocess for export {export_id}")
-    except Export.DoesNotExist:
+    except (MaxilloExport.DoesNotExist, BrainExport.DoesNotExist):
         logger.error(f"Export {export_id} not found")
     except Exception as e:
         logger.error(f"Error starting export processing: {e}", exc_info=True)
         try:
-            export = Export.objects.get(id=export_id)
+            export = MaxilloExport.objects.filter(id=export_id).first() or BrainExport.objects.get(id=export_id)
             export.mark_failed(str(e))
         except Exception:
             pass

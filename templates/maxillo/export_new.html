@@ -7,7 +7,7 @@
 <div class="container mt-4">
     <!-- Back Button -->
     <div class="mb-3">
-        <a href="{% url 'maxillo:export_list' %}" class="btn btn-outline-secondary">
+        <a href="{% url ns|default:'maxillo'|add:':export_list' %}" class="btn btn-outline-secondary">
             <i class="fas fa-arrow-left me-2"></i>Back to Export History
         </a>
     </div>
@@ -15,7 +15,7 @@
     <div class="row">
         <!-- Left Panel: Export Controls (70%) -->
         <div class="col-lg-8">
-            <form id="exportForm" method="post" action="{% url 'maxillo:export_new' %}">
+            <form id="exportForm" method="post" action="{% url ns|default:'maxillo'|add:':export_new' %}">
                 {% csrf_token %}
                 
                 <!-- Folder Selection Card -->
@@ -186,7 +186,7 @@
 {% block extra_js %}
 <script>
     // Set URLs for JavaScript
-    window.exportPreviewUrl = '{% url "maxillo:export_preview" %}';
+    window.exportPreviewUrl = '{% url ns|default:"maxillo"|add:":export_preview" %}';
 </script>
 <script src="{% static 'js/export.js' %}"></script>
 <script>

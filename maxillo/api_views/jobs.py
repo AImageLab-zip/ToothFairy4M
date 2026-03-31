@@ -8,9 +8,45 @@ import json
 import logging
 import traceback
 from common.models import Job
-from ..file_utils import get_pending_jobs_for_type, mark_job_completed, mark_job_failed
+from ..file_utils import mark_job_completed, mark_job_failed
 
 logger = logging.getLogger(__name__)
+
+
+def _request_domain(request):
+    namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+    return 'brain' if namespace == 'brain' else 'maxillo'
+
+
+def _job_patient(job):
+    return job.brain_patient if job.domain == 'brain' else job.patient
+
+
+def _job_voice_caption(job):
+    return job.brain_voice_caption if job.domain == 'brain' else job.voice_caption
+
+
+def _serialize_job(job):
+    voice_caption = _job_voice_caption(job)
+    patient = _job_patient(job)
+    job_data = {
+        'id': job.id,
+        'domain': job.domain,
+        'modality': job.modality_slug,
+        'status': job.status,
+        'priority': job.priority,
+        'input_file_path': job.input_file_path,
+        'created_at': job.created_at.isoformat(),
+        'retry_count': job.retry_count,
+        'max_retries': job.max_retries,
+    }
+    if patient:
+        job_data['patient_id'] = patient.patient_id
+    if voice_caption:
+        job_data['voice_caption_id'] = voice_caption.id
+        job_data['duration'] = voice_caption.duration
+        job_data['modality'] = voice_caption.modality
+    return job_data
 
 
 @csrf_exempt
@@ -21,31 +57,14 @@ def get_pending_jobs(request, job_type):
     URL: /api/processing/jobs/pending/<job_type>/
     """
     try:
-        jobs = get_pending_jobs_for_type(job_type)[:10]  # Limit to 10 jobs at a time
+        domain = _request_domain(request)
+        jobs = Job.objects.filter(
+            domain=domain,
+            modality_slug=job_type,
+            status__in=['pending', 'retrying']
+        ).select_related('patient', 'brain_patient', 'voice_caption', 'brain_voice_caption').order_by('-priority', 'created_at')[:10]
         
-        jobs_data = []
-        for job in jobs:
-            job_data = {
-                'id': job.id,
-                'modality': job.modality_slug,
-                'status': job.status,
-                'priority': job.priority,
-                'input_file_path': job.input_file_path,
-                'created_at': job.created_at.isoformat(),
-                'retry_count': job.retry_count,
-                'max_retries': job.max_retries,
-            }
-            
-            # Add related object info
-            if job.patient:
-                job_data['patient_id'] = job.patient.patient_id
-            
-            if job.voice_caption:
-                job_data['voice_caption_id'] = job.voice_caption.id
-                job_data['duration'] = job.voice_caption.duration
-                job_data['modality'] = job.voice_caption.modality
-            
-            jobs_data.append(job_data)
+        jobs_data = [_serialize_job(job) for job in jobs]
         
         return JsonResponse({
             'success': True,
@@ -67,29 +86,11 @@ def get_pending_jobs_compat(request):
     Returns pending jobs across all types, sorted by priority and created_at.
     """
     try:
-        jobs = Job.objects.filter(status__in=['pending', 'retrying']).order_by('-priority', 'created_at')[:10]
-
-        jobs_data = []
-        for job in jobs:
-            job_data = {
-                'id': job.id,
-                'modality': job.modality_slug,
-                'status': job.status,
-                'priority': job.priority,
-                'input_file_path': job.input_file_path,
-                'created_at': job.created_at.isoformat(),
-                'retry_count': job.retry_count,
-                'max_retries': job.max_retries,
-            }
-
-            if job.patient:
-                job_data['patient_id'] = job.patient.patient_id
-            if job.voice_caption:
-                job_data['voice_caption_id'] = job.voice_caption.id
-                job_data['duration'] = job.voice_caption.duration
-                job_data['modality'] = job.voice_caption.modality
-
-            jobs_data.append(job_data)
+        domain = _request_domain(request)
+        jobs = Job.objects.filter(domain=domain, status__in=['pending', 'retrying']).select_related(
+            'patient', 'brain_patient', 'voice_caption', 'brain_voice_caption'
+        ).order_by('-priority', 'created_at')[:10]
+        jobs_data = [_serialize_job(job) for job in jobs]
 
         return JsonResponse({
             'success': True,
@@ -110,7 +111,8 @@ def mark_job_processing(request, job_id):
     URL: /api/processing/jobs/<job_id>/processing/
     """
     try:
-        job = Job.objects.get(id=job_id)
+        domain = _request_domain(request)
+        job = Job.objects.get(id=job_id, domain=domain)
         
         # Parse request data
         data = json.loads(request.body.decode('utf-8'))
@@ -165,10 +167,15 @@ def mark_job_completed_api(request, job_id):
         else:
             transcription_text = "Error"
         
+        domain = _request_domain(request)
+        if not Job.objects.filter(id=job_id, domain=domain).exists():
+            logger.error(f"Job with ID {job_id} not found in domain {domain} for completion.")
+            return JsonResponse({'error': 'Job not found'}, status=404)
+
         success = mark_job_completed(job_id, output_files, transcription_text)
         
         if success:
-            job = Job.objects.get(id=job_id)
+            job = Job.objects.get(id=job_id, domain=domain)
             return JsonResponse({
                 'success': True,
                 'job_id': job.id,
@@ -199,10 +206,15 @@ def mark_job_failed_api(request, job_id):
         error_msg = data.get('error_msg', 'Unknown error')
         can_retry = data.get('can_retry', True)
         
+        domain = _request_domain(request)
+        if not Job.objects.filter(id=job_id, domain=domain).exists():
+            logger.error(f"Job with ID {job_id} not found in domain {domain} for failure.")
+            return JsonResponse({'error': 'Job not found'}, status=404)
+
         success = mark_job_failed(job_id, error_msg, can_retry)
         
         if success:
-            job = Job.objects.get(id=job_id)
+            job = Job.objects.get(id=job_id, domain=domain)
             return JsonResponse({
                 'success': True,
                 'job_id': job.id,
@@ -229,10 +241,14 @@ def get_job_status(request, job_id):
     URL: /api/processing/jobs/<job_id>/status/
     """
     try:
-        job = Job.objects.get(id=job_id)
+        domain = _request_domain(request)
+        job = Job.objects.select_related('patient', 'brain_patient', 'voice_caption', 'brain_voice_caption').get(id=job_id, domain=domain)
+        job_patient = _job_patient(job)
+        job_voice_caption = _job_voice_caption(job)
         
         job_data = {
             'id': job.id,
+            'domain': job.domain,
             'modality': job.modality_slug,
             'status': job.status,
             'priority': job.priority,
@@ -248,11 +264,11 @@ def get_job_status(request, job_id):
         }
         
         # Add related object info
-        if job.patient:
-            job_data['patient_id'] = job.patient.patient_id
+        if job_patient:
+            job_data['patient_id'] = job_patient.patient_id
         
-        if job.voice_caption:
-            job_data['voice_caption_id'] = job.voice_caption.id
+        if job_voice_caption:
+            job_data['voice_caption_id'] = job_voice_caption.id
         
         return JsonResponse({
             'success': True,
@@ -285,7 +301,8 @@ class ProcessingJobListView(View):
             offset = int(request.GET.get('offset', 0))
             
             # Build query
-            jobs = Job.objects.all()
+            domain = _request_domain(request)
+            jobs = Job.objects.filter(domain=domain).select_related('patient', 'brain_patient', 'voice_caption', 'brain_voice_caption')
             
             if job_type:
                 jobs = jobs.filter(modality_slug=job_type)
@@ -298,21 +315,10 @@ class ProcessingJobListView(View):
             
             jobs_data = []
             for job in jobs:
-                job_data = {
-                    'id': job.id,
-                    'modality': job.modality_slug,
-                    'status': job.status,
-                    'priority': job.priority,
-                    'created_at': job.created_at.isoformat(),
-                    'started_at': job.started_at.isoformat() if job.started_at else None,
-                    'completed_at': job.completed_at.isoformat() if job.completed_at else None,
-                    'retry_count': job.retry_count,
-                    'worker_id': job.worker_id,
-                }
-                
-                if job.voice_caption:
-                    job_data['voice_caption_id'] = job.voice_caption.id
-                
+                job_data = _serialize_job(job)
+                job_data['started_at'] = job.started_at.isoformat() if job.started_at else None
+                job_data['completed_at'] = job.completed_at.isoformat() if job.completed_at else None
+                job_data['worker_id'] = job.worker_id
                 jobs_data.append(job_data)
             
             return JsonResponse({
@@ -330,4 +336,3 @@ class ProcessingJobListView(View):
             logger.error(f"Error listing processing jobs: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return JsonResponse({'error': str(e)}, status=500)
-

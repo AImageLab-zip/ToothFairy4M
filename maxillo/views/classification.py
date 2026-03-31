@@ -9,7 +9,7 @@ import json
 import os
 import logging
 
-from ..models import Patient, Classification
+from .domain import get_domain_models
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 def update_classification(request, patient_id):
     """AJAX endpoint for instant classification updates"""
     user_profile = request.user.profile
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    Classification = domain_models['Classification']
     
     try:
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)

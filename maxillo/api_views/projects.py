@@ -3,13 +3,13 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Prefetch
+from django.apps import apps
 import json
 import os
 import logging
 import traceback
 from common.models import Project, Modality, ProjectAccess, FileRegistry
 from common.permissions import PermissionChecker
-from ..models import Patient, Folder
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,27 @@ INTROARAL_PHOTO_SLUG = 'intraoral-photo'
 PANORAMIC_SLUG = 'panoramic'
 TELERADIOGRAPHY_SLUG = 'teleradiography'
 RAWZIP_SLUG = 'rawzip'
+
+
+def _project_domain(project_slug):
+    return 'brain' if project_slug == 'brain' else 'maxillo'
+
+
+def _project_models(project_slug):
+    app_label = 'brain' if _project_domain(project_slug) == 'brain' else 'maxillo'
+    return {
+        'Patient': apps.get_model(app_label, 'Patient'),
+        'Folder': apps.get_model(app_label, 'Folder'),
+        'Tag': apps.get_model(app_label, 'Tag'),
+    }
+
+
+def _upload_form_class(project_slug):
+    if _project_domain(project_slug) == 'brain':
+        from brain.forms import PatientUploadForm
+        return PatientUploadForm
+    from ..forms import PatientUploadForm
+    return PatientUploadForm
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -30,6 +51,10 @@ def project_upload_api(request, project_slug):
     Returns the created patient data as JSON
     """
     try:
+        domain = _project_domain(project_slug)
+        models_map = _project_models(project_slug)
+        Patient = models_map['Patient']
+
         # Check if project exists
         try:
             project = Project.objects.get(slug=project_slug)
@@ -46,14 +71,14 @@ def project_upload_api(request, project_slug):
         # Check if user has access to the project and can upload
         # Admins can always upload, others need project access with appropriate role
         if not perm.is_admin():
-            if not perm.has_project_access():
+            if not ProjectAccess.objects.filter(user=request.user, project=project).exists():
                 return JsonResponse({'error': 'You do not have permission to upload scans'}, status=403)
             # Only annotators and admins can upload (not student developers)
             if not perm.is_annotator():
                 return JsonResponse({'error': 'You do not have permission to upload scans'}, status=403)
         
         # Use the existing form logic from upload_scan view
-        from ..forms import PatientUploadForm
+        PatientUploadForm = _upload_form_class(project_slug)
         patient_upload_form = PatientUploadForm(request.POST, request.FILES, user=request.user)
         
         # Check for CBCT folder upload (not supported)
@@ -70,7 +95,6 @@ def project_upload_api(request, project_slug):
         # Create patient
         patient = patient_upload_form.save(commit=False)
         patient.uploaded_by = request.user
-        patient.project = project
         
         # Student developers can only create debug patients
         if perm.is_student_developer():
@@ -283,6 +307,8 @@ def get_project_folders(request, project_slug):
     URL: /api/<project_slug>/folders/
     """
     try:
+        Folder = _project_models(project_slug)['Folder']
+
         # Check if project exists
         try:
             project = Project.objects.get(slug=project_slug)
@@ -347,6 +373,8 @@ def get_project_patients_and_modalities(request, project_slug):
     URL: /<project_slug>/api/patients/
     """
     try:
+        Patient = _project_models(project_slug)['Patient']
+
         # Check if project exists
         try:
             project = Project.objects.get(slug=project_slug)
@@ -354,7 +382,7 @@ def get_project_patients_and_modalities(request, project_slug):
             return JsonResponse({'error': 'Project not found'}, status=404)
         
         # Get all patients for this project with their modalities
-        patients = Patient.objects.filter(project=project).prefetch_related('modalities').order_by('patient_id')
+        patients = Patient.objects.all().prefetch_related('modalities').order_by('patient_id')
         
         patients_data = []
         for patient in patients:
@@ -410,6 +438,9 @@ def get_patient_files(request, project_slug, patient_id):
     URL: /<project_slug>/api/patients/<patient_id>/files/
     """
     try:
+        domain = _project_domain(project_slug)
+        Patient = _project_models(project_slug)['Patient']
+
         # Check if project exists
         try:
             project = Project.objects.get(slug=project_slug)
@@ -418,12 +449,13 @@ def get_patient_files(request, project_slug, patient_id):
         
         # Check if patient exists and belongs to the project
         try:
-            patient = Patient.objects.get(patient_id=patient_id, project=project)
+            patient = Patient.objects.get(patient_id=patient_id)
         except Patient.DoesNotExist:
             return JsonResponse({'error': 'Patient not found in this project'}, status=404)
         
         # Get all files for this patient from FileRegistry
-        files = FileRegistry.objects.filter(patient=patient).prefetch_related('modality').order_by('file_type', 'created_at')
+        file_filter = {'domain': domain, 'brain_patient': patient} if domain == 'brain' else {'domain': domain, 'patient': patient}
+        files = FileRegistry.objects.filter(**file_filter).prefetch_related('modality').order_by('file_type', 'created_at')
         
         files_data = []
         for file_obj in files:
@@ -535,6 +567,9 @@ def get_multiple_patients_files(request, project_slug):
     }
     """
     try:
+        domain = _project_domain(project_slug)
+        Patient = _project_models(project_slug)['Patient']
+
         # Check if project exists
         try:
             project = Project.objects.get(slug=project_slug)
@@ -555,9 +590,17 @@ def get_multiple_patients_files(request, project_slug):
             return JsonResponse({'error': 'Maximum 100 patient IDs allowed per request'}, status=400)
         
         # Get patients and their files (only from the specified project)
-        patients = Patient.objects.filter(patient_id__in=patient_ids, project=project).prefetch_related(
-            Prefetch('files', queryset=FileRegistry.objects.select_related('modality'))
-        ).order_by('patient_id')
+        if domain == 'brain':
+            files_prefetch = Prefetch(
+                'files',
+                queryset=FileRegistry.objects.filter(domain='brain').select_related('modality')
+            )
+        else:
+            files_prefetch = Prefetch(
+                'files',
+                queryset=FileRegistry.objects.filter(domain='maxillo').select_related('modality')
+            )
+        patients = Patient.objects.filter(patient_id__in=patient_ids).prefetch_related(files_prefetch).order_by('patient_id')
         
         found_patient_ids = set(patients.values_list('patient_id', flat=True))
         missing_patient_ids = [pid for pid in patient_ids if pid not in found_patient_ids]
@@ -669,4 +712,3 @@ def get_multiple_patients_files(request, project_slug):
         logger.error(f"Error getting bulk patient files for project {project_slug}: {e}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
-

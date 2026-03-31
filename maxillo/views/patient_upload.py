@@ -3,14 +3,20 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
-from ..models import Patient, Project, ProjectAccess, Folder
-from ..forms import PatientForm, PatientUploadForm
+from common.models import Project
+from .domain import get_domain_forms, get_domain_models
 from .helpers import redirect_with_namespace
 
 
 @login_required
 def upload_patient(request):
     user_profile = request.user.profile
+    domain_models = get_domain_models(request)
+    domain_forms = get_domain_forms(request)
+
+    PatientForm = domain_forms['PatientForm']
+    PatientUploadForm = domain_forms['PatientUploadForm']
+    Folder = domain_models['Folder']
     
     if not user_profile.can_upload_scans():
         messages.error(request, 'You do not have permission to upload scans.')
@@ -38,18 +44,11 @@ def upload_patient(request):
 
         if patient_upload_form.is_valid():
             # Create and populate Patient from the form
-            patient: Patient = patient_upload_form.save(commit=False)
+            patient = patient_upload_form.save(commit=False)
             patient.uploaded_by = request.user
             
             if user_profile.is_student_developer():
                 patient.visibility = 'debug'
-                
-            # Assign current project from session
-            if not patient.project:
-                if current_project_id:
-                    patient.project = Project.objects.filter(id=current_project_id).first()
-                if not patient.project:
-                    patient.project = Project.objects.filter(name='Maxillo').first()
                 
             # Assign folder if provided
             folder = patient_upload_form.cleaned_data.get('folder')
@@ -209,4 +208,3 @@ def upload_patient(request):
         'allowed_modalities': allowed_modalities,
     }
     return render(request, 'common/upload/upload.html', context)
-

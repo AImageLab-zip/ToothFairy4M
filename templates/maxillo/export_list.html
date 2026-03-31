@@ -8,7 +8,7 @@
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><i class="fas fa-download me-2"></i>Export Dataset</h1>
-        <a href="{% url 'maxillo:export_new' %}" class="btn btn-primary">
+        <a href="{% url ns|default:'maxillo'|add:':export_new' %}" class="btn btn-primary">
             <i class="fas fa-plus me-2"></i>New Export
         </a>
     </div>
@@ -54,7 +54,7 @@
                                     </td>
                                     <td>
                                         {% if export.status == 'completed' %}
-                                            <a href="{% url 'maxillo:export_download' export.id %}" class="btn btn-sm btn-primary">
+                                            <a href="{% url ns|default:'maxillo'|add:':export_download' export.id %}" class="btn btn-sm btn-primary">
                                                 <i class="fas fa-download me-1"></i>Download
                                             </a>
                                         {% endif %}
@@ -110,7 +110,7 @@
                 <i class="fas fa-download fa-3x text-muted mb-3"></i>
                 <h5 class="text-muted">No exports yet</h5>
                 <p class="text-muted">Click 'New Export' to create your first export.</p>
-                <a href="{% url 'maxillo:export_new' %}" class="btn btn-primary">
+                <a href="{% url ns|default:'maxillo'|add:':export_new' %}" class="btn btn-primary">
                     <i class="fas fa-plus me-2"></i>New Export
                 </a>
             </div>
@@ -122,7 +122,7 @@
 <script src="{% static 'js/export.js' %}"></script>
 <script>
     // Set URLs for JavaScript
-    window.exportStatusUrl = '{% url "maxillo:export_status" 0 %}'.replace('0', '{id}');
+    window.exportStatusUrl = '{% url ns|default:"maxillo"|add:":export_status" 0 %}'.replace('0', '{id}');
     
     // Start polling for processing exports
     document.addEventListener('DOMContentLoaded', function() {
@@ -138,7 +138,7 @@
             return;
         }
 
-        const deleteUrl = '{% url "maxillo:export_delete" 0 %}'.replace('0', exportId);
+        const deleteUrl = '{% url ns|default:"maxillo"|add:":export_delete" 0 %}'.replace('0', exportId);
         fetch(deleteUrl, {
             method: 'POST',
             headers: {

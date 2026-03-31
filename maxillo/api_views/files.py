@@ -9,8 +9,7 @@ import logging
 import traceback
 import mimetypes
 from pathlib import Path
-from common.models import FileRegistry
-from maxillo.models import ProjectAccess
+from common.models import FileRegistry, ProjectAccess
 from common.permissions import PermissionChecker
 from django.conf import settings
 
@@ -62,7 +61,12 @@ def serve_file(request, file_id):
     URL: /api/processing/files/serve/<file_id>/
     """
     try:
-        file_obj = FileRegistry.objects.get(id=file_id)
+        file_obj = FileRegistry.objects.select_related('patient', 'brain_patient').get(id=file_id)
+
+        request_namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+        file_domain = file_obj.domain or request_namespace
+        if file_domain not in ['maxillo', 'brain']:
+            file_domain = request_namespace
         
         # Check if file exists
         if not os.path.exists(file_obj.file_path):
@@ -74,9 +78,13 @@ def serve_file(request, file_id):
             return JsonResponse({'error': 'Invalid file path'}, status=403)
         
         # Authentication: Check if user has access to the patient associated with this file
-        if file_obj.patient:
-            patient = file_obj.patient
-            project = patient.project
+        patient = file_obj.brain_patient if file_domain == 'brain' else file_obj.patient
+        if not patient:
+            patient = file_obj.patient or file_obj.brain_patient
+        if patient:
+            from common.models import Project
+
+            project = Project.objects.filter(slug=file_domain).first()
 
             # Get user permissions using PermissionChecker
             perm = PermissionChecker(request.user, project)
@@ -168,21 +176,17 @@ def get_file_registry(request):
         limit = int(request.GET.get('limit', 50))
         offset = int(request.GET.get('offset', 0))
 
-        # Get current project from session for permission checking
         from common.models import Project
-        current_project_id = request.session.get('current_project_id')
-        current_project = None
-        if current_project_id:
-            try:
-                current_project = Project.objects.get(id=current_project_id)
-            except Project.DoesNotExist:
-                pass
+        namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+        current_project = Project.objects.filter(slug=namespace).first()
 
         # Get user permissions using PermissionChecker
         perm = PermissionChecker(request.user, current_project)
 
         # Build query with authorization filtering
-        files = FileRegistry.objects.select_related('patient', 'patient__project')
+        files = FileRegistry.objects.select_related('patient', 'brain_patient')
+
+        files = files.filter(domain=namespace)
 
         # Apply authorization filtering based on user role and patient visibility
         if perm.is_admin():
@@ -190,40 +194,49 @@ def get_file_registry(request):
             pass
         elif perm.is_annotator():
             # Annotators can see files from public/private patients
-            files = files.filter(
-                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
-                models.Q(patient__visibility__in=['public', 'private'])
-            )
+            if namespace == 'brain':
+                files = files.filter(
+                    models.Q(brain_patient__isnull=True) |
+                    models.Q(brain_patient__visibility__in=['public', 'private'])
+                )
+            else:
+                files = files.filter(
+                    models.Q(patient__isnull=True) |
+                    models.Q(patient__visibility__in=['public', 'private'])
+                )
         elif perm.is_student_developer():
             # Student developers can see files from debug patients
-            files = files.filter(
-                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
-                models.Q(patient__visibility='debug')
-            )
+            if namespace == 'brain':
+                files = files.filter(
+                    models.Q(brain_patient__isnull=True) |
+                    models.Q(brain_patient__visibility='debug')
+                )
+            else:
+                files = files.filter(
+                    models.Q(patient__isnull=True) |
+                    models.Q(patient__visibility='debug')
+                )
         else:
             # Regular users can only see files from public patients
-            files = files.filter(
-                models.Q(patient__isnull=True) |  # Orphaned files (admin only)
-                models.Q(patient__visibility='public')
-            )
+            if namespace == 'brain':
+                files = files.filter(
+                    models.Q(brain_patient__isnull=True) |
+                    models.Q(brain_patient__visibility='public')
+                )
+            else:
+                files = files.filter(
+                    models.Q(patient__isnull=True) |
+                    models.Q(patient__visibility='public')
+                )
 
-        # Additional project access filtering for non-admins
-        if not perm.is_admin():
-            # Check project access
-            accessible_projects = ProjectAccess.objects.filter(
-                user=request.user
-            ).values_list('project_id', flat=True)
-
-            files = files.filter(
-                models.Q(patient__project__isnull=True) |  # Files not in projects
-                models.Q(patient__project_id__in=accessible_projects)
-            )
-        
         # Apply additional filters
         if file_type:
             files = files.filter(file_type=file_type)
         if patient_id:
-            files = files.filter(patient__patient_id=patient_id)
+            if namespace == 'brain':
+                files = files.filter(brain_patient__patient_id=patient_id)
+            else:
+                files = files.filter(patient__patient_id=patient_id)
         
         # Apply pagination
         total_count = files.count()
@@ -241,9 +254,13 @@ def get_file_registry(request):
                 'metadata': file_obj.metadata,
             }
             
-            if getattr(file_obj, 'patient_id', None):
+            if namespace == 'brain' and getattr(file_obj, 'brain_patient_id', None):
+                file_data['patient_id'] = file_obj.brain_patient_id
+            elif getattr(file_obj, 'patient_id', None):
                 file_data['patient_id'] = file_obj.patient_id
-            if file_obj.voice_caption:
+            if namespace == 'brain' and getattr(file_obj, 'brain_voice_caption_id', None):
+                file_data['voice_caption_id'] = file_obj.brain_voice_caption_id
+            elif file_obj.voice_caption:
                 file_data['voice_caption_id'] = file_obj.voice_caption.id
             if file_obj.processing_job:
                 file_data['processing_job_id'] = file_obj.processing_job.id
@@ -265,4 +282,3 @@ def get_file_registry(request):
         logger.error(f"Error getting file registry: {e}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return JsonResponse({'error': str(e)}, status=500)
-

@@ -156,6 +156,11 @@ class Invitation(models.Model):
 
 
 class Job(models.Model):
+	DOMAIN_CHOICES = [
+		('maxillo', 'Maxillo'),
+		('brain', 'Brain'),
+	]
+
 	STATUS_CHOICES = [
 		('pending', 'Pending'),
 		('dependency', 'Waiting for Dependencies'),
@@ -169,8 +174,11 @@ class Job(models.Model):
 	status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 	priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
 	dependencies = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependent_jobs', help_text='Jobs that must complete before this job can start')
+	domain = models.CharField(max_length=20, choices=DOMAIN_CHOICES, default='maxillo')
 	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
+	brain_patient = models.ForeignKey('brain.Patient', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
 	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
+	brain_voice_caption = models.ForeignKey('brain.VoiceCaption', on_delete=models.CASCADE, related_name='jobs', null=True, blank=True)
 
 	# IO
 	input_file_path = models.CharField(max_length=500, help_text='Path to primary input file in /dataset', blank=True)
@@ -192,6 +200,8 @@ class Job(models.Model):
 	class Meta:
 		ordering = ['-priority', 'created_at']
 		indexes = [
+			models.Index(fields=['domain', 'status', 'created_at']),
+			models.Index(fields=['domain', 'modality_slug', 'status']),
 			models.Index(fields=['modality_slug', 'status']),
 			models.Index(fields=['status', 'created_at']),
 			models.Index(fields=['patient', 'modality_slug', 'status']),  # Optimize patient list queries
@@ -199,7 +209,7 @@ class Job(models.Model):
 		db_table = 'maxillo_job'
 
 	def __str__(self):
-		related_obj = self.patient or self.voice_caption
+		related_obj = self.patient or self.brain_patient or self.voice_caption or self.brain_voice_caption
 		return f"Job {self.id} - {self.modality_slug} - {self.get_status_display()} - {related_obj}"
 
 	def can_retry(self):
@@ -276,6 +286,11 @@ class Job(models.Model):
 		return None
 
 class ProcessingJob(models.Model):
+	DOMAIN_CHOICES = [
+		('maxillo', 'Maxillo'),
+		('brain', 'Brain'),
+	]
+
 	JOB_TYPE_CHOICES = [
 		('cbct', 'CBCT Processing'),
 		('ios', 'IOS Processing'),
@@ -296,8 +311,11 @@ class ProcessingJob(models.Model):
 	status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='pending')
 	priority = models.IntegerField(default=0, help_text='Higher values = higher priority')
 	dependencies = models.ManyToManyField('self', blank=True, symmetrical=False, related_name='dependent_jobs', help_text='Jobs that must complete before this job can start')
+	domain = models.CharField(max_length=20, choices=DOMAIN_CHOICES, default='maxillo')
 	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+	brain_patient = models.ForeignKey('brain.Patient', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
 	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
+	brain_voice_caption = models.ForeignKey('brain.VoiceCaption', on_delete=models.CASCADE, related_name='processing_jobs', null=True, blank=True)
 
 	# File paths
 	input_file_path = models.CharField(max_length=500, help_text='Path to input file in /dataset')
@@ -323,13 +341,15 @@ class ProcessingJob(models.Model):
 	class Meta:
 		ordering = ['-priority', 'created_at']
 		indexes = [
+			models.Index(fields=['domain', 'status', 'created_at']),
+			models.Index(fields=['domain', 'job_type', 'status']),
 			models.Index(fields=['job_type', 'status']),
 			models.Index(fields=['status', 'created_at']),
 		]
 		db_table = 'maxillo_processingjob'
 
 	def __str__(self):
-		related_obj = self.patient or self.voice_caption
+		related_obj = self.patient or self.brain_patient or self.voice_caption or self.brain_voice_caption
 		return f"ProcessingJob {self.id} - {self.get_job_type_display()} - {self.get_status_display()} - {related_obj}"
 
 	def can_retry(self):
@@ -407,6 +427,11 @@ class ProcessingJob(models.Model):
 
 
 class FileRegistry(models.Model):
+	DOMAIN_CHOICES = [
+		('maxillo', 'Maxillo'),
+		('brain', 'Brain'),
+	]
+
 	FILE_TYPE_CHOICES = [
 		('cbct_raw', 'CBCT Raw'),
 		('cbct_processed', 'CBCT Processed'),
@@ -449,14 +474,20 @@ class FileRegistry(models.Model):
 	# Dynamic modality linkage and optional subtype (e.g., 'upper', 'lower')
 	modality = models.ForeignKey('Modality', on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
 	subtype = models.CharField(max_length=60, blank=True)
+	domain = models.CharField(max_length=20, choices=DOMAIN_CHOICES, default='maxillo')
 	patient = models.ForeignKey('maxillo.Patient', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+	brain_patient = models.ForeignKey('brain.Patient', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
 	voice_caption = models.ForeignKey('maxillo.VoiceCaption', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
+	brain_voice_caption = models.ForeignKey('brain.VoiceCaption', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
 	processing_job = models.ForeignKey('common.Job', on_delete=models.CASCADE, related_name='files', null=True, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	metadata = models.JSONField(default=dict, blank=True, help_text='Additional file metadata')
 
 	class Meta:
 		indexes = [
+			models.Index(fields=['domain', 'file_type', 'created_at']),
+			models.Index(fields=['domain', 'file_type', 'patient']),
+			models.Index(fields=['domain', 'file_type', 'brain_patient']),
 			models.Index(fields=['file_type', 'patient']),
 			models.Index(fields=['modality', 'patient']),
 			models.Index(fields=['modality', 'subtype', 'patient']),
