@@ -64,11 +64,12 @@
 
         <!-- Captions List -->
         <div class="voice-captions-list">
+            {% firstof request.resolver_match.namespace 'maxillo' as ns %}
             {% with captions=voice_captions %}
                 {% if captions %}
                     <div class="caption-list-compact">
                         {% for c in captions|dictsortreversed:"created_at" %}
-                        <div class="caption-item-compact" data-caption-id="{{ c.id }}" data-update-modality-url="{% url 'maxillo:update_voice_caption_modality' patient_id=scan_pair.patient_id caption_id=c.id %}">
+                        <div class="caption-item-compact" data-caption-id="{{ c.id }}" data-update-modality-url="{% url ns|add:':update_voice_caption_modality' patient_id=scan_pair.patient_id caption_id=c.id %}">
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="caption-info">
                                     <small class="text-primary me-2">{{ c.user.username }}</small>
@@ -105,7 +106,7 @@
                                 <div class="caption-actions">
                                     {% with audio=c.get_audio_file %}
                                         {% if audio %}
-                                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="/api/processing/files/serve/{{ audio.id }}/" title="Play">
+                                        <button class="btn btn-outline-primary btn-sm btn-play-audio" data-audio-url="{% url ns|add:':api_serve_file' file_id=audio.id %}" title="Play">
                                             <i class="fas fa-play" style="font-size: 0.75rem;"></i>
                                         </button>
                                         {% endif %}
@@ -353,4 +354,3 @@
         </script>
     </div>
 </div>
-

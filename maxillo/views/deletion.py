@@ -9,7 +9,7 @@ import json
 import os
 import logging
 
-from ..models import Patient
+from .domain import get_domain_models
 
 logger = logging.getLogger(__name__)
 import shutil
@@ -22,6 +22,8 @@ def delete_patient(request, patient_id):
         'error': 'Deletion is disabled for this project.'
     }, status=403)
     """Delete a scan and all associated files"""
+    Patient = get_domain_models(request)['Patient']
+    domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     try:
         patient = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
@@ -73,7 +75,10 @@ def delete_patient(request, patient_id):
                 
         # Delete from FileRegistry
         from common.models import FileRegistry
-        file_entries = FileRegistry.objects.filter(patient=patient)
+        if domain == 'brain':
+            file_entries = FileRegistry.objects.filter(domain='brain', brain_patient_id=patient.patient_id)
+        else:
+            file_entries = FileRegistry.objects.filter(domain='maxillo', patient_id=patient.patient_id)
         for entry in file_entries:
             try:
                 if os.path.exists(entry.file_path):
@@ -85,7 +90,10 @@ def delete_patient(request, patient_id):
         # Delete voice captions and their files
         for voice_caption in patient.voice_captions.all():
             # Delete associated files
-            voice_files = FileRegistry.objects.filter(voice_caption=voice_caption)
+            if domain == 'brain':
+                voice_files = FileRegistry.objects.filter(domain='brain', brain_voice_caption_id=voice_caption.id)
+            else:
+                voice_files = FileRegistry.objects.filter(domain='maxillo', voice_caption_id=voice_caption.id)
             for file_entry in voice_files:
                 try:
                     if os.path.exists(file_entry.file_path):
@@ -113,6 +121,8 @@ def delete_patient(request, patient_id):
 @login_required
 def bulk_delete_patients(request):
     """Bulk delete multiple scans and all associated files"""
+    Patient = get_domain_models(request)['Patient']
+    domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     try:
         data = json.loads(request.body) if request.body else request.POST
         scan_ids = data.get('scan_ids', [])
@@ -174,7 +184,10 @@ def bulk_delete_patients(request):
                         
                 # Delete from FileRegistry
                 from common.models import FileRegistry
-                file_entries = FileRegistry.objects.filter(patient=scan_pair)
+                if domain == 'brain':
+                    file_entries = FileRegistry.objects.filter(domain='brain', brain_patient_id=scan_pair.patient_id)
+                else:
+                    file_entries = FileRegistry.objects.filter(domain='maxillo', patient_id=scan_pair.patient_id)
                 for entry in file_entries:
                     try:
                         if os.path.exists(entry.file_path):
@@ -186,7 +199,10 @@ def bulk_delete_patients(request):
                 # Delete voice captions and their files
                 for voice_caption in scan_pair.voice_captions.all():
                     # Delete associated files
-                    voice_files = FileRegistry.objects.filter(voice_caption=voice_caption)
+                    if domain == 'brain':
+                        voice_files = FileRegistry.objects.filter(domain='brain', brain_voice_caption_id=voice_caption.id)
+                    else:
+                        voice_files = FileRegistry.objects.filter(domain='maxillo', voice_caption_id=voice_caption.id)
                     for file_entry in voice_files:
                         try:
                             if os.path.exists(file_entry.file_path):
@@ -229,5 +245,3 @@ def bulk_delete_patients(request):
     except Exception as e:
         logger.error(f"Error in bulk delete: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
-

@@ -3,11 +3,12 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
+from django.urls import reverse
 import json
 import os
 import logging
 
-from ..models import Patient, VoiceCaption
+from .domain import get_domain_models
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,11 @@ logger = logging.getLogger(__name__)
 def upload_voice_caption(request, patient_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    VoiceCaption = domain_models['VoiceCaption']
+
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     
     try:
@@ -61,7 +66,8 @@ def upload_voice_caption(request, patient_id):
         audio_file = voice_caption.get_audio_file()
         audio_url = None
         if audio_file and os.path.exists(audio_file.file_path):
-            audio_url = f'/api/processing/files/serve/{audio_file.id}/'
+            namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+            audio_url = reverse(f'{namespace}:api_serve_file', kwargs={'file_id': audio_file.id})
             # Ensure HTTPS for audio URLs too
             if request.is_secure():
                 audio_url = f'https://{request.get_host()}{audio_url}'
@@ -88,6 +94,10 @@ def upload_voice_caption(request, patient_id):
 def delete_voice_caption(request, patient_id, caption_id):
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    VoiceCaption = domain_models['VoiceCaption']
     
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, patient=scan_pair)
@@ -135,6 +145,10 @@ def upload_text_caption(request, patient_id):
     """Handle text caption submission (alternative to voice recording)"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    VoiceCaption = domain_models['VoiceCaption']
     
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     
@@ -200,6 +214,10 @@ def edit_voice_caption_transcription(request, patient_id, caption_id):
     """Edit the transcription of a voice caption"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    VoiceCaption = domain_models['VoiceCaption']
     
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, patient=scan_pair)
@@ -268,6 +286,10 @@ def edit_voice_caption_transcription(request, patient_id, caption_id):
 @require_POST
 def update_voice_caption_modality(request, patient_id, caption_id):
     """Update the modality of a voice caption"""
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    VoiceCaption = domain_models['VoiceCaption']
+
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     voice_caption = get_object_or_404(VoiceCaption, id=caption_id, patient=scan_pair)
     
@@ -315,5 +337,3 @@ def update_voice_caption_modality(request, patient_id, caption_id):
     except Exception as e:
         logger.error(f"Error updating caption modality: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
-
-

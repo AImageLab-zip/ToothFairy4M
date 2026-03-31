@@ -11,7 +11,7 @@ import os
 import shutil
 import logging
 
-from ..models import Patient
+from .domain import get_domain_models, get_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,13 @@ def rerun_processing(request, patient_id):
     Marks the latest job for each modality as pending and resets processing status.
     """
     try:
+        Patient = get_domain_models(request)['Patient']
+        domain = get_namespace(request)
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
-        from common.models import ProcessingJob, Job
-        from ..modality_helpers import get_all_modalities, get_modality_slugs
+        from common.models import Job
+        from ..modality_helpers import get_modality_slugs
+
+        job_filter = {'brain_patient': scan_pair, 'domain': 'brain'} if domain == 'brain' else {'patient': scan_pair, 'domain': 'maxillo'}
 
         try:
             data = json.loads(request.body) if request.body else {}
@@ -49,7 +53,7 @@ def rerun_processing(request, patient_id):
             
             # Try new Job model first
             try:
-                job = Job.objects.filter(patient=scan_pair, modality_slug=modality_slug).order_by('-created_at').first()
+                job = Job.objects.filter(modality_slug=modality_slug, **job_filter).order_by('-created_at').first()
                 if job:
                     job.status = 'pending'
                     job.started_at = None
@@ -84,7 +88,7 @@ def rerun_processing(request, patient_id):
             if is_audio_modality:
                 # Use 'audio' as the canonical slug for job lookups
                 actual_slug = 'audio' if modality_slug == 'voice' else modality_slug
-                audio_jobs = Job.objects.filter(patient=scan_pair, modality_slug=actual_slug)
+                audio_jobs = Job.objects.filter(modality_slug=actual_slug, **job_filter)
                 if audio_jobs.exists():
                     for job in audio_jobs:
                         job.status = 'pending'
@@ -128,9 +132,13 @@ def admin_control_panel(request):
     from common.models import Job, FileRegistry
     from django.db.models import Count, Sum, Q
     import shutil
+    domain = get_namespace(request)
     
     # Get job statistics
-    job_stats = Job.objects.aggregate(
+    jobs = Job.objects.filter(domain=domain)
+    files = FileRegistry.objects.filter(domain=domain)
+
+    job_stats = jobs.aggregate(
         total_jobs=Count('id'),
         pending_jobs=Count('id', filter=Q(status='pending')),
         processing_jobs=Count('id', filter=Q(status='processing')),
@@ -139,7 +147,7 @@ def admin_control_panel(request):
     )
     
     # Get job breakdown by type
-    job_type_stats = Job.objects.values('modality_slug').annotate(
+    job_type_stats = jobs.values('modality_slug').annotate(
         total=Count('id'),
         pending=Count('id', filter=Q(status='pending')),
         processing=Count('id', filter=Q(status='processing')),
@@ -148,9 +156,9 @@ def admin_control_panel(request):
     ).order_by('modality_slug')
     
     # Get recent failed jobs
-    recent_failed_jobs = Job.objects.filter(
+    recent_failed_jobs = jobs.filter(
         status='failed'
-    ).select_related('patient', 'voice_caption').order_by('-created_at')[:10]
+    ).select_related('patient', 'brain_patient', 'voice_caption', 'brain_voice_caption').order_by('-created_at')[:10]
     
     # Get disk usage statistics
     disk_usage = {}
@@ -167,7 +175,7 @@ def admin_control_panel(request):
         }
         
         # Get breakdown by file type
-        file_type_usage = FileRegistry.objects.values('file_type').annotate(
+        file_type_usage = files.values('file_type').annotate(
             total_size=Sum('file_size'),
             file_count=Count('id')
         ).order_by('-total_size')
@@ -191,7 +199,7 @@ def admin_control_panel(request):
     processing_queue = {}
     for _m in _Modality.objects.order_by('name'):
         _slug = _m.slug or _slugify(_m.name)
-        processing_queue[_slug] = Job.objects.filter(modality_slug=_slug, status='pending').count()
+        processing_queue[_slug] = jobs.filter(modality_slug=_slug, status='pending').count()
     
     context = {
         'job_stats': job_stats,
@@ -202,5 +210,3 @@ def admin_control_panel(request):
     }
     
     return render(request, 'maxillo/admin_control_panel.html', context)
-
-

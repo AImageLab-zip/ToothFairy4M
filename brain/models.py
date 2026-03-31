@@ -1,6 +1,564 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
+from django.utils import timezone
 
-# Brain-specific models go here
-# Note: User permissions are handled via common.ProjectAccess
-# BrainUserProfile has been removed in favor of the unified ProjectAccess system
+import logging
+
+from common.models import Modality
+
+
+logger = logging.getLogger(__name__)
+
+
+def brain_scan_upload_path(instance, filename):
+    return f"brain/patient_{instance.patient_id}/raw/{filename}"
+
+
+def brain_normalized_scan_path(instance, filename):
+    return f"brain/patient_{instance.patient_id}/normalized/{filename}"
+
+
+def brain_cbct_upload_path(instance, filename):
+    return f"brain/patient_{instance.patient_id}/cbct/{filename}"
+
+
+class Dataset(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='brain_datasets_created',
+    )
+
+    class Meta:
+        db_table = 'brain_dataset'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Folder(models.Model):
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='brain_folders_created',
+    )
+
+    class Meta:
+        db_table = 'brain_folder'
+        unique_together = ('name', 'parent')
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['parent']),
+            models.Index(fields=['name']),
+        ]
+
+    def __str__(self):
+        return self.get_full_path()
+
+    def get_full_path(self):
+        parts = []
+        node = self
+        while node:
+            parts.append(node.name)
+            node = node.parent
+        return '/'.join(reversed(parts))
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'brain_tag'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Patient(models.Model):
+    VISIBILITY_CHOICES = [
+        ('public', 'Public'),
+        ('private', 'Private'),
+        ('debug', 'Debug'),
+    ]
+
+    PROCESSING_STATUS_CHOICES = [
+        ('not_uploaded', 'Not Uploaded'),
+        ('processing', 'Processing'),
+        ('processed', 'Processed'),
+        ('failed', 'Processing Failed'),
+    ]
+
+    patient_id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, blank=True)
+    dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
+    modalities = models.ManyToManyField(
+        Modality,
+        blank=True,
+        related_name='brain_patients',
+        help_text='Modalities available for this patient',
+    )
+    folder = models.ForeignKey('Folder', on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
+    tags = models.ManyToManyField('Tag', blank=True, related_name='patients')
+
+    upper_scan_raw = models.FileField(upload_to=brain_scan_upload_path, blank=True, null=True)
+    lower_scan_raw = models.FileField(upload_to=brain_scan_upload_path, blank=True, null=True)
+    upper_scan_norm = models.FileField(upload_to=brain_normalized_scan_path, blank=True, null=True)
+    lower_scan_norm = models.FileField(upload_to=brain_normalized_scan_path, blank=True, null=True)
+    cbct = models.FileField(upload_to=brain_cbct_upload_path, blank=True, null=True)
+
+    ios_processing_status = models.CharField(
+        max_length=20,
+        choices=PROCESSING_STATUS_CHOICES,
+        default='not_uploaded',
+        help_text='Processing status for intra-oral scans (upper and lower)',
+    )
+    cbct_processing_status = models.CharField(
+        max_length=20,
+        choices=PROCESSING_STATUS_CHOICES,
+        default='not_uploaded',
+        help_text='Processing status for CBCT scan',
+    )
+
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='private')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='brain_patients_uploaded',
+    )
+
+    class Meta:
+        db_table = 'brain_patient'
+        ordering = ['-uploaded_at']
+        indexes = [
+            models.Index(fields=['visibility']),
+            models.Index(fields=['uploaded_at']),
+            models.Index(fields=['folder']),
+            models.Index(fields=['name']),
+            models.Index(fields=['visibility', 'uploaded_at']),
+            models.Index(fields=['folder', 'visibility']),
+        ]
+
+    def __str__(self):
+        return f"Patient {self.patient_id} - {self.name}"
+
+    @property
+    def files(self):
+        from common.models import FileRegistry
+
+        return FileRegistry.objects.filter(domain='brain', brain_patient=self)
+
+    @property
+    def jobs(self):
+        from common.models import Job
+
+        return Job.objects.filter(domain='brain', brain_patient=self)
+
+    @property
+    def processing_jobs(self):
+        from common.models import ProcessingJob
+
+        return ProcessingJob.objects.filter(domain='brain', brain_patient=self)
+
+    def tag_names(self):
+        return list(self.tags.values_list('name', flat=True))
+
+    def save(self, *args, **kwargs):
+        creating = self._state.adding
+        if self.upper_scan_raw and self.lower_scan_raw and self.ios_processing_status == 'not_uploaded':
+            self.ios_processing_status = 'processing'
+        if self.cbct and self.cbct_processing_status == 'not_uploaded':
+            self.cbct_processing_status = 'processing'
+
+        super().save(*args, **kwargs)
+
+        if creating and (self.name is None or self.name.strip() == ''):
+            self.name = f"Patient {self.patient_id}"
+            super().save(update_fields=['name'])
+
+    def has_ios_scans(self):
+        if self.upper_scan_raw and self.lower_scan_raw:
+            return True
+
+        try:
+            upper_raw = self.files.filter(file_type='ios_raw_upper').exists()
+            lower_raw = self.files.filter(file_type='ios_raw_lower').exists()
+            upper_processed = self.files.filter(file_type='ios_processed_upper').exists()
+            lower_processed = self.files.filter(file_type='ios_processed_lower').exists()
+            return (upper_raw or upper_processed) and (lower_raw or lower_processed)
+        except Exception as exc:
+            logger.error('Error checking IOS files for brain patient %s: %s', self.patient_id, exc, exc_info=True)
+            return False
+
+    def has_cbct_scan(self):
+        if self.cbct:
+            return True
+
+        try:
+            has_raw = self.files.filter(file_type='cbct_raw').exists()
+            has_processed = self.files.filter(file_type='cbct_processed').exists()
+            return has_raw or has_processed
+        except Exception as exc:
+            logger.error('Error checking CBCT files for brain patient %s: %s', self.patient_id, exc, exc_info=True)
+            return False
+
+    def is_ios_processed(self):
+        return self.ios_processing_status == 'processed'
+
+    def is_cbct_processed(self):
+        return self.cbct_processing_status == 'processed'
+
+    def has_rgb_images(self):
+        try:
+            return self.files.filter(file_type='rgb_image').exists()
+        except Exception as exc:
+            logger.error('Error checking RGB files for brain patient %s: %s', self.patient_id, exc, exc_info=True)
+            return False
+
+    def get_rgb_images(self):
+        return self.files.filter(file_type='rgb_image').order_by('-created_at')
+
+    def get_raw_files(self):
+        return self.files.filter(file_type__in=['cbct_raw', 'ios_raw_upper', 'ios_raw_lower', 'audio_raw'])
+
+    def get_processed_files(self):
+        return self.files.filter(file_type__in=['cbct_processed', 'ios_processed_upper', 'ios_processed_lower', 'audio_processed'])
+
+    def get_cbct_raw_file(self):
+        from common.models import FileRegistry
+
+        try:
+            return self.files.get(file_type='cbct_raw')
+        except FileRegistry.DoesNotExist:
+            return None
+
+    def get_cbct_processed_file(self):
+        from common.models import FileRegistry
+
+        try:
+            return self.files.get(file_type='cbct_processed')
+        except FileRegistry.DoesNotExist:
+            return None
+
+    def get_ios_raw_files(self):
+        from common.models import FileRegistry
+
+        upper = None
+        lower = None
+        try:
+            upper = self.files.get(file_type='ios_raw_upper')
+        except FileRegistry.DoesNotExist:
+            pass
+        try:
+            lower = self.files.get(file_type='ios_raw_lower')
+        except FileRegistry.DoesNotExist:
+            pass
+        return {'upper': upper, 'lower': lower}
+
+    def get_ios_processed_files(self):
+        from common.models import FileRegistry
+
+        upper = None
+        lower = None
+        try:
+            upper = self.files.get(file_type='ios_processed_upper')
+        except FileRegistry.DoesNotExist:
+            pass
+        try:
+            lower = self.files.get(file_type='ios_processed_lower')
+        except FileRegistry.DoesNotExist:
+            pass
+        return {'upper': upper, 'lower': lower}
+
+
+class Classification(models.Model):
+    CLASSIFIER_CHOICES = [
+        ('manual', 'Manual'),
+        ('pipeline', 'Pipeline'),
+    ]
+
+    SAGITTAL_CHOICES = [
+        ('Unknown', 'Unknown'),
+        ('I', 'Class I'),
+        ('II_edge', 'Class II Edge'),
+        ('II_full', 'Class II Full'),
+        ('III', 'Class III'),
+    ]
+
+    VERTICAL_CHOICES = [
+        ('Unknown', 'Unknown'),
+        ('normal', 'Normal'),
+        ('deep', 'Deep Bite'),
+        ('reverse', 'Reverse Bite'),
+        ('open', 'Open Bite'),
+    ]
+
+    TRANSVERSE_CHOICES = [
+        ('Unknown', 'Unknown'),
+        ('normal', 'Normal'),
+        ('cross', 'Cross Bite'),
+        ('scissor', 'Scissor Bite'),
+    ]
+
+    MIDLINE_CHOICES = [
+        ('Unknown', 'Unknown'),
+        ('centered', 'Centered'),
+        ('deviated', 'Deviated'),
+    ]
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='classifications', null=True, blank=True)
+    classifier = models.CharField(max_length=10, choices=CLASSIFIER_CHOICES)
+    sagittal_left = models.CharField(max_length=10, choices=SAGITTAL_CHOICES)
+    sagittal_right = models.CharField(max_length=10, choices=SAGITTAL_CHOICES)
+    vertical = models.CharField(max_length=10, choices=VERTICAL_CHOICES)
+    transverse = models.CharField(max_length=10, choices=TRANSVERSE_CHOICES)
+    midline = models.CharField(max_length=10, choices=MIDLINE_CHOICES)
+    annotator = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='brain_classifications_authored',
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'brain_classification'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['patient', 'classifier']),
+            models.Index(fields=['classifier']),
+        ]
+
+    def __str__(self):
+        return f"Classification {self.id} - {self.get_classifier_display()}"
+
+
+class VoiceCaption(models.Model):
+    PROCESSING_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='voice_captions', null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='brain_voice_captions')
+    modality = models.CharField(max_length=255, default='ios')
+    duration = models.FloatField(help_text='Duration of audio recording in seconds')
+    text_caption = models.TextField(blank=True, null=True)
+    original_text_caption = models.TextField(blank=True, null=True)
+    is_edited = models.BooleanField(default=False)
+    edit_history = models.JSONField(default=list, blank=True)
+    processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'brain_voicecaption'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', 'processing_status']),
+            models.Index(fields=['processing_status']),
+            models.Index(fields=['user']),
+        ]
+
+    def __str__(self):
+        return f"VoiceCaption {self.id} - {self.patient_id}"
+
+    @property
+    def files(self):
+        from common.models import FileRegistry
+
+        return FileRegistry.objects.filter(domain='brain', brain_voice_caption=self)
+
+    @property
+    def processing_jobs(self):
+        from common.models import ProcessingJob
+
+        return ProcessingJob.objects.filter(domain='brain', brain_voice_caption=self)
+
+    def get_modality_display(self):
+        try:
+            if not self.modality:
+                return 'Undefined'
+            mod = Modality.objects.filter(slug=self.modality).first()
+            if mod:
+                return getattr(mod, 'label', '') or getattr(mod, 'name', '') or self.modality.upper()
+            return self.modality.upper()
+        except Exception:
+            return (self.modality or 'Undefined').upper()
+
+    def get_display_duration(self):
+        if self.duration == 0:
+            return 'Text'
+        minutes = int(self.duration // 60)
+        seconds = int(self.duration % 60)
+        if minutes > 0:
+            return f"{minutes}:{seconds:02d}"
+        return f"{seconds}s"
+
+    def get_quality_status(self):
+        if self.duration == 0:
+            return {'color': 'success', 'message': 'Text'}
+        if self.duration <= 30:
+            return {'color': 'danger', 'message': 'Short'}
+        if self.duration <= 45:
+            return {'color': 'warning', 'message': 'Good'}
+        return {'color': 'success', 'message': 'Perfect'}
+
+    def is_processed(self):
+        if self.duration == 0:
+            return self.processing_status == 'completed' and self.text_caption
+        return self.processing_status == 'completed' and self.text_caption and self.text_caption != '[Audio processed but no transcription available]'
+
+    def get_processing_display_text(self):
+        if self.processing_status == 'completed':
+            if self.text_caption and self.text_caption != '[Audio processed but no transcription available]':
+                return self.text_caption
+            return '[Audio processed but no transcription available]'
+        if self.processing_status == 'processing':
+            return 'Converting speech to text...'
+        if self.processing_status == 'failed':
+            return 'Processing failed'
+        return 'Preprocessing audio...'
+
+    def get_display_text_caption(self):
+        if self.is_processed():
+            text = self.text_caption
+            if self.is_edited:
+                text += ' [edited]'
+            return text
+        return self.get_processing_display_text()
+
+    def save_original_transcription(self):
+        if self.text_caption and not self.original_text_caption:
+            self.original_text_caption = self.text_caption
+
+    def edit_transcription(self, new_text, user):
+        if not self.is_processed():
+            raise ValueError('Cannot edit transcription that is not yet processed')
+        if not self.original_text_caption:
+            self.original_text_caption = self.text_caption
+        edit_record = {
+            'timestamp': timezone.now().isoformat(),
+            'user_id': user.id,
+            'username': user.username,
+            'previous_text': self.text_caption,
+            'new_text': new_text,
+        }
+        if not self.edit_history:
+            self.edit_history = []
+        self.edit_history.append(edit_record)
+        self.text_caption = new_text
+        self.is_edited = True
+        self.save()
+
+    def revert_to_original(self, user):
+        if not self.original_text_caption:
+            raise ValueError('No original transcription to revert to')
+        revert_record = {
+            'timestamp': timezone.now().isoformat(),
+            'user_id': user.id,
+            'username': user.username,
+            'action': 'reverted_to_original',
+            'previous_text': self.text_caption,
+            'reverted_text': self.original_text_caption,
+        }
+        if not self.edit_history:
+            self.edit_history = []
+        self.edit_history.append(revert_record)
+        self.text_caption = self.original_text_caption
+        self.is_edited = False
+        self.save()
+
+    def get_audio_file(self):
+        from common.models import FileRegistry
+
+        try:
+            return self.files.get(file_type='audio_raw')
+        except FileRegistry.DoesNotExist:
+            return None
+
+    def get_processed_text_file(self):
+        from common.models import FileRegistry
+
+        try:
+            return self.files.get(file_type='audio_processed')
+        except FileRegistry.DoesNotExist:
+            return None
+
+    def get_pending_jobs(self):
+        return self.processing_jobs.filter(status__in=['pending', 'processing', 'retrying'])
+
+
+class Export(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='brain_exports')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    query_params = models.JSONField(default=dict)
+    query_summary = models.CharField(max_length=500, blank=True)
+    file_path = models.CharField(max_length=1000, blank=True)
+    file_size = models.BigIntegerField(default=0)
+    patient_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    progress_message = models.CharField(max_length=255, blank=True)
+    progress_percent = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'brain_export'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Export {self.id} - {self.get_status_display()}"
+
+    def mark_processing(self):
+        self.status = 'processing'
+        self.started_at = timezone.now()
+        self.save()
+
+    def mark_completed(self, file_path=None, file_size=None):
+        self.status = 'completed'
+        self.completed_at = timezone.now()
+        self.progress_message = ''
+        self.progress_percent = None
+        if file_path:
+            self.file_path = file_path
+        if file_size is not None:
+            self.file_size = file_size
+        self.save()
+
+    def mark_failed(self, error_message=''):
+        self.status = 'failed'
+        self.completed_at = timezone.now()
+        self.error_message = error_message
+        self.save()

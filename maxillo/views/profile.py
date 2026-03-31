@@ -3,16 +3,28 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.apps import apps
 from django.db.models import Count, Q, Max
 from django.utils import timezone
 from datetime import timedelta
 
-from ..models import Patient, Classification, VoiceCaption
-from .helpers import render_with_fallback
+from ..models import Patient as MaxilloPatient, Classification as MaxilloClassification, VoiceCaption as MaxilloVoiceCaption
+from .helpers import render_with_fallback, redirect_with_namespace
 from common.models import ProjectAccess
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _get_domain_models(request):
+    ns = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or ''
+    if ns == 'brain':
+        return (
+            apps.get_model('brain', 'Patient'),
+            apps.get_model('brain', 'Classification'),
+            apps.get_model('brain', 'VoiceCaption'),
+        )
+    return MaxilloPatient, MaxilloClassification, MaxilloVoiceCaption
 
 
 @login_required
@@ -24,13 +36,15 @@ def user_profile(request, username=None):
     Admins can view any user's profile.
     """
     # If no username provided, show current user's profile
+    Patient, Classification, VoiceCaption = _get_domain_models(request)
+
     if username is None:
         target_user = request.user
     else:
         # Check if current user can view other profiles (admin or project manager)
         if not request.user.profile.can_view_other_profiles():
             messages.error(request, 'You do not have permission to view other user profiles.')
-            return redirect('maxillo:user_profile')
+            return redirect_with_namespace(request, 'user_profile')
         
         # Get the target user
         target_user = get_object_or_404(User, username=username)
@@ -44,17 +58,19 @@ def user_profile(request, username=None):
     # Statistics (strictly scoped to active project)
     # 1. Patients uploaded
     patients_uploaded = Patient.objects.filter(
-        uploaded_by=target_user,
-        project_id=active_project_id
+        uploaded_by=target_user
     ).order_by('-uploaded_at')
+    if hasattr(Patient, 'project'):
+        patients_uploaded = patients_uploaded.filter(project_id=active_project_id)
     total_patients_uploaded = patients_uploaded.count()
     
     # 2. Bite classifications (manual annotations)
     classifications = Classification.objects.filter(
         annotator=target_user,
         classifier='manual',
-        patient__project_id=active_project_id
     ).select_related('patient').order_by('-timestamp')
+    if hasattr(Patient, 'project'):
+        classifications = classifications.filter(patient__project_id=active_project_id)
     total_classifications = classifications.count()
     
     # Get unique patients annotated (a patient might have been annotated multiple times)
@@ -62,9 +78,10 @@ def user_profile(request, username=None):
     
     # 3. Voice captions
     voice_captions = VoiceCaption.objects.filter(
-        user=target_user,
-        patient__project_id=active_project_id
+        user=target_user
     ).select_related('patient').order_by('-created_at')
+    if hasattr(Patient, 'project'):
+        voice_captions = voice_captions.filter(patient__project_id=active_project_id)
     total_voice_captions = voice_captions.count()
     
     # Last activity timestamp
@@ -99,22 +116,38 @@ def user_profile(request, username=None):
     
     uploads_last_7_days = Patient.objects.filter(
         uploaded_by=target_user,
-        project_id=active_project_id,
         uploaded_at__gte=seven_days_ago
     ).count()
+    if hasattr(Patient, 'project'):
+        uploads_last_7_days = Patient.objects.filter(
+            uploaded_by=target_user,
+            project_id=active_project_id,
+            uploaded_at__gte=seven_days_ago
+        ).count()
     
     classifications_last_7_days = Classification.objects.filter(
         annotator=target_user,
         classifier='manual',
-        patient__project_id=active_project_id,
         timestamp__gte=seven_days_ago
     ).count()
+    if hasattr(Patient, 'project'):
+        classifications_last_7_days = Classification.objects.filter(
+            annotator=target_user,
+            classifier='manual',
+            patient__project_id=active_project_id,
+            timestamp__gte=seven_days_ago
+        ).count()
     
     voice_captions_last_7_days = VoiceCaption.objects.filter(
         user=target_user,
-        patient__project_id=active_project_id,
         created_at__gte=seven_days_ago
     ).count()
+    if hasattr(Patient, 'project'):
+        voice_captions_last_7_days = VoiceCaption.objects.filter(
+            user=target_user,
+            patient__project_id=active_project_id,
+            created_at__gte=seven_days_ago
+        ).count()
 
     # Get target user's ProjectAccess for current project
     target_profile = None

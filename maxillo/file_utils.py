@@ -5,10 +5,8 @@ import logging
 import traceback
 from pathlib import Path
 from django.utils import timezone
-from django.utils.text import slugify
 from common.models import FileRegistry, Job
 from .models import VoiceCaption, Classification, Patient
-from common.models import Project
 import json
 import zipfile
 import tarfile
@@ -86,21 +84,99 @@ def get_file_type_for_modality(modality_slug, is_processed=False, file_format=No
 
 def _get_patient(obj):
     """Resolve a Patient instance from various inputs (Patient, VoiceCaption with patient, legacy scanpair)."""
-    if isinstance(obj, Patient):
+    if hasattr(obj, '_meta') and getattr(obj._meta, 'model_name', '') == 'patient':
         return obj
-    if hasattr(obj, 'patient') and isinstance(getattr(obj, 'patient'), Patient):
-        return getattr(obj, 'patient')
-    # Legacy: scanpair with .patient relation
-    if hasattr(obj, 'patient'):
+    if hasattr(obj, 'patient') and getattr(obj, 'patient') is not None:
         return getattr(obj, 'patient')
     raise ValueError('Cannot resolve Patient from object')
 
 
-def _project_slug_from_patient(patient: Patient) -> str:
-    project = getattr(patient, 'project', None)
-    if not project or not isinstance(project, Project):
-        return 'default'
-    return getattr(project, 'slug', None) or slugify(getattr(project, 'name', 'default') or 'default')
+def _domain_for_patient(patient) -> str:
+    app_label = getattr(getattr(patient, '_meta', None), 'app_label', '')
+    if app_label == 'brain':
+        return 'brain'
+    return 'maxillo'
+
+
+def _entity_fk_kwargs(patient):
+    domain = _domain_for_patient(patient)
+    if domain == 'brain':
+        return {
+            'domain': 'brain',
+            'brain_patient': patient,
+            'patient': None,
+        }
+    return {
+        'domain': 'maxillo',
+        'patient': patient,
+        'brain_patient': None,
+    }
+
+
+def _entity_filter_kwargs(patient):
+    domain = _domain_for_patient(patient)
+    if domain == 'brain':
+        return {
+            'domain': 'brain',
+            'brain_patient': patient,
+        }
+    return {
+        'domain': 'maxillo',
+        'patient': patient,
+    }
+
+
+def _voice_entity_fk_kwargs(voice_caption):
+    patient = _get_patient(voice_caption)
+    domain = _domain_for_patient(patient)
+    if domain == 'brain':
+        return {
+            'brain_voice_caption': voice_caption,
+            'voice_caption': None,
+        }
+    return {
+        'voice_caption': voice_caption,
+        'brain_voice_caption': None,
+    }
+
+
+def _project_slug_from_patient(patient) -> str:
+    domain = _domain_for_patient(patient)
+    return 'brain' if domain == 'brain' else 'maxillo'
+
+
+def _domain_for_job(job) -> str:
+    if getattr(job, 'domain', None) in ['brain', 'maxillo']:
+        return job.domain
+    if getattr(job, 'brain_patient_id', None) or getattr(job, 'brain_voice_caption_id', None):
+        return 'brain'
+    return 'maxillo'
+
+
+def _job_patient(job):
+    return getattr(job, 'brain_patient', None) if _domain_for_job(job) == 'brain' else getattr(job, 'patient', None)
+
+
+def _job_voice_caption(job):
+    return getattr(job, 'brain_voice_caption', None) if _domain_for_job(job) == 'brain' else getattr(job, 'voice_caption', None)
+
+
+def _job_entity_fk_kwargs(job):
+    if _domain_for_job(job) == 'brain':
+        return {
+            'domain': 'brain',
+            'brain_patient': _job_patient(job),
+            'patient': None,
+            'brain_voice_caption': _job_voice_caption(job),
+            'voice_caption': None,
+        }
+    return {
+        'domain': 'maxillo',
+        'patient': _job_patient(job),
+        'brain_patient': None,
+        'voice_caption': _job_voice_caption(job),
+        'brain_voice_caption': None,
+    }
 
 
 def _raw_dir_for(patient: Patient, modality_slug: str) -> str:
@@ -190,7 +266,7 @@ def save_generic_modality_file(patient: Patient, modality_slug: str, uploaded_fi
             file_path=file_path,
             file_size=file_size,
             file_hash=file_hash,
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             modality=modality_fk,
             metadata={
                 'original_filename': original_name,
@@ -213,7 +289,7 @@ def save_generic_modality_file(patient: Patient, modality_slug: str, uploaded_fi
             # Create completed job
             job_obj = Job.objects.create(
                 modality_slug=modality_slug,
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 input_file_path=file_path,
                 status='completed',
                 output_files={
@@ -228,7 +304,7 @@ def save_generic_modality_file(patient: Patient, modality_slug: str, uploaded_fi
             # Create pending job for modalities that need processing
             job_obj = Job.objects.create(
                 modality_slug=modality_slug,
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 input_file_path=file_path,
                 status='pending',
                 output_files={
@@ -279,7 +355,7 @@ def save_generic_modality_folder(patient: Patient, modality_slug: str, folder_fi
             file_path=summary_path,
             file_size=file_size,
             file_hash=file_hash,
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             modality=modality_fk,
             metadata={
                 'uploaded_at': timezone.now().isoformat(),
@@ -293,7 +369,7 @@ def save_generic_modality_folder(patient: Patient, modality_slug: str, folder_fi
         fr = None
     job = Job.objects.create(
         modality_slug=modality_slug,
-        patient=patient,
+        **_entity_fk_kwargs(patient),
         input_file_path=summary_path,
         output_files={
             'input_type': 'folder',
@@ -375,10 +451,10 @@ def save_cbct_to_dataset(patient_or_legacy, cbct_file):
     # Clean up existing CBCT files and registry entries for this patient
     cbct_raw_type = get_file_type_for_modality('cbct', is_processed=False)
     cbct_processed_type = get_file_type_for_modality('cbct', is_processed=True)
-    existing_raw_files = FileRegistry.objects.filter(patient=patient, file_type=cbct_raw_type)
+    existing_raw_files = FileRegistry.objects.filter(file_type=cbct_raw_type, **_entity_filter_kwargs(patient))
     
     # Also clean up any existing processed CBCT files
-    existing_processed_files = FileRegistry.objects.filter(patient=patient, file_type=cbct_processed_type)
+    existing_processed_files = FileRegistry.objects.filter(file_type=cbct_processed_type, **_entity_filter_kwargs(patient))
     
     # Save file to dataset directory
     with open(file_path, 'wb+') as destination:
@@ -400,7 +476,7 @@ def save_cbct_to_dataset(patient_or_legacy, cbct_file):
         file_path=file_path,
         file_size=file_size,
         file_hash=file_hash,
-        patient=patient,
+        **_entity_fk_kwargs(patient),
         modality=modality_fk,
         metadata={
             'original_filename': original_name,
@@ -413,7 +489,7 @@ def save_cbct_to_dataset(patient_or_legacy, cbct_file):
     # Create job
     processing_job = Job.objects.create(
         modality_slug='cbct',
-        patient=patient,
+        **_entity_fk_kwargs(patient),
         input_file_path=file_path,
         output_files={
             'input_format': file_format,
@@ -455,7 +531,7 @@ def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
     
     # Clean up existing CBCT files and registry entries for this patient
     cbct_raw_type = get_file_type_for_modality('cbct', is_processed=False)
-    existing_raw_files = FileRegistry.objects.filter(patient=patient, file_type=cbct_raw_type)
+    existing_raw_files = FileRegistry.objects.filter(file_type=cbct_raw_type, **_entity_filter_kwargs(patient))
     
     # Create the new folder
     os.makedirs(folder_path, exist_ok=True)
@@ -499,7 +575,7 @@ def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
         file_path=folder_path,  # Path to folder
         file_size=total_size,
         file_hash=folder_hash,
-        patient=patient,
+        **_entity_fk_kwargs(patient),
         metadata={
             'upload_type': 'folder',
             'file_format': 'dicom_folder',
@@ -512,7 +588,7 @@ def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
     # Create job
     processing_job = Job.objects.create(
         modality_slug='cbct',
-        patient=patient,
+        **_entity_fk_kwargs(patient),
         input_file_path=folder_path,  # Pass folder path
         output_files={
             'input_format': 'dicom_folder',
@@ -572,7 +648,7 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
             file_path=file_path,
             file_size=file_size,
             file_hash=file_hash,
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             modality=modality_fk,
             metadata={
                 'original_filename': upper_file.name,
@@ -600,7 +676,7 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
             file_path=file_path,
             file_size=file_size,
             file_hash=file_hash,
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             metadata={
                 'original_filename': lower_file.name,
                 'uploaded_at': timezone.now().isoformat(),
@@ -618,14 +694,14 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
         
         processing_job = Job.objects.create(
             modality_slug='ios',
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             input_file_path=json.dumps(input_files)
         )
         
         # Need to double check this, i think we can be sure 100% that it does not exists, but what about
         # when we rerun some jobs? Is this always true? We should delete it and create a new one?
         existing_bite_job = Job.objects.filter(
-            patient=patient,
+            **_entity_fk_kwargs(patient),
             modality_slug='bite_classification'
         ).first()
         
@@ -646,7 +722,7 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
             bite_classification_job = Job.objects.create(
                 modality_slug='bite_classification',
                 status='dependency',
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 input_file_path=f"Waiting for IOS Job #{processing_job.id} to complete",
                 priority=processing_job.priority,
                 output_files={
@@ -707,8 +783,8 @@ def save_audio_to_dataset(voice_caption, audio_file):
         file_path=file_path,
         file_size=file_size,
         file_hash=file_hash,
-        voice_caption=voice_caption,
-        patient=patient,
+        **_voice_entity_fk_kwargs(voice_caption),
+        **_entity_fk_kwargs(patient),
         metadata={
             'original_filename': original_name,
             'duration': voice_caption.duration,
@@ -720,8 +796,8 @@ def save_audio_to_dataset(voice_caption, audio_file):
     # Create processing job
     processing_job = Job.objects.create(
         modality_slug='audio',
-        voice_caption=voice_caption,
-        patient=patient,
+        **_voice_entity_fk_kwargs(voice_caption),
+        **_entity_fk_kwargs(patient),
         input_file_path=file_path,
     )
     
@@ -774,7 +850,7 @@ def save_rgb_images_to_dataset(patient_or_legacy, images):
                 file_path=file_path,
                 file_size=file_size,
                 file_hash=file_hash,
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 metadata={
                     'original_filename': original_name,
                     'label': label,
@@ -831,7 +907,7 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
                 file_path=file_path,
                 file_size=file_size,
                 file_hash=file_hash,
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 modality=modality_fk,
                 metadata={
                     'original_filename': original_name,
@@ -856,7 +932,7 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
             
             job = Job.objects.create(
                 modality_slug='intraoral-photo',
-                patient=patient,
+                **_entity_fk_kwargs(patient),
                 input_file_path=summary_path,
                 status='completed',
                 output_files={
@@ -904,8 +980,12 @@ def mark_job_completed(job_id, output_files, logs=None):
     logger.info(f"mark_job_completed called with job_id={job_id}, output_files={output_files}, logs present={logs is not None}")
     
     try:
-        job = Job.objects.get(id=job_id)
+        job = Job.objects.select_related(
+            'patient', 'brain_patient', 'voice_caption', 'brain_voice_caption'
+        ).get(id=job_id)
         logger.info(f"Found job: {job.id}, modality: {job.modality_slug}, status: {job.status}")
+        job_patient = _job_patient(job)
+        job_voice_caption = _job_voice_caption(job)
         
         job.mark_completed(output_files)
         logger.info(f"Job marked as completed successfully")
@@ -922,14 +1002,16 @@ def mark_job_completed(job_id, output_files, logs=None):
             # Clean up any existing processed CBCT files for this patient
             cbct_processed_type = get_file_type_for_modality('cbct', is_processed=True)
             existing_processed_files = FileRegistry.objects.filter(
-                patient=job.patient,
-                file_type=cbct_processed_type
+                file_type=cbct_processed_type,
+                **_job_entity_fk_kwargs(job)
             )
             # Remove existing DB entries only; keep files on disk
             try:
                 existing_count = existing_processed_files.count()
                 if existing_count:
-                    logger.info(f"Deleting {existing_count} existing {cbct_processed_type} FileRegistry entries for patient {getattr(job.patient, 'patient_id', 'unknown')}")
+                    logger.info(
+                        f"Deleting {existing_count} existing {cbct_processed_type} FileRegistry entries for patient {getattr(job_patient, 'patient_id', 'unknown')}"
+                    )
                     existing_processed_files.delete()
             except Exception as e:
                 logger.error(f"Error deleting existing {cbct_processed_type} FileRegistry entries: {e}")
@@ -963,8 +1045,8 @@ def mark_job_completed(job_id, output_files, logs=None):
                     file_path=primary_path,  # Primary file path (e.g., pano)
                     file_size=total_size,  # Total size of all files
                     file_hash='multi-file',  # Indicator that this contains multiple files
-                    patient=job.patient,
                     processing_job=job,
+                    **_job_entity_fk_kwargs(job),
                     metadata={
                         'processed_at': timezone.now().isoformat(),
                         'files': processed_files,  # All output files stored here
@@ -1003,9 +1085,8 @@ def mark_job_completed(job_id, output_files, logs=None):
                         file_path=file_path,
                         file_size=file_size,
                         file_hash=file_hash,
-                        patient=job.patient,
-                        voice_caption=job.voice_caption,
                         processing_job=job,
+                        **_job_entity_fk_kwargs(job),
                         metadata={
                             'processed_at': timezone.now().isoformat(),
                             'logs': logs if logs else ''
@@ -1015,14 +1096,14 @@ def mark_job_completed(job_id, output_files, logs=None):
         
         # Update related model status
         logger.info(f"Updating related model status for modality: {job.modality_slug}")
-        if job.patient and job.modality_slug == 'cbct':
+        if job_patient and job.modality_slug == 'cbct':
             logger.info(f"Updating patient CBCT processing status")
-            job.patient.cbct_processing_status = 'processed'
-            job.patient.save()
-        elif job.patient and job.modality_slug == 'ios':
+            job_patient.cbct_processing_status = 'processed'
+            job_patient.save()
+        elif job_patient and job.modality_slug == 'ios':
             logger.info(f"Updating patient IOS processing status")
-            job.patient.ios_processing_status = 'processed'
-            job.patient.save()
+            job_patient.ios_processing_status = 'processed'
+            job_patient.save()
             
             # Update bite classification jobs that depend on this IOS job
             try:
@@ -1036,13 +1117,13 @@ def mark_job_completed(job_id, output_files, logs=None):
                         logger.warning(f"No output files found for IOS job #{job.id}, cannot update bite classification job #{bite_job.id}")
             except Exception as e:
                 logger.error(f"Error updating dependent bite classification jobs: {e}")
-        elif job.voice_caption and job.modality_slug == 'audio':
+        elif job_voice_caption and job.modality_slug == 'audio':
             
-            job.voice_caption.processing_status = 'completed'
+            job_voice_caption.processing_status = 'completed'
             
             # Use logs parameter directly if it contains transcription text
             if logs and isinstance(logs, str) and logs.strip():
-                job.voice_caption.text_caption = logs.strip()
+                job_voice_caption.text_caption = logs.strip()
                 logger.info(f"Successfully saved transcription from logs: {logs[:50]}...")
             else:
                 logger.warning(f"Logs parameter is empty or invalid: {logs}")
@@ -1054,7 +1135,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                             with open(file_path, 'r', encoding='utf-8') as f:
                                 text_content = f.read().strip()
                                 if text_content:  # Only update if we got actual text
-                                    job.voice_caption.text_caption = text_content
+                                    job_voice_caption.text_caption = text_content
                                     text_extracted = True
                                     logger.info(f"Successfully extracted text from {file_path}: {text_content[:50]}...")
                                 else:
@@ -1063,16 +1144,16 @@ def mark_job_completed(job_id, output_files, logs=None):
                             logger.error(f"Error reading text file {file_path}: {e}")
                 
                 if not text_extracted:
-                    logger.warning(f"No text was extracted for voice caption {job.voice_caption.id}")
+                    logger.warning(f"No text was extracted for voice caption {job_voice_caption.id}")
                     # Set a placeholder text to indicate processing completed but no text found
-                    job.voice_caption.text_caption = ""
+                    job_voice_caption.text_caption = ""
             
             # Save the original transcription when processing is first completed
-            job.voice_caption.save_original_transcription()
-            job.voice_caption.save()
+            job_voice_caption.save_original_transcription()
+            job_voice_caption.save()
             
-        elif job.patient and job.modality_slug == 'bite_classification':
-            logger.info(f"Bite classification job completed for patient {getattr(job.patient, 'patient_id', 'unknown')}")
+        elif job_patient and job.modality_slug == 'bite_classification':
+            logger.info(f"Bite classification job completed for patient {getattr(job_patient, 'patient_id', 'unknown')}")
             
             try:
                 classification_file = None
@@ -1097,7 +1178,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                     
                     if any(val != 'Unknown' for val in [sagittal_left, sagittal_right, vertical, transverse, midline]):
                         classification, created = Classification.objects.get_or_create(
-                            patient=job.patient,
+                            patient=job_patient,
                             classifier='pipeline',
                             defaults={
                                 'sagittal_left': sagittal_left,
@@ -1117,7 +1198,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                             classification.midline = midline
                             classification.save()
                         
-                        logger.info(f"{'Created' if created else 'Updated'} classification for patient {getattr(job.patient, 'patient_id', 'unknown')}")
+                        logger.info(f"{'Created' if created else 'Updated'} classification for patient {getattr(job_patient, 'patient_id', 'unknown')}")
                         
                         file_hash = calculate_file_hash(classification_file)
                         file_size = os.path.getsize(classification_file)
@@ -1127,8 +1208,8 @@ def mark_job_completed(job_id, output_files, logs=None):
                             file_path=classification_file,
                             file_size=file_size,
                             file_hash=file_hash,
-                            patient=job.patient,
                             processing_job=job,
+                            **_job_entity_fk_kwargs(job),
                             metadata={
                                 'processed_at': timezone.now().isoformat(),
                                 'classification_results': classification_data,
@@ -1144,7 +1225,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                     logger.warning(f"No classification file found in output files: {output_files}")
                     
             except Exception as e:
-                logger.error(f"Error processing bite classification completion for patient {getattr(job.patient, 'patient_id', 'unknown')}: {e}")
+                logger.error(f"Error processing bite classification completion for patient {getattr(job_patient, 'patient_id', 'unknown')}: {e}")
                 logger.error(f"Full traceback: {traceback.format_exc()}")
             
         logger.info(f"mark_job_completed completed successfully")
@@ -1170,20 +1251,24 @@ def mark_job_failed(job_id, error_msg, can_retry=True):
         can_retry: Whether the job can be retried
     """
     try:
-        job = Job.objects.get(id=job_id)
+        job = Job.objects.select_related(
+            'patient', 'brain_patient', 'voice_caption', 'brain_voice_caption'
+        ).get(id=job_id)
+        job_patient = _job_patient(job)
+        job_voice_caption = _job_voice_caption(job)
         job.mark_failed(error_msg, can_retry)
         
-        if job.patient and job.modality_slug == 'cbct':
-            job.patient.cbct_processing_status = 'failed'
-            job.patient.save()
-        elif job.patient and job.modality_slug == 'ios':
-            job.patient.ios_processing_status = 'failed'
-            job.patient.save()
-        elif job.voice_caption and job.modality_slug == 'audio':
-            job.voice_caption.processing_status = 'failed'
-            job.voice_caption.save()
-        elif job.patient and job.modality_slug == 'bite_classification':
-            logger.info(f"Bite classification job failed for patient {getattr(job.patient, 'patient_id', 'unknown')}")
+        if job_patient and job.modality_slug == 'cbct':
+            job_patient.cbct_processing_status = 'failed'
+            job_patient.save()
+        elif job_patient and job.modality_slug == 'ios':
+            job_patient.ios_processing_status = 'failed'
+            job_patient.save()
+        elif job_voice_caption and job.modality_slug == 'audio':
+            job_voice_caption.processing_status = 'failed'
+            job_voice_caption.save()
+        elif job_patient and job.modality_slug == 'bite_classification':
+            logger.info(f"Bite classification job failed for patient {getattr(job_patient, 'patient_id', 'unknown')}")
             
         return True
         

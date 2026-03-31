@@ -34,8 +34,8 @@ class DatasetAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Patient)
 class PatientAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['patient_id', 'name', 'project', 'dataset', 'visibility', 'uploaded_at', 'uploaded_by']
-    list_filter = ['visibility', 'dataset', 'uploaded_at', 'project']
+    list_display = ['patient_id', 'name', 'dataset', 'visibility', 'uploaded_at', 'uploaded_by']
+    list_filter = ['visibility', 'dataset', 'uploaded_at']
     search_fields = ['patient_id', 'name']
     readonly_fields = ['patient_id', 'uploaded_at']
     

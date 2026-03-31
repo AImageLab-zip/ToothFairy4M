@@ -3,12 +3,25 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.apps import apps
 from django.db.models import Q
 
-from ..models import Patient, Project, ProjectAccess, Folder, Tag
+from ..models import Patient as MaxilloPatient, Folder as MaxilloFolder, Tag as MaxilloTag
 from .helpers import render_with_fallback
+from common.models import Project, ProjectAccess
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _get_domain_models(request):
+    ns = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or ''
+    if ns == 'brain':
+        return (
+            apps.get_model('brain', 'Patient'),
+            apps.get_model('brain', 'Folder'),
+            apps.get_model('brain', 'Tag'),
+        )
+    return MaxilloPatient, MaxilloFolder, MaxilloTag
 
 def home(request):
     # Show project selection for authenticated users
@@ -71,6 +84,7 @@ def select_project(request, project_id: int):
 @login_required
 def patient_list(request):
     user_profile = request.user.profile
+    Patient, Folder, Tag = _get_domain_models(request)
     
     # Import Job model early for use in prefetch
     try:
@@ -78,20 +92,25 @@ def patient_list(request):
     except Exception:
         _Job = None
     
-    base_queryset = Patient.objects.select_related(
-        'project', 'dataset', 'uploaded_by', 'folder'
-    ).prefetch_related(
-        'classifications', 
-        'voice_captions', 
+    select_related_fields = ['dataset', 'uploaded_by', 'folder']
+    if any(field.name == 'project' for field in Patient._meta.fields):
+        select_related_fields.insert(0, 'project')
+
+    prefetch_fields = [
+        'classifications',
+        'voice_captions',
         'voice_captions__user',
         'tags',
         'modalities',
-        'files',
-        'files__modality'
-    )
+    ]
+    has_files_relation = any(rel.name == 'files' for rel in Patient._meta.related_objects)
+    if has_files_relation:
+        prefetch_fields.extend(['files', 'files__modality'])
+
+    base_queryset = Patient.objects.select_related(*select_related_fields).prefetch_related(*prefetch_fields)
     
     # Prefetch jobs for all patients if Job model is available
-    if _Job is not None:
+    if _Job is not None and any(rel.name == 'jobs' for rel in Patient._meta.related_objects):
         base_queryset = base_queryset.prefetch_related('jobs')
     
     # Enforce project access: admins see all; others require ProjectAccess entry
@@ -113,7 +132,7 @@ def patient_list(request):
         patients = base_queryset.filter(visibility='public')
     
     # Filter by app namespace if mounted under /maxillo or /brain
-    if current_project_id:
+    if current_project_id and any(field.name == 'project' for field in Patient._meta.fields):
         patients = patients.filter(project_id=current_project_id)
 
     # Get filter parameters
@@ -229,6 +248,7 @@ def patient_list(request):
         rel_by_slug = { (m.slug or m.name.lower()): m for m in rel_modalities }
         
         # Add modalities referenced by files (using prefetched data)
+        patient_files = []
         try:
             # Use prefetched files instead of querying database
             patient_files = list(patient.files.all())
@@ -426,4 +446,3 @@ def patient_list(request):
     }
     # Prefer app-specific template via fallback helper
     return render_with_fallback(request, 'patient_list', context)
-

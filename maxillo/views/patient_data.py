@@ -2,17 +2,25 @@
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
+from django.urls import reverse
 import os
 import logging
 
-from ..models import Patient
+from .domain import get_domain_models
 
 logger = logging.getLogger(__name__)
+
+
+def _serve_file_url(request, file_id):
+    namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
+    return reverse(f'{namespace}:api_serve_file', kwargs={'file_id': file_id})
 
 @login_required
 def patient_viewer_data(request, patient_id):
     """API endpoint to provide scan data for 3D viewer"""
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     
     can_view = False
@@ -32,13 +40,23 @@ def patient_viewer_data(request, patient_id):
     modality_slug = 'ios'  # This endpoint specifically serves IOS data
     try:
         from common.models import Job as _Job
-        if _Job.objects.filter(patient=scan_pair, modality_slug=modality_slug, status='processing').exists():
+        job_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'processing'}
+        if domain == 'brain':
+            job_filter['brain_patient_id'] = scan_pair.patient_id
+        else:
+            job_filter['patient_id'] = scan_pair.patient_id
+        if _Job.objects.filter(**job_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} scans are still being processed',
                 'status': 'processing',
                 'message': 'The scans are being processed. This may take a few minutes.'
             }, status=202)
-        if _Job.objects.filter(patient=scan_pair, modality_slug=modality_slug, status='failed').exists():
+        failed_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'failed'}
+        if domain == 'brain':
+            failed_filter['brain_patient_id'] = scan_pair.patient_id
+        else:
+            failed_filter['patient_id'] = scan_pair.patient_id
+        if _Job.objects.filter(**failed_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} processing failed',
                 'status': 'failed',
@@ -56,14 +74,14 @@ def patient_viewer_data(request, patient_id):
         # Look for processed files first
         processed_files = scan_pair.get_ios_processed_files()
         if processed_files['upper'] and processed_files['lower']:
-            upper_scan_url = f'/api/processing/files/serve/{processed_files["upper"].id}/'
-            lower_scan_url = f'/api/processing/files/serve/{processed_files["lower"].id}/'
+            upper_scan_url = _serve_file_url(request, processed_files['upper'].id)
+            lower_scan_url = _serve_file_url(request, processed_files['lower'].id)
         else:
             # Fallback to raw files from FileRegistry
             raw_files = scan_pair.get_ios_raw_files()
             if raw_files['upper'] and raw_files['lower']:
-                upper_scan_url = f'/api/processing/files/serve/{raw_files["upper"].id}/'
-                lower_scan_url = f'/api/processing/files/serve/{raw_files["lower"].id}/'
+                upper_scan_url = _serve_file_url(request, raw_files['upper'].id)
+                lower_scan_url = _serve_file_url(request, raw_files['lower'].id)
     except Exception:
         pass
     
@@ -123,7 +141,9 @@ def patient_cbct_data(request, patient_id):
     """API endpoint to serve CBCT data"""
     import os
     
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     
     # Check permissions based on scan visibility and user role
@@ -144,13 +164,23 @@ def patient_cbct_data(request, patient_id):
     modality_slug = 'cbct'  # This endpoint specifically serves CBCT data
     try:
         from common.models import Job as _Job
-        if _Job.objects.filter(patient=scan_pair, modality_slug=modality_slug, status='processing').exists():
+        job_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'processing'}
+        if domain == 'brain':
+            job_filter['brain_patient_id'] = scan_pair.patient_id
+        else:
+            job_filter['patient_id'] = scan_pair.patient_id
+        if _Job.objects.filter(**job_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} is still being processed',
                 'status': 'processing',
                 'message': 'The volume is being converted to NIfTI format. This may take a few minutes.'
             }, status=202)
-        if _Job.objects.filter(patient=scan_pair, modality_slug=modality_slug, status='failed').exists():
+        failed_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'failed'}
+        if domain == 'brain':
+            failed_filter['brain_patient_id'] = scan_pair.patient_id
+        else:
+            failed_filter['patient_id'] = scan_pair.patient_id
+        if _Job.objects.filter(**failed_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} processing failed',
                 'status': 'failed',
@@ -220,7 +250,9 @@ def patient_volume_data(request, patient_id, modality_slug):
     - Fallback to latest FileRegistry entry for (patient, modality) that endswith .nii or .nii.gz
     """
     import os
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     # Basic permission checks (same as CBCT)
     can_view = False
@@ -239,7 +271,12 @@ def patient_volume_data(request, patient_id, modality_slug):
     # Try processed entry first
     file_path = None
     try:
-        processed = _FR.objects.filter(patient=scan_pair, modality__slug=modality_slug, file_type='cbct_processed').first()
+        processed_filter = {'domain': domain, 'modality__slug': modality_slug, 'file_type': 'cbct_processed'}
+        if domain == 'brain':
+            processed_filter['brain_patient_id'] = scan_pair.patient_id
+        else:
+            processed_filter['patient_id'] = scan_pair.patient_id
+        processed = _FR.objects.filter(**processed_filter).first()
         if processed and processed.file_hash == 'multi-file' and 'files' in processed.metadata:
             files_data = processed.metadata.get('files', {})
             nifti = files_data.get('volume_nifti', {})
@@ -251,7 +288,12 @@ def patient_volume_data(request, patient_id, modality_slug):
     # Fallback: use the latest raw NIfTI
     if not file_path:
         try:
-            raw = _FR.objects.filter(patient=scan_pair, modality__slug=modality_slug).order_by('-created_at').first()
+            raw_filter = {'domain': domain, 'modality__slug': modality_slug}
+            if domain == 'brain':
+                raw_filter['brain_patient_id'] = scan_pair.patient_id
+            else:
+                raw_filter['patient_id'] = scan_pair.patient_id
+            raw = _FR.objects.filter(**raw_filter).order_by('-created_at').first()
             if raw and raw.file_path and (raw.file_path.endswith('.nii') or raw.file_path.endswith('.nii.gz')) and os.path.exists(raw.file_path):
                 file_path = raw.file_path
         except Exception:
@@ -277,6 +319,7 @@ def patient_panoramic_data(request, patient_id):
     2. Otherwise, if patient has CBCT -> serve CBCT-generated panoramic
     """
     
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
@@ -414,6 +457,7 @@ def patient_panoramic_data(request, patient_id):
 def patient_intraoral_data(request, patient_id):
     """API endpoint to serve intraoral photographs data"""
     
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
@@ -448,7 +492,7 @@ def patient_intraoral_data(request, patient_id):
                     'index': file_obj.metadata.get('image_index', 0),
                     'original_filename': file_obj.metadata.get('original_filename', ''),
                     'is_processed': file_obj.file_type.endswith('_processed'),
-                    'url': f'/api/processing/files/serve/{file_obj.id}/'
+                    'url': _serve_file_url(request, file_obj.id)
                 })
         
         if not images_data:
@@ -468,6 +512,7 @@ def patient_intraoral_data(request, patient_id):
 def patient_teleradiography_data(request, patient_id):
     """API endpoint to serve teleradiography image data"""
     
+    Patient = get_domain_models(request)['Patient']
     scan_pair = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
@@ -517,6 +562,3 @@ def patient_teleradiography_data(request, patient_id):
     except Exception as e:
         logger.error(f"Error serving teleradiography data: {e}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
-
-
-

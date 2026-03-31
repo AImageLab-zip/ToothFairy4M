@@ -9,7 +9,7 @@ import json
 import os
 import logging
 
-from ..models import Patient, Tag, Folder
+from .domain import get_domain_models
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @require_POST
 def create_folder(request):
     """Create a folder (single-level only)."""
+    Folder = get_domain_models(request)['Folder']
     try:
         data = json.loads(request.body) if request.body else request.POST
         name = (data.get('name') or '').strip()
@@ -24,6 +25,7 @@ def create_folder(request):
             return JsonResponse({'error': 'Folder name is required'}, status=400)
         # Force single-level folders
         folder, created = Folder.objects.get_or_create(name=name, parent=None, defaults={'created_by': request.user})
+
         return JsonResponse({'success': True, 'folder': {'id': folder.id, 'name': folder.name, 'path': folder.name, 'created': created}})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
@@ -33,6 +35,9 @@ def create_folder(request):
 @require_POST
 def move_patients_to_folder(request):
     """Bulk move scans to a folder (or root if folder_id is null/root)"""
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    Folder = domain_models['Folder']
     try:
         data = json.loads(request.body) if request.body else request.POST
         scan_ids = data.get('scan_ids', [])
@@ -44,8 +49,9 @@ def move_patients_to_folder(request):
             folder = get_object_or_404(Folder, id=folder_id)
         # Permission: reuse visibility rules from list; only allow moving visible scans
         qs = Patient.objects.filter(patient_id__in=scan_ids)
-        # Update folder
+
         updated = qs.update(folder=folder)
+
         return JsonResponse({'success': True, 'updated': updated})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
@@ -56,6 +62,9 @@ def move_patients_to_folder(request):
 @csrf_exempt
 def add_patient_tag(request, patient_id):
     """Add a tag to a scan; creates tag if it doesn't exist."""
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    Tag = domain_models['Tag']
     try:
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
@@ -79,6 +88,9 @@ def add_patient_tag(request, patient_id):
 @csrf_exempt
 def remove_patient_tag(request, patient_id):
     """Remove a tag from a scan by tag name or id."""
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+    Tag = domain_models['Tag']
     try:
         scan_pair = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
@@ -99,5 +111,3 @@ def remove_patient_tag(request, patient_id):
         return JsonResponse({'success': True, 'tags': scan_pair.tag_names()})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
-
