@@ -6,6 +6,7 @@
     </div>
 
     <div class="collapse" id="vocalCaptionCollapse">
+        {% firstof request.resolver_match.namespace 'maxillo' as ns %}
         <!-- Hidden CSRF token for AJAX usage -->
         <form style="display:none;">{% csrf_token %}</form>
 
@@ -47,8 +48,12 @@
                 <div id="recordingArea" class="d-none">
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <div class="recording-info">
+                            {% if ns != 'brain' %}
                             <small class="text-muted me-2">Modality:</small>
                             <span class="badge bg-secondary" id="modalityIndicator">Voice</span>
+                            {% else %}
+                            <small class="text-muted me-2">Recording...</small>
+                            {% endif %}
                         </div>
                         <div class="d-flex align-items-center">
                             <div class="progress flex-grow-1" style="height: 6px; width: 200px;">
@@ -64,15 +69,15 @@
 
         <!-- Captions List -->
         <div class="voice-captions-list">
-            {% firstof request.resolver_match.namespace 'maxillo' as ns %}
             {% with captions=voice_captions %}
                 {% if captions %}
                     <div class="caption-list-compact">
                         {% for c in captions|dictsortreversed:"created_at" %}
-                        <div class="caption-item-compact" data-caption-id="{{ c.id }}" data-update-modality-url="{% url ns|add:':update_voice_caption_modality' patient_id=scan_pair.patient_id caption_id=c.id %}">
+                        <div class="caption-item-compact" data-caption-id="{{ c.id }}"{% if ns != 'brain' %} data-update-modality-url="{% url ns|add:':update_voice_caption_modality' patient_id=patient.patient_id caption_id=c.id %}"{% endif %}>
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="caption-info">
                                     <small class="text-primary me-2">{{ c.user.username }}</small>
+                                    {% if ns != 'brain' %}
                                     <div class="dropdown d-inline-block me-2">
                                         <span class="badge bg-secondary dropdown-toggle modality-badge-clickable" 
                                               id="modalityDropdown{{ c.id }}" 
@@ -100,6 +105,7 @@
                                             {% endfor %}
                                         </ul>
                                     </div>
+                                    {% endif %}
                                     <span class="badge bg-secondary me-2">{{ c.get_display_duration|default:'Audio' }}</span>
                                     <small class="text-muted">{{ c.created_at|date:"M d, H:i" }}</small>
                                 </div>
@@ -283,6 +289,7 @@
                 updateCharCount();
             }
             
+            {% if ns != 'brain' %}
             // Handle modality change
             document.addEventListener('click', function(e) {
                 if (e.target.classList.contains('modality-option') || e.target.closest('.modality-option')) {
@@ -299,7 +306,9 @@
                     
                     if (!updateUrl) {
                         console.error('Update URL not found for caption', captionId);
-                        alert('Error: Unable to update modality. Please refresh the page and try again.');
+                        if (typeof window.appNotify === 'function') {
+                            window.appNotify('error', 'Unable to update modality. Please refresh the page and try again.');
+                        }
                         return;
                     }
                     
@@ -341,15 +350,20 @@
                             // Show success feedback (optional, using Bootstrap toast if available)
                             console.log('Modality updated successfully');
                         } else {
-                            alert('Error: ' + (data.error || 'Failed to update modality'));
+                            if (typeof window.appNotify === 'function') {
+                                window.appNotify('error', data.error || 'Failed to update modality');
+                            }
                         }
                     })
                     .catch(error => {
                         console.error('Error updating modality:', error);
-                        alert('Failed to update modality. Please try again.');
+                        if (typeof window.appNotify === 'function') {
+                            window.appNotify('error', 'Failed to update modality. Please try again.');
+                        }
                     });
                 }
             });
+            {% endif %}
         });
         </script>
     </div>

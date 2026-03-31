@@ -3,7 +3,7 @@
 
 <script id="viewerGridData" type="application/json">
 {
-    "scanId": {{ scan_pair.patient_id }},
+    "scanId": {{ patient.patient_id }},
     "projectNamespace": "{% firstof request.resolver_match.namespace 'maxillo' %}",
     "modalityFiles": {{ modality_files_json|safe }},
     "fixedMode": true,
@@ -39,7 +39,7 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="btn-group" role="group" id="iosControls" {% if not scan_pair.has_ios_scans and scan_pair.has_cbct_scan %}style="display: none;"{% endif %}>
+                <div class="btn-group" role="group" id="iosControls" {% if not patient.has_ios_scans and patient.has_cbct_scan %}style="display: none;"{% endif %}>
                     <button type="button" class="btn btn-outline-primary btn-sm" id="resetView">
                         <i class="fas fa-home me-1"></i>Reset
                     </button>
@@ -67,7 +67,7 @@
                         </select>
                     </div>
                 </div>
-                <div class="btn-group" role="group" id="cbctControls" {% if scan_pair.has_ios_scans %}style="display: none;"{% endif %}>
+                <div class="btn-group" role="group" id="cbctControls" {% if patient.has_ios_scans %}style="display: none;"{% endif %}>
                     <button type="button" class="btn btn-outline-primary btn-sm" id="resetCBCTView">
                         <i class="fas fa-home me-1"></i>Reset
                     </button>
@@ -99,7 +99,7 @@
             <div class="position-relative">
                 <!-- IOS Viewer -->
                 <div id="ios-viewer" class="viewer-container" {% if default_modality_slug and default_modality_slug != 'ios' %}style="display: none;"{% endif %}>
-                    {% if scan_pair.ios_processing_status == 'processing' %}
+                    {% if patient.ios_processing_status == 'processing' %}
                         <!-- Processing State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -117,7 +117,7 @@
                                 </div>
                             </div>
                         </div>
-                    {% elif scan_pair.ios_processing_status == 'failed' %}
+                    {% elif patient.ios_processing_status == 'failed' %}
                         <!-- Error State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -131,7 +131,7 @@
                                 </p>
                             </div>
                         </div>
-                    {% elif scan_pair.ios_processing_status == 'processing' %}
+                    {% elif patient.ios_processing_status == 'processing' %}
                         <!-- Processing State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -146,7 +146,7 @@
                                 </p>
                             </div>
                         </div>
-                    {% elif not scan_pair.has_ios_scans %}
+                    {% elif not patient.has_ios_scans %}
                         <!-- No Scans State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -194,7 +194,7 @@
                 
                 <!-- CBCT Viewer -->
                 <div id="cbct-viewer" class="viewer-container" {% if default_modality_slug != 'cbct' %}style="display: none;"{% endif %}>
-                    {% if scan_pair.cbct_processing_status == 'failed' %}
+                    {% if patient.cbct_processing_status == 'failed' %}
                         <!-- Failed State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -208,7 +208,7 @@
                                 </p>
                             </div>
                         </div>
-                    {% elif scan_pair.cbct_processing_status == 'processing' %}
+                    {% elif patient.cbct_processing_status == 'processing' %}
                         <!-- Processing State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">
@@ -223,7 +223,7 @@
                                 </p>
                             </div>
                         </div>
-                    {% elif not scan_pair.has_cbct_scan %}
+                    {% elif not patient.has_cbct_scan %}
                         <!-- No CBCT Data State -->
                         <div class="ios-status-display">
                             <div class="text-center py-5">

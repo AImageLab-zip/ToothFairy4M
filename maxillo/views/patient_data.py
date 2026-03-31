@@ -19,18 +19,18 @@ def _serve_file_url(request, file_id):
 def patient_viewer_data(request, patient_id):
     """API endpoint to provide scan data for 3D viewer"""
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     
     can_view = False
     if user_profile.is_admin():
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
-    elif scan_pair.visibility == 'public':
+    elif patient.visibility == 'public':
         can_view = True
     
     if not can_view:
@@ -42,9 +42,9 @@ def patient_viewer_data(request, patient_id):
         from common.models import Job as _Job
         job_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'processing'}
         if domain == 'brain':
-            job_filter['brain_patient_id'] = scan_pair.patient_id
+            job_filter['brain_patient_id'] = patient.patient_id
         else:
-            job_filter['patient_id'] = scan_pair.patient_id
+            job_filter['patient_id'] = patient.patient_id
         if _Job.objects.filter(**job_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} scans are still being processed',
@@ -53,9 +53,9 @@ def patient_viewer_data(request, patient_id):
             }, status=202)
         failed_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'failed'}
         if domain == 'brain':
-            failed_filter['brain_patient_id'] = scan_pair.patient_id
+            failed_filter['brain_patient_id'] = patient.patient_id
         else:
-            failed_filter['patient_id'] = scan_pair.patient_id
+            failed_filter['patient_id'] = patient.patient_id
         if _Job.objects.filter(**failed_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} processing failed',
@@ -72,13 +72,13 @@ def patient_viewer_data(request, patient_id):
     # Check FileRegistry for processed files first, then raw files
     try:
         # Look for processed files first
-        processed_files = scan_pair.get_ios_processed_files()
+        processed_files = patient.get_ios_processed_files()
         if processed_files['upper'] and processed_files['lower']:
             upper_scan_url = _serve_file_url(request, processed_files['upper'].id)
             lower_scan_url = _serve_file_url(request, processed_files['lower'].id)
         else:
             # Fallback to raw files from FileRegistry
-            raw_files = scan_pair.get_ios_raw_files()
+            raw_files = patient.get_ios_raw_files()
             if raw_files['upper'] and raw_files['lower']:
                 upper_scan_url = _serve_file_url(request, raw_files['upper'].id)
                 lower_scan_url = _serve_file_url(request, raw_files['lower'].id)
@@ -129,7 +129,7 @@ def patient_viewer_data(request, patient_id):
         'upper_scan_url': upper_url,
         'lower_scan_url': lower_url,
         'patient_info': {
-            'patient_id': scan_pair.patient_id,
+            'patient_id': patient.patient_id,
         }
     }
     
@@ -142,7 +142,7 @@ def patient_cbct_data(request, patient_id):
     import os
     
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     
@@ -150,11 +150,11 @@ def patient_cbct_data(request, patient_id):
     can_view = False
     if user_profile.is_admin():
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
-    elif scan_pair.visibility == 'public':
+    elif patient.visibility == 'public':
         can_view = True
     
     if not can_view:
@@ -166,9 +166,9 @@ def patient_cbct_data(request, patient_id):
         from common.models import Job as _Job
         job_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'processing'}
         if domain == 'brain':
-            job_filter['brain_patient_id'] = scan_pair.patient_id
+            job_filter['brain_patient_id'] = patient.patient_id
         else:
-            job_filter['patient_id'] = scan_pair.patient_id
+            job_filter['patient_id'] = patient.patient_id
         if _Job.objects.filter(**job_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} is still being processed',
@@ -177,9 +177,9 @@ def patient_cbct_data(request, patient_id):
             }, status=202)
         failed_filter = {'domain': domain, 'modality_slug': modality_slug, 'status': 'failed'}
         if domain == 'brain':
-            failed_filter['brain_patient_id'] = scan_pair.patient_id
+            failed_filter['brain_patient_id'] = patient.patient_id
         else:
-            failed_filter['patient_id'] = scan_pair.patient_id
+            failed_filter['patient_id'] = patient.patient_id
         if _Job.objects.filter(**failed_filter).exists():
             return JsonResponse({
                 'error': f'{modality_slug.upper()} processing failed',
@@ -194,7 +194,7 @@ def patient_cbct_data(request, patient_id):
     
     # First, check for processed CBCT (converted .nii.gz)
     try:
-        processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+        processed_entry = patient.files.filter(file_type='cbct_processed').first()
         if processed_entry:
             if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
                 # New structure: look for converted volume in metadata
@@ -211,7 +211,7 @@ def patient_cbct_data(request, patient_id):
         try:
             # Do not rely on get_cbct_raw_file() because legacy data may contain
             # multiple cbct_raw rows (including non-NIfTI files).
-            raw_entries = scan_pair.files.filter(file_type='cbct_raw').order_by('-created_at')
+            raw_entries = patient.files.filter(file_type='cbct_raw').order_by('-created_at')
             for raw_entry in raw_entries:
                 raw_path = raw_entry.file_path
                 if not raw_path:
@@ -251,16 +251,16 @@ def patient_volume_data(request, patient_id, modality_slug):
     """
     import os
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     domain = 'brain' if (getattr(request, 'resolver_match', None) and request.resolver_match.namespace == 'brain') else 'maxillo'
     user_profile = request.user.profile
     # Basic permission checks (same as CBCT)
     can_view = False
-    if user_profile.is_admin() or scan_pair.visibility == 'public':
+    if user_profile.is_admin() or patient.visibility == 'public':
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
     if not can_view:
         return JsonResponse({'error': 'Permission denied'}, status=403)
@@ -273,9 +273,9 @@ def patient_volume_data(request, patient_id, modality_slug):
     try:
         processed_filter = {'domain': domain, 'modality__slug': modality_slug, 'file_type': 'cbct_processed'}
         if domain == 'brain':
-            processed_filter['brain_patient_id'] = scan_pair.patient_id
+            processed_filter['brain_patient_id'] = patient.patient_id
         else:
-            processed_filter['patient_id'] = scan_pair.patient_id
+            processed_filter['patient_id'] = patient.patient_id
         processed = _FR.objects.filter(**processed_filter).first()
         if processed and processed.file_hash == 'multi-file' and 'files' in processed.metadata:
             files_data = processed.metadata.get('files', {})
@@ -290,9 +290,9 @@ def patient_volume_data(request, patient_id, modality_slug):
         try:
             raw_filter = {'domain': domain, 'modality__slug': modality_slug}
             if domain == 'brain':
-                raw_filter['brain_patient_id'] = scan_pair.patient_id
+                raw_filter['brain_patient_id'] = patient.patient_id
             else:
-                raw_filter['patient_id'] = scan_pair.patient_id
+                raw_filter['patient_id'] = patient.patient_id
             raw = _FR.objects.filter(**raw_filter).order_by('-created_at').first()
             if raw and raw.file_path and (raw.file_path.endswith('.nii') or raw.file_path.endswith('.nii.gz')) and os.path.exists(raw.file_path):
                 file_path = raw.file_path
@@ -320,18 +320,18 @@ def patient_panoramic_data(request, patient_id):
     """
     
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
     # Check permissions based on scan visibility and user role
     can_view = False
     if user_profile.is_admin():
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
-    elif scan_pair.visibility == 'public':
+    elif patient.visibility == 'public':
         can_view = True
     
     if not can_view:
@@ -342,19 +342,19 @@ def patient_panoramic_data(request, patient_id):
         from common.models import FileRegistry
         # Look for panoramic files by modality slug OR file_type
         # Try modality-based lookup first
-        panoramic_file = scan_pair.files.filter(
+        panoramic_file = patient.files.filter(
             modality__slug='panoramic'
         ).order_by('-created_at').first()
         
         # If not found, try file_type lookup (for files uploaded before modality system)
         if not panoramic_file:
-            panoramic_file = scan_pair.files.filter(
+            panoramic_file = patient.files.filter(
                 file_type='panoramic_raw'
             ).order_by('-created_at').first()
         
         # Also check processed panoramic
         if not panoramic_file:
-            panoramic_file = scan_pair.files.filter(
+            panoramic_file = patient.files.filter(
                 file_type='panoramic_processed'
             ).order_by('-created_at').first()
         
@@ -383,7 +383,7 @@ def patient_panoramic_data(request, patient_id):
     logger.debug("No uploaded panoramic file found, checking for CBCT-generated panoramic")
     
     # Check if CBCT exists but is still processing
-    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'processing':
+    if patient.has_cbct_scan() and patient.cbct_processing_status == 'processing':
         return JsonResponse({
             'error': 'CBCT is still being processed',
             'status': 'processing',
@@ -391,7 +391,7 @@ def patient_panoramic_data(request, patient_id):
         }, status=202)
     
     # Check if processing failed
-    if scan_pair.has_cbct_scan() and scan_pair.cbct_processing_status == 'failed':
+    if patient.has_cbct_scan() and patient.cbct_processing_status == 'failed':
         return JsonResponse({
             'error': 'CBCT processing failed',
             'status': 'failed',
@@ -399,9 +399,9 @@ def patient_panoramic_data(request, patient_id):
         }, status=500)
     
     # Check if CBCT processing is complete (panoramic is only available after processing)
-    logger.debug(f"CBCT processing status: {scan_pair.cbct_processing_status}")
-    logger.debug(f"is_cbct_processed(): {scan_pair.is_cbct_processed()}")
-    if not scan_pair.is_cbct_processed():
+    logger.debug(f"CBCT processing status: {patient.cbct_processing_status}")
+    logger.debug(f"is_cbct_processed(): {patient.is_cbct_processed()}")
+    if not patient.is_cbct_processed():
         return JsonResponse({
             'error': 'CBCT processing not complete',
             'status': 'not_processed',
@@ -411,7 +411,7 @@ def patient_panoramic_data(request, patient_id):
     # Look for panoramic file in FileRegistry (CBCT Processed files)
     try:
         # Find the CBCT processed file entry for this scan pair
-        processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+        processed_entry = patient.files.filter(file_type='cbct_processed').first()
         
         if not processed_entry:
             return JsonResponse({'error': 'Processed CBCT files not found'}, status=404)
@@ -458,18 +458,18 @@ def patient_intraoral_data(request, patient_id):
     """API endpoint to serve intraoral photographs data"""
     
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
     # Check permissions based on scan visibility and user role
     can_view = False
     if user_profile.is_admin():
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
-    elif scan_pair.visibility == 'public':
+    elif patient.visibility == 'public':
         can_view = True
     
     if not can_view:
@@ -477,7 +477,7 @@ def patient_intraoral_data(request, patient_id):
     
     # Get intraoral images from FileRegistry
     try:
-        intraoral_files = scan_pair.files.filter(
+        intraoral_files = patient.files.filter(
             file_type__in=['intraoral_raw', 'intraoral_processed']
         ).order_by('metadata__image_index', 'created_at')
         
@@ -513,18 +513,18 @@ def patient_teleradiography_data(request, patient_id):
     """API endpoint to serve teleradiography image data"""
     
     Patient = get_domain_models(request)['Patient']
-    scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+    patient = get_object_or_404(Patient, patient_id=patient_id)
     user_profile = request.user.profile
     
     # Check permissions based on scan visibility and user role
     can_view = False
     if user_profile.is_admin():
         can_view = True
-    elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
         can_view = True
-    elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
         can_view = True
-    elif scan_pair.visibility == 'public':
+    elif patient.visibility == 'public':
         can_view = True
     
     if not can_view:
@@ -533,12 +533,12 @@ def patient_teleradiography_data(request, patient_id):
     # Look for teleradiography file in FileRegistry
     try:
         # Prefer processed file, fallback to raw
-        teleradiography_file = scan_pair.files.filter(
+        teleradiography_file = patient.files.filter(
             file_type='teleradiography_processed'
         ).first()
         
         if not teleradiography_file:
-            teleradiography_file = scan_pair.files.filter(
+            teleradiography_file = patient.files.filter(
                 file_type='teleradiography_raw'
             ).first()
         

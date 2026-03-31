@@ -66,10 +66,10 @@ def add_patient_tag(request, patient_id):
     Patient = domain_models['Patient']
     Tag = domain_models['Tag']
     try:
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
         # Permissions aligned with management updates
-        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and scan_pair.visibility != 'debug') or (user_profile.is_student_developer() and scan_pair.visibility == 'debug')
+        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and patient.visibility != 'debug') or (user_profile.is_student_developer() and patient.visibility == 'debug')
         if not can_modify:
             return JsonResponse({'error': 'Permission denied'}, status=403)
         data = json.loads(request.body) if request.body else request.POST
@@ -77,8 +77,8 @@ def add_patient_tag(request, patient_id):
         if not tag_name:
             return JsonResponse({'error': 'Tag name required'}, status=400)
         tag, _ = Tag.objects.get_or_create(name=tag_name)
-        scan_pair.tags.add(tag)
-        return JsonResponse({'success': True, 'tags': scan_pair.tag_names()})
+        patient.tags.add(tag)
+        return JsonResponse({'success': True, 'tags': patient.tag_names()})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -92,9 +92,9 @@ def remove_patient_tag(request, patient_id):
     Patient = domain_models['Patient']
     Tag = domain_models['Tag']
     try:
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
-        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and scan_pair.visibility != 'debug') or (user_profile.is_student_developer() and scan_pair.visibility == 'debug')
+        can_modify = user_profile.is_admin() or (user_profile.is_annotator() and patient.visibility != 'debug') or (user_profile.is_student_developer() and patient.visibility == 'debug')
         if not can_modify:
             return JsonResponse({'error': 'Permission denied'}, status=403)
         data = json.loads(request.body) if request.body else request.POST
@@ -107,7 +107,7 @@ def remove_patient_tag(request, patient_id):
             tag = Tag.objects.filter(name__iexact=tag_name).first()
         if not tag:
             return JsonResponse({'error': 'Tag not found'}, status=404)
-        scan_pair.tags.remove(tag)
-        return JsonResponse({'success': True, 'tags': scan_pair.tag_names()})
+        patient.tags.remove(tag)
+        return JsonResponse({'success': True, 'tags': patient.tag_names()})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

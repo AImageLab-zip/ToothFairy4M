@@ -24,11 +24,11 @@ def rerun_processing(request, patient_id):
     try:
         Patient = get_domain_models(request)['Patient']
         domain = get_namespace(request)
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         from common.models import Job
         from ..modality_helpers import get_modality_slugs
 
-        job_filter = {'brain_patient': scan_pair, 'domain': 'brain'} if domain == 'brain' else {'patient': scan_pair, 'domain': 'maxillo'}
+        job_filter = {'brain_patient': patient, 'domain': 'brain'} if domain == 'brain' else {'patient': patient, 'domain': 'maxillo'}
 
         try:
             data = json.loads(request.body) if request.body else {}
@@ -65,9 +65,9 @@ def rerun_processing(request, patient_id):
                     
                     # Update patient status fields if they exist (for backward compatibility)
                     status_field = f'{modality_slug}_processing_status'
-                    if hasattr(scan_pair, status_field):
-                        setattr(scan_pair, status_field, 'processing')
-                        scan_pair.save()
+                    if hasattr(patient, status_field):
+                        setattr(patient, status_field, 'processing')
+                        patient.save()
                     
                     # Special handling for dependencies
                     if hasattr(job, 'update_status_based_on_dependencies'):
@@ -98,7 +98,7 @@ def rerun_processing(request, patient_id):
                         job.error_logs = ''
                         job.save()
                     # Also reset related captions to pending
-                    for vc in scan_pair.voice_captions.all():
+                    for vc in patient.voice_captions.all():
                         vc.processing_status = 'pending'
                         vc.save()
                     if modality_slug not in updated:

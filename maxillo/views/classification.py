@@ -25,14 +25,14 @@ def update_classification(request, patient_id):
     Classification = domain_models['Classification']
     
     try:
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         
         can_classify = False
         if user_profile.is_admin():
             can_classify = True
-        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        elif user_profile.is_annotator() and patient.visibility != 'debug':
             can_classify = True
-        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        elif user_profile.is_student_developer() and patient.visibility == 'debug':
             can_classify = True
         
         if not can_classify:
@@ -47,7 +47,7 @@ def update_classification(request, patient_id):
             return JsonResponse({'error': 'Invalid field'}, status=400)
         
         manual_classification, created = Classification.objects.get_or_create(
-            patient=scan_pair,
+            patient=patient,
             classifier='manual',
             defaults={
                 'sagittal_left': 'Unknown',
@@ -60,7 +60,7 @@ def update_classification(request, patient_id):
         )
         
         if created:
-            ai_classification = scan_pair.classifications.filter(classifier='pipeline').first()
+            ai_classification = patient.classifications.filter(classifier='pipeline').first()
             if ai_classification:
                 manual_classification.sagittal_left = ai_classification.sagittal_left
                 manual_classification.sagittal_right = ai_classification.sagittal_right

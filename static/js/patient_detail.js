@@ -43,17 +43,10 @@ function updateClassification(button, option) {
     button.nextElementSibling.classList.remove('show');
     
     // Save via AJAX
-    fetch(`/${window.projectNamespace}/patient/${window.scanId}/update/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            field: field,
-            value: value
-        })
+    postJson(`/${window.projectNamespace}/patient/${window.scanId}/update/`, {
+        field: field,
+        value: value
     })
-    .then(response => response.json())
     .then(data => {
         if (data.success) {
             showSavedIndicator();
@@ -72,11 +65,26 @@ function updateClassification(button, option) {
 }
 
 function showSavedIndicator() {
+    if (typeof window.appNotify === 'function') {
+        window.appNotify('success', 'Saved');
+        return;
+    }
+
     const indicator = document.getElementById('savingIndicator');
+    if (!indicator) {
+        return;
+    }
     indicator.style.display = 'block';
     setTimeout(() => {
         indicator.style.display = 'none';
     }, 2000);
+}
+
+function notify(type, message) {
+    if (typeof window.appNotify === 'function') {
+        window.appNotify(type, message);
+        return;
+    }
 }
 
 function updatePageStatus() {
@@ -90,6 +98,70 @@ function updatePageStatus() {
         if (quickActions) {
             quickActions.style.display = 'none';
         }
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function getCSRFToken() {
+    const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    return getCookie('csrftoken');
+}
+
+function postJson(url, payload) {
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    const token = getCSRFToken();
+    if (token) {
+        headers['X-CSRFToken'] = token;
+    }
+
+    return fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+    }).then(response => response.text().then(text => {
+        let data = {};
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch (error) {
+                data = {};
+            }
+        }
+        if (!response.ok) {
+            const message = data.error || `Request failed (${response.status})`;
+            throw new Error(message);
+        }
+        return data;
+    }));
+}
+
+function setScanNameDisplay(nameDisplay, value) {
+    nameDisplay.innerHTML = `<strong>${escapeHtml(value)}</strong>`;
+}
+
+function syncManagementNameField(value) {
+    const managementNameInput = document.querySelector('.scan-management-form input[name="name"]');
+    if (managementNameInput) {
+        managementNameInput.value = value;
     }
 }
 
@@ -112,6 +184,7 @@ function initNameEditing() {
     editBtn.addEventListener('click', function() {
         const currentName = nameDisplay.textContent.trim();
         const parentElement = nameDisplay.parentNode;
+        let isSaving = false;
         
         if (!parentElement) {
             console.error('Parent element not found');
@@ -137,26 +210,24 @@ function initNameEditing() {
                 input.value = currentName;
                 return;
             }
+            if (isSaving) {
+                return;
+            }
+            isSaving = true;
             
-            fetch(`/${window.projectNamespace}/patient/${window.scanId}/update-name/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    name: newName
-                })
+            postJson(`/${window.projectNamespace}/patient/${window.scanId}/update-name/`, {
+                name: newName
             })
-            .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    nameDisplay.textContent = data.name;
+                    setScanNameDisplay(nameDisplay, data.name);
+                    syncManagementNameField(data.name);
                     if (input.parentNode) {
                         input.parentNode.replaceChild(nameDisplay, input);
                     }
                     showSavedIndicator();
                 } else {
-                    alert('Error saving name: ' + (data.error || 'Unknown error'));
+                    notify('error', 'Error saving name: ' + (data.error || 'Unknown error'));
                     if (input.parentNode) {
                         input.parentNode.replaceChild(nameDisplay, input);
                     }
@@ -164,10 +235,13 @@ function initNameEditing() {
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error saving name');
+                notify('error', 'Error saving name: ' + (error.message || 'Unknown error'));
                 if (input.parentNode) {
                     input.parentNode.replaceChild(nameDisplay, input);
                 }
+            })
+            .finally(() => {
+                isSaving = false;
             });
         }
         
@@ -538,30 +612,26 @@ function initTagManagement() {
         const btn = e.target.closest('.btn-remove-tag');
         if (!btn) return;
         const tag = btn.dataset.tag;
-        fetch(`/${window.projectNamespace}/patient/${window.scanId}/tags/remove/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tag })
-        }).then(r => r.json()).then(data => {
+        postJson(`/${window.projectNamespace}/patient/${window.scanId}/tags/remove/`, {
+            tag: tag
+        }).then(data => {
             if (data.success) {
                 const toRemove = chips.querySelector(`[data-tag="${CSS.escape(tag)}"]`);
                 if (toRemove) toRemove.remove();
                 showSavedIndicator();
             } else {
-                alert(data.error || 'Failed to remove tag');
+                notify('error', data.error || 'Failed to remove tag');
             }
-        }).catch(() => alert('Network error'));
+        }).catch(error => notify('error', error.message || 'Network error'));
     });
 }
 
 function addTag(input, chips) {
     const tag = (input.value || '').trim();
     if (!tag) return;
-    fetch(`/${window.projectNamespace}/patient/${window.scanId}/tags/add/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag })
-    }).then(r => r.json()).then(data => {
+    postJson(`/${window.projectNamespace}/patient/${window.scanId}/tags/add/`, {
+        tag: tag
+    }).then(data => {
         if (data.success) {
             // add chip if not already present
             if (!chips.querySelector(`[data-tag="${CSS.escape(tag)}"]`)) {
@@ -574,9 +644,9 @@ function addTag(input, chips) {
             input.value = '';
             showSavedIndicator();
         } else {
-            alert(data.error || 'Failed to add tag');
+            notify('error', data.error || 'Failed to add tag');
         }
-    }).catch(() => alert('Network error'));
+    }).catch(error => notify('error', error.message || 'Network error'));
 }
 
 function escapeHtml(text) {

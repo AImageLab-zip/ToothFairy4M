@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Patient {{ scan_pair.name }} - ToothFairy4M{% endblock %}
+{% block title %}Patient {{ patient.name }} - ToothFairy4M{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/patient_detail.css' %}">
@@ -20,10 +20,10 @@
 <script id="django-data" type="application/json">
 {
     "canEdit": {{ user_profile.is_annotator|yesno:"true,false" }},
-    "scanId": {{ scan_pair.patient_id }},
-    "hasIOS": {{ scan_pair.has_ios_scans|yesno:"true,false" }},
+    "scanId": {{ patient.patient_id }},
+    "hasIOS": {{ patient.has_ios_scans|yesno:"true,false" }},
     "hasCBCT": {{ has_cbct|yesno:"true,false" }},
-    "isCBCTProcessed": {{ scan_pair.is_cbct_processed|yesno:"true,false" }},
+    "isCBCTProcessed": {{ patient.is_cbct_processed|yesno:"true,false" }},
     "modalities": {{ patient_modalities_json|safe }},
     "defaultModality": {{ default_modality_json|safe }}
 }

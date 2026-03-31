@@ -138,7 +138,9 @@
 function copyInvitationLink(code) {
     const link = '{{ registration_base_url }}?code=' + code;
     navigator.clipboard.writeText(link).then(() => {
-        alert('Invitation link copied to clipboard!');
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('success', 'Invitation link copied to clipboard!');
+        }
     });
 }
 </script>

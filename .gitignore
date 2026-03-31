@@ -193,3 +193,10 @@ prod_db.sql
 
 # Local scripts
 scripts/
+
+# OpenCode local artifacts
+AGENTS.md
+ANALYSIS.md
+MODULE_DESIGN.md
+Trace-*.json
+.tmp_trace_*.tsv

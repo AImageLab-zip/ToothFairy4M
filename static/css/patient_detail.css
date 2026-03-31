@@ -33,14 +33,36 @@
 /* Scan Management Section */
 .scan-management-box {
     background: white;
-    border: 2px solid #e9ecef;
-    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
     padding: 0.75rem;
-    margin-top: 1rem;
+    margin-top: 0.5rem;
 }
 
 .scan-info-compact .info-item-compact {
     padding: 0.25rem 0;
+}
+
+.scan-settings-panel {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin-top: 0.25rem;
+}
+
+.scan-name-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.scan-name-display {
+    font-size: 0.9rem;
+}
+
+.scan-management-actions {
+    margin-top: 0.75rem;
 }
 
 .form-label-sm {
@@ -58,8 +80,7 @@
 
 /* Inline name editing */
 .btn-edit-name {
-    border: none;
-    padding: 0.15rem 0.3rem;
+    padding: 0.15rem 0.35rem;
     opacity: 0.7;
     transition: opacity 0.2s;
 }
@@ -643,15 +664,6 @@
 
 .collapse.show {
     display: block;
-}
-
-/* Enhanced scan management box for collapsible sections */
-.scan-management-box {
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 0.375rem;
-    padding: 0.75rem;
-    margin-top: 0.5rem;
 }
 
 @keyframes slideDown {

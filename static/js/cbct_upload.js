@@ -197,7 +197,9 @@ function handleFormSubmission() {
             // If no files are being uploaded at all, show an error message
             if (!hasAnyFile) {
                 e.preventDefault();
-                alert('Please upload at least one file.');
+                if (typeof window.appNotify === 'function') {
+                    window.appNotify('warning', 'Please upload at least one file.');
+                }
                 return false;
             }
             

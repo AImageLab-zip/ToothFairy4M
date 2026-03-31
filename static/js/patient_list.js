@@ -6,7 +6,7 @@ function handlePageJumpSubmit(event, maxPages) {
     
     if (!pageNumber || pageNumber < 1 || pageNumber > maxPages) {
         event.preventDefault();
-        alert(`Please enter a valid page number between 1 and ${maxPages}`);
+        showNotification('warning', `Please enter a valid page number between 1 and ${maxPages}`);
         pageInput.value = '';
         pageInput.focus();
         return false;
@@ -40,7 +40,11 @@ function cleanFormSubmission() {
     
     inputs.forEach(input => {
         // For hidden filter inputs, remove them if they have no value
-        if (input.name && (input.name.startsWith('has_') || input.name === 'tags') && input.value === '') {
+        if (
+            input.name &&
+            (input.name.startsWith('has_') || input.name.startsWith('status_') || input.name === 'tags' || input.name === 'search') &&
+            input.value === ''
+        ) {
             input.disabled = true; // Disable empty inputs so they're not submitted
         }
     });
@@ -147,12 +151,14 @@ function initListNameEditing() {
             e.stopPropagation();
             
             const scanId = this.dataset.scanId;
-            const nameDisplay = document.querySelector(`.scan-name-display[data-scan-id="${scanId}"]`);
+            const row = this.closest('.patient-row, .scan-row');
+            const nameDisplay = row ? row.querySelector('.scan-name-text, .scan-name-display') : null;
             
             if (!nameDisplay) return;
             
             const currentName = nameDisplay.textContent.trim();
             const parentElement = nameDisplay.parentNode;
+            let isSaving = false;
             
             if (!parentElement) {
                 console.error('Parent element not found');
@@ -177,12 +183,13 @@ function initListNameEditing() {
                     input.value = currentName;
                     return;
                 }
+                if (isSaving) {
+                    return;
+                }
+                isSaving = true;
                 
-                fetch(`/${window.projectNamespace}/patient/${scanId}/update-name/`, {
+                secureFetch(`/${window.projectNamespace}/patient/${scanId}/update-name/`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
                     body: JSON.stringify({
                         name: newName
                     })
@@ -195,7 +202,7 @@ function initListNameEditing() {
                             input.parentNode.replaceChild(nameDisplay, input);
                         }
                     } else {
-                        alert('Error saving name: ' + (data.error || 'Unknown error'));
+                        showNotification('error', 'Error saving name: ' + (data.error || 'Unknown error'));
                         if (input.parentNode) {
                             input.parentNode.replaceChild(nameDisplay, input);
                         }
@@ -203,10 +210,13 @@ function initListNameEditing() {
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Error saving name');
+                    showNotification('error', error.message || 'Error saving name');
                     if (input.parentNode) {
                         input.parentNode.replaceChild(nameDisplay, input);
                     }
+                })
+                .finally(() => {
+                    isSaving = false;
                 });
             }
             
@@ -243,7 +253,7 @@ function initAdminActions() {
             const scanName = this.dataset.scanName || `Scan #${scanId}`;
             const patientId = this.dataset.patientId;
             
-            if (!confirm(`Are you sure you want to delete ${scanName}?\n\nThis will permanently delete:\n- All scan files (STL, CBCT)\n- All classifications\n- All voice captions\n- All processed data\n\nThis action cannot be undone!`)) {
+            if (!confirm(`Are you sure you want to delete ${scanName}?\n\nThis will remove the scan from all lists and views, but files and related data will be kept.`)) {
                 return;
             }
             
@@ -259,16 +269,25 @@ function initAdminActions() {
             .then(data => {
                 if (data.success) {
                     // Remove the row with animation
-                    const row = this.closest('.scan-row');
-                    row.style.transition = 'opacity 0.3s, transform 0.3s';
-                    row.style.opacity = '0';
-                    row.style.transform = 'translateX(-20px)';
-                    
-                    setTimeout(() => {
-                        row.remove();
-                        // Show success message
+                    const row = this.closest('.patient-row') ||
+                        this.closest('.scan-row') ||
+                        document.querySelector(`.patient-row[data-scan-id="${scanId}"]`) ||
+                        document.querySelector(`.scan-row[data-scan-id="${scanId}"]`);
+
+                    if (row) {
+                        row.style.transition = 'opacity 0.3s, transform 0.3s';
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateX(-20px)';
+
+                        setTimeout(() => {
+                            row.remove();
+                            // Show success message
+                            showNotification('success', data.message || 'Scan deleted successfully');
+                        }, 300);
+                    } else {
                         showNotification('success', data.message || 'Scan deleted successfully');
-                    }, 300);
+                        window.location.reload();
+                    }
                 } else {
                     throw new Error(data.error || 'Failed to delete scan');
                 }
@@ -445,22 +464,10 @@ function secureFetch(url, options = {}) {
 
 // Show notification
 function showNotification(type, message) {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
-    notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
-    notification.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => notification.remove(), 150);
-    }, 5000);
+    if (typeof window.appNotify === 'function') {
+        window.appNotify(type, message);
+        return;
+    }
 }
 
 // Initialize filter remove buttons
@@ -578,7 +585,7 @@ function initBulkSelection() {
             
             // Show confirmation dialog
             const count = ids.length;
-            const confirmMessage = `Are you sure you want to delete ${count} scan${count > 1 ? 's' : ''}? This action cannot be undone and will permanently remove all associated data and files.`;
+            const confirmMessage = `Are you sure you want to delete ${count} scan${count > 1 ? 's' : ''}? Deleted scans are removed from lists and views but data is retained.`;
             
             if (!confirm(confirmMessage)) {
                 return;

@@ -16,25 +16,25 @@ def get_nifti_metadata(request, patient_id):
     """Get NIFTI metadata including origin, affine matrix, and orientation"""
     try:
         Patient = get_domain_models(request)['Patient']
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         user_profile = request.user.profile
         
         # Check permissions based on scan visibility and user role
         can_view = False
         if user_profile.is_admin():
             can_view = True
-        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        elif user_profile.is_annotator() and patient.visibility != 'debug':
             can_view = True
-        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        elif user_profile.is_student_developer() and patient.visibility == 'debug':
             can_view = True
-        elif scan_pair.visibility == 'public':
+        elif patient.visibility == 'public':
             can_view = True
         
         if not can_view:
             return JsonResponse({'error': 'Permission denied'}, status=403)
         
         # Check if CBCT exists
-        if not scan_pair.has_cbct_scan():
+        if not patient.has_cbct_scan():
             return JsonResponse({'error': 'No CBCT scan available'}, status=404)
         
         # Get CBCT file path - prioritize processed NIFTI files
@@ -42,7 +42,7 @@ def get_nifti_metadata(request, patient_id):
         
         # First, try to get processed CBCT (converted .nii.gz)
         try:
-            processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+            processed_entry = patient.files.filter(file_type='cbct_processed').first()
             if processed_entry:
                 if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
                     # New structure: look for converted volume in metadata
@@ -58,7 +58,7 @@ def get_nifti_metadata(request, patient_id):
         if not cbct_path:
             try:
                 # Try to get from FileRegistry first
-                cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+                cbct_entry = patient.files.filter(file_type='cbct_raw').first()
                 if cbct_entry and os.path.exists(cbct_entry.file_path):
                     # Only use raw file if it's already in .nii.gz format
                     if cbct_entry.file_path.endswith('.nii.gz'):
@@ -73,8 +73,8 @@ def get_nifti_metadata(request, patient_id):
                             }, status=202)
                         else:
                             return JsonResponse({'error': 'CBCT file is not in NIFTI format'}, status=400)
-                elif scan_pair.cbct:  # Fallback to old field
-                    cbct_path = scan_pair.cbct.path
+                elif patient.cbct:  # Fallback to old field
+                    cbct_path = patient.cbct.path
             except:
                 pass
             
@@ -203,17 +203,17 @@ def update_nifti_metadata(request, patient_id):
     """Update NIFTI metadata (admin only)"""
     try:
         Patient = get_domain_models(request)['Patient']
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         domain = get_namespace(request)
         
         # Check if CBCT exists
-        if not scan_pair.has_cbct_scan():
+        if not patient.has_cbct_scan():
             return JsonResponse({'error': 'No CBCT scan available'}, status=404)
         
         cbct_path = None
         
         try:
-            processed_entry = scan_pair.files.filter(file_type='cbct_processed').first()
+            processed_entry = patient.files.filter(file_type='cbct_processed').first()
             if processed_entry:
                 if processed_entry.file_hash == 'multi-file' and 'files' in processed_entry.metadata:
                     files_data = processed_entry.metadata.get('files', {})
@@ -226,7 +226,7 @@ def update_nifti_metadata(request, patient_id):
         
         if not cbct_path:
             try:
-                cbct_entry = scan_pair.files.filter(file_type='cbct_raw').first()
+                cbct_entry = patient.files.filter(file_type='cbct_raw').first()
                 if cbct_entry and os.path.exists(cbct_entry.file_path):
                     if cbct_entry.file_path.endswith('.nii.gz'):
                         cbct_path = cbct_entry.file_path
@@ -239,8 +239,8 @@ def update_nifti_metadata(request, patient_id):
                             }, status=202)
                         else:
                             return JsonResponse({'error': 'CBCT file is not in NIFTI format'}, status=400)
-                elif scan_pair.cbct:
-                    cbct_path = scan_pair.cbct.path
+                elif patient.cbct:
+                    cbct_path = patient.cbct.path
             except:
                 pass
             
@@ -294,7 +294,7 @@ def update_nifti_metadata(request, patient_id):
             if domain == 'brain':
                 Job.objects.create(
                     domain='brain',
-                    brain_patient=scan_pair,
+                    brain_patient=patient,
                     modality_slug='metadata_update',
                     status='completed',
                     output_files={
@@ -308,7 +308,7 @@ def update_nifti_metadata(request, patient_id):
             else:
                 Job.objects.create(
                     domain='maxillo',
-                    patient=scan_pair,
+                    patient=patient,
                     modality_slug='metadata_update',
                     status='completed',
                     output_files={

@@ -189,6 +189,8 @@ def patient_list(request):
             for m in allowed_modalities:
                 slug = getattr(m, 'slug', '') or ''
                 if slug:
+                    if slug == 'rawzip':
+                        continue
                     val = request.GET.get(f'status_{slug}', '').strip()
                     if val:
                         status_filters[slug] = val
@@ -366,6 +368,8 @@ def patient_list(request):
     modality_filter_specs = []
     for m in allowed_modalities:
         slug = getattr(m, 'slug', '') or ''
+        if slug == 'rawzip':
+            continue
         name = getattr(m, 'name', slug)
         icon = getattr(m, 'icon', '') or ''
         label = getattr(m, 'label', '') or ''
