@@ -4,7 +4,7 @@
 <!-- Django data for JavaScript -->
 <script id="viewerGridData" type="application/json">
 {
-    "scanId": {{ scan_pair.patient_id }},
+    "scanId": {{ patient.patient_id }},
     "projectNamespace": "{% firstof request.resolver_match.namespace 'maxillo' %}",
     "modalityFiles": {{ modality_files_json|safe }}
 }
@@ -18,7 +18,7 @@
             <!-- Patient Info and Modality Chips -->
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="d-flex align-items-center">
-                    <h4 class="me-3"><i class="fas fa-brain me-2"></i>{{ scan_pair.name }}</h4>
+                    <h4 class="me-3"><i class="fas fa-brain me-2"></i>{{ patient.name }}</h4>
                 </div>
             </div>
 
@@ -138,7 +138,7 @@
                                         <i class="fas fa-hand-pointer me-1"></i>Loading Modalities
                                     </h6>
                                     <ul class="list-unstyled instruction-list">
-                                        <li><strong>Drag and drop:</strong> Drag a modality chip onto any empty viewer window</li>
+                                        <li><strong>Drag and drop:</strong> Drag a modality chip onto any viewer window (it replaces the current modality automatically)</li>
                                         <li><strong>Multiple views:</strong> Load up to 4 different modalities simultaneously</li>
                                         <li><strong>Comparison:</strong> View T1, T2, FLAIR, and T1c side-by-side</li>
                                     </ul>

@@ -803,10 +803,17 @@ const ViewerGrid = (function() {
 
         // Make viewer windows drop zones
         windows.forEach(window => {
-            window.addEventListener('dragover', handleDragOver);
-            window.addEventListener('dragleave', handleDragLeave);
-            window.addEventListener('drop', handleDrop);
+            window.addEventListener('dragover', handleDragOver, true);
+            window.addEventListener('dragleave', handleDragLeave, true);
+            window.addEventListener('drop', handleDrop, true);
         });
+    }
+
+    function resolveWindowDropTarget(target) {
+        if (!target || typeof target.closest !== 'function') {
+            return null;
+        }
+        return target.closest('.viewer-window');
     }
 
     /**
@@ -840,29 +847,47 @@ const ViewerGrid = (function() {
      * Handle drag over window (for drop zone highlighting)
      */
     function handleDragOver(e) {
+        const windowEl = resolveWindowDropTarget(e.target) || e.currentTarget;
+        if (!windowEl || !windowEl.classList || !windowEl.classList.contains('viewer-window')) {
+            return;
+        }
+
         e.preventDefault(); // Required to allow drop
         e.dataTransfer.dropEffect = 'copy';
 
         // Highlight drop zone
-        e.currentTarget.classList.add('drag-over');
+        windowEl.classList.add('drag-over');
     }
 
     /**
      * Handle drag leave window
      */
     function handleDragLeave(e) {
-        // Only remove highlight if leaving the window itself (not child elements)
-        if (e.currentTarget === e.target) {
-            e.currentTarget.classList.remove('drag-over');
+        const windowEl = resolveWindowDropTarget(e.target) || e.currentTarget;
+        if (!windowEl || !windowEl.classList || !windowEl.classList.contains('viewer-window')) {
+            return;
         }
+
+        // Keep highlight while moving between child elements within the same window.
+        const nextTarget = e.relatedTarget;
+        if (nextTarget && windowEl.contains(nextTarget)) {
+            return;
+        }
+
+        windowEl.classList.remove('drag-over');
     }
 
     /**
      * Handle drop into window
      */
     function handleDrop(e) {
+        const windowEl = resolveWindowDropTarget(e.target) || e.currentTarget;
+        if (!windowEl || !windowEl.classList || !windowEl.classList.contains('viewer-window')) {
+            return;
+        }
+
         e.preventDefault();
-        e.currentTarget.classList.remove('drag-over');
+        windowEl.classList.remove('drag-over');
 
         // Parse dropped data
         let modalityData;
@@ -878,7 +903,10 @@ const ViewerGrid = (function() {
         }
 
         // Get window index
-        const windowIndex = parseInt(e.currentTarget.dataset.windowIndex, 10);
+        const windowIndex = parseInt(windowEl.dataset.windowIndex, 10);
+        if (Number.isNaN(windowIndex)) {
+            return;
+        }
 
         // Load modality in this window
         loadModalityInWindow(windowIndex, modalityData.modality, modalityData.fileId);

@@ -19,7 +19,7 @@
                 </div>
                 <div class="card-body">
                     <div class="folder-item {% if folder_id == 'all' %}active{% endif %}" data-folder="all">
-                        <a href="?folder=all" class="text-decoration-none text-reset">
+                        <a href="?folder=all{% for key, value in request.GET.items %}{% if key != 'folder' and key != 'page' %}&{{ key|urlencode }}={{ value|urlencode }}{% endif %}{% endfor %}" class="text-decoration-none text-reset">
                             <i class="fas fa-folder-open text-warning me-2"></i>Show All
                         </a>
                     </div>
@@ -28,7 +28,7 @@
                         {% for f in folders %}
                         <div class="folder-node" data-id="{{ f.folder.id }}">
                             <div class="folder-item {% if folder_id|add:'' == f.folder.id|add:'' %}active{% endif %}" data-folder="{{ f.folder.id }}">
-                                <a href="?folder={{ f.folder.id }}" class="text-decoration-none text-reset">
+                                <a href="?folder={{ f.folder.id }}{% for key, value in request.GET.items %}{% if key != 'folder' and key != 'page' %}&{{ key|urlencode }}={{ value|urlencode }}{% endif %}{% endfor %}" class="text-decoration-none text-reset">
                                     <i class="fas fa-folder text-warning me-2"></i>{{ f.folder.name }}
                                     <span class="badge bg-secondary ms-2">{{ f.patient_count }}</span>
                                 </a>
@@ -52,6 +52,7 @@
                 <div id="filtersCollapse" class="collapse show card-body sidebar-filters">
                     <div class="filter-section">
                         <form id="filterForm">
+                            <input type="hidden" name="folder" value="{{ folder_id|default:'all' }}">
                             <div class="filter-row">
                                 <div class="filter-item">
                                     <label class="filter-label">Search</label>
@@ -86,8 +87,8 @@
                                     </select>
                                 </div>
                                 <div class="filter-item filter-actions">
-                                    <button type="submit" class="btn btn-primary uniform-btn">Apply Filters</button>
-                                    <a class="btn btn-outline-secondary uniform-btn" href="?">Reset</a>
+                                    <button type="submit" class="btn btn-primary uniform-btn">Apply</button>
+                                    <a class="btn btn-outline-secondary uniform-btn" href="?{% if folder_id and folder_id != 'all' %}folder={{ folder_id|urlencode }}{% endif %}{% if per_page and per_page != 20 %}{% if folder_id and folder_id != 'all' %}&{% endif %}per_page={{ per_page }}{% endif %}">Reset</a>
                                 </div>
                             </div>
                         </form>
@@ -325,4 +326,3 @@
     </div>
   </div>
     </div>
-

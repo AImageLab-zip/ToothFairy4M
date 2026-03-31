@@ -55,6 +55,10 @@ def check_patient_access(user, patient, require_modify: bool = False) -> Authori
         return AuthorizationResult(False, "Invalid user profile")
     
     user_profile = user.profile
+
+    if getattr(patient, 'deleted', False):
+        logger.warning(f"User {user.id} denied access to deleted patient {patient.patient_id}")
+        return AuthorizationResult(False, "Patient not found")
     
     # Check basic view permissions
     can_view = False

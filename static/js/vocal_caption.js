@@ -7,6 +7,7 @@ class VocalCaptionRecorder {
         
         this.isRecording = false;
         this.isPaused = false;
+        this.isBrainProject = window.location.pathname.indexOf('/brain/') === 0;
         
         this.recordingStartTime = null;
         this.totalPausedDuration = 0;
@@ -72,7 +73,7 @@ class VocalCaptionRecorder {
             this.discardBtn?.addEventListener('click', () => this.discardRecording());
         } else {
             this.startBtn.addEventListener('click', () => {
-                alert('Voice recording is not supported. Please use a modern browser.');
+                this.notify('error', 'Voice recording is not supported. Please use a modern browser.');
             });
         }
         
@@ -106,6 +107,10 @@ class VocalCaptionRecorder {
     }
     
     getCurrentModality() {
+        if (this.isBrainProject) {
+            return { value: '', display: '' };
+        }
+
         // Prefer the modality toggle group rendered in patient detail
         const toggleGroup = document.getElementById('modalityToggleGroup');
         if (toggleGroup) {
@@ -184,7 +189,7 @@ class VocalCaptionRecorder {
             
             // Update modality indicator
             this.modality = this.getCurrentModality();
-            if (this.modalityIndicator) {
+            if (this.modalityIndicator && this.modality.display) {
                 this.modalityIndicator.textContent = this.modality.display;
             }
             
@@ -243,7 +248,7 @@ class VocalCaptionRecorder {
         }
         
         if (this.audioChunks.length === 0) {
-            alert('No audio recorded. Please record something before saving.');
+            this.notify('warning', 'No audio recorded. Please record something before saving.');
             return;
         }
         
@@ -255,7 +260,9 @@ class VocalCaptionRecorder {
             const formData = new FormData();
             formData.append('audio_file', audioBlob, 'recording.webm');
             formData.append('duration', duration.toFixed(2));
-            formData.append('modality', modality.value);
+            if (!this.isBrainProject) {
+                formData.append('modality', modality.value);
+            }
             
             const response = await fetch(window.location.pathname + 'voice-caption/', {
                 method: 'POST',
@@ -275,7 +282,7 @@ class VocalCaptionRecorder {
             }
         } catch (error) {
             console.error('Error saving recording:', error);
-            alert(`Failed to save recording: ${error.message}`);
+            this.notify('error', `Failed to save recording: ${error.message}`);
             this.resetUI();
         }
     }
@@ -429,7 +436,7 @@ class VocalCaptionRecorder {
                 message += 'Please check your browser settings and permissions.';
         }
         
-        alert(message);
+        this.notify('error', message);
     }
     
     addCaptionToList(caption) {
@@ -500,12 +507,16 @@ class VocalCaptionRecorder {
         }
         
         // Create the caption HTML matching the existing structure
+        const modalityBadge = (!this.isBrainProject && caption.modality_display)
+            ? `<span class="badge bg-secondary me-1">${caption.modality_display}</span>`
+            : '';
+
         const captionHtml = `
             <div class="caption-item-compact" data-caption-id="${caption.id}">
                 <div class="d-flex align-items-center justify-content-between">
                     <div class="caption-info">
                         <small class="text-primary me-2">${caption.user_username}</small>
-                        <span class="badge bg-secondary me-1">${caption.modality_display}</span>
+                        ${modalityBadge}
                         <span class="badge bg-${caption.is_text_caption ? 'success' : caption.quality_color} me-2">${caption.is_text_caption ? 'Text' : caption.display_duration}</span>
                         <small class="text-muted">${caption.created_at}</small>
                     </div>
@@ -590,7 +601,7 @@ class VocalCaptionRecorder {
                 
                 if (response.status === 403) {
                     if (errorData.code === 'not_owner') {
-                        alert('You cannot delete voice captions created by other users.');
+                        this.notify('error', 'You cannot delete voice captions created by other users.');
                     } else if (errorData.code === 'admin_confirmation_required') {
                         // Admin confirmation required
                         if (confirm(errorData.message + '\n\nClick OK to confirm deletion.')) {
@@ -627,11 +638,11 @@ class VocalCaptionRecorder {
                                     captionListContainer.innerHTML = noCaptionsHtml;
                                 }
                             } else {
-                                alert('Failed to delete caption after confirmation.');
+                                this.notify('error', 'Failed to delete caption after confirmation.');
                             }
                         }
                     } else {
-                        alert('Permission denied: ' + (errorData.error || 'You do not have permission to delete this caption.'));
+                        this.notify('error', 'Permission denied: ' + (errorData.error || 'You do not have permission to delete this caption.'));
                     }
                 } else {
                     throw new Error('Delete failed');
@@ -639,7 +650,7 @@ class VocalCaptionRecorder {
             }
         } catch (error) {
             console.error('Error deleting caption:', error);
-            alert('Failed to delete caption. Please try again.');
+            this.notify('error', 'Failed to delete caption. Please try again.');
         }
     }
     
@@ -674,7 +685,7 @@ class VocalCaptionRecorder {
         
         this.currentAudio.play().catch(error => {
             console.error('Error playing audio:', error);
-            alert('Unable to play audio file.');
+            this.notify('error', 'Unable to play audio file.');
             this.updatePlayButton(playButton, false);
         });
     }
@@ -769,7 +780,7 @@ class VocalCaptionRecorder {
         
         const newText = this.transcriptionTextarea.value.trim();
         if (!newText) {
-            alert('Transcription text cannot be empty');
+            this.notify('warning', 'Transcription text cannot be empty');
             return;
         }
         
@@ -804,7 +815,7 @@ class VocalCaptionRecorder {
             }
         } catch (error) {
             console.error('Error saving transcription:', error);
-            alert('Failed to save transcription: ' + error.message);
+            this.notify('error', 'Failed to save transcription: ' + error.message);
         }
     }
     
@@ -845,7 +856,7 @@ class VocalCaptionRecorder {
             }
         } catch (error) {
             console.error('Error reverting transcription:', error);
-            alert('Failed to revert transcription: ' + error.message);
+            this.notify('error', 'Failed to revert transcription: ' + error.message);
         }
     }
     
@@ -914,12 +925,24 @@ class VocalCaptionRecorder {
     }
     
     showSavedIndicator() {
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('success', 'Saved');
+            return;
+        }
+
         const indicator = document.getElementById('savingIndicator');
         if (indicator) {
             indicator.style.display = 'block';
             setTimeout(() => {
                 indicator.style.display = 'none';
             }, 2000);
+        }
+    }
+
+    notify(type, message) {
+        if (typeof window.appNotify === 'function') {
+            window.appNotify(type, message);
+            return;
         }
     }
     
@@ -1010,17 +1033,23 @@ class VocalCaptionRecorder {
         
         const textContent = this.captionTextArea.value.trim();
         if (!textContent) {
-            alert('Please enter some text before saving.');
+            this.notify('warning', 'Please enter some text before saving.');
             return;
         }
         
         if (textContent.length < 10) {
-            alert('Please enter at least 10 characters for a meaningful caption.');
+            this.notify('warning', 'Please enter at least 10 characters for a meaningful caption.');
             return;
         }
         
         try {
             const modality = this.getCurrentModality();
+            const payload = {
+                text: textContent
+            };
+            if (!this.isBrainProject) {
+                payload.modality = modality.value;
+            }
             
             const response = await fetch(window.location.pathname + 'text-caption/', {
                 method: 'POST',
@@ -1028,10 +1057,7 @@ class VocalCaptionRecorder {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                 },
-                body: JSON.stringify({
-                    text: textContent,
-                    modality: modality.value
-                })
+                body: JSON.stringify(payload)
             });
             
             if (response.ok) {
@@ -1045,7 +1071,7 @@ class VocalCaptionRecorder {
             }
         } catch (error) {
             console.error('Error saving text caption:', error);
-            alert(`Failed to save text caption: ${error.message}`);
+            this.notify('error', `Failed to save text caption: ${error.message}`);
         }
     }
 }

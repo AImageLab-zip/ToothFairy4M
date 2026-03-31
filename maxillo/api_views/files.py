@@ -82,6 +82,9 @@ def serve_file(request, file_id):
         if not patient:
             patient = file_obj.patient or file_obj.brain_patient
         if patient:
+            if getattr(patient, 'deleted', False):
+                return JsonResponse({'error': 'Patient not found'}, status=404)
+
             from common.models import Project
 
             project = Project.objects.filter(slug=file_domain).first()
@@ -187,6 +190,16 @@ def get_file_registry(request):
         files = FileRegistry.objects.select_related('patient', 'brain_patient')
 
         files = files.filter(domain=namespace)
+        if namespace == 'brain':
+            files = files.filter(
+                models.Q(brain_patient__isnull=True) |
+                models.Q(brain_patient__deleted=False)
+            )
+        else:
+            files = files.filter(
+                models.Q(patient__isnull=True) |
+                models.Q(patient__deleted=False)
+            )
 
         # Apply authorization filtering based on user role and patient visibility
         if perm.is_admin():

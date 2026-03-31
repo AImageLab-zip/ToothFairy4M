@@ -401,7 +401,9 @@ function viewUserProfile() {
         {% firstof request.resolver_match.namespace 'maxillo' as ns %}
         window.location.href = "{% url ns|add:':user_profile_by_username' 'PLACEHOLDER' %}".replace('PLACEHOLDER', username);
     } else {
-        alert('Please select a user.');
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('warning', 'Please select a user.');
+        }
     }
 }
 </script>

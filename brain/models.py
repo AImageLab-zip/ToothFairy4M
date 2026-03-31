@@ -22,6 +22,13 @@ def brain_cbct_upload_path(instance, filename):
     return f"brain/patient_{instance.patient_id}/cbct/{filename}"
 
 
+class ActivePatientManager(models.Manager):
+    """Default manager that hides soft-deleted patients."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
 class Dataset(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -135,6 +142,7 @@ class Patient(models.Model):
     )
 
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='private')
+    deleted = models.BooleanField(default=False, db_index=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey(
         User,
@@ -142,6 +150,9 @@ class Patient(models.Model):
         null=True,
         related_name='brain_patients_uploaded',
     )
+
+    objects = ActivePatientManager()
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'brain_patient'
@@ -360,7 +371,7 @@ class VoiceCaption(models.Model):
 
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='voice_captions', null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='brain_voice_captions')
-    modality = models.CharField(max_length=255, default='ios')
+    modality = models.CharField(max_length=255, default='', blank=True)
     duration = models.FloatField(help_text='Duration of audio recording in seconds')
     text_caption = models.TextField(blank=True, null=True)
     original_text_caption = models.TextField(blank=True, null=True)

@@ -215,6 +215,13 @@ def voice_caption_upload_path(instance, filename):
     return f"scans/patient_{instance.patient.patient_id}/voice_captions/{filename}"
 
 
+class ActivePatientManager(models.Manager):
+    """Default manager that hides soft-deleted patients."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted=False)
+
+
 class Patient(models.Model):
     """Patient model - renamed from ScanPair, represents a patient with associated scans and data"""
     VISIBILITY_CHOICES = [
@@ -284,8 +291,12 @@ class Patient(models.Model):
     )
     
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='private')
+    deleted = models.BooleanField(default=False, db_index=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    objects = ActivePatientManager()
+    all_objects = models.Manager()
     
     def tag_names(self):
         return list(self.tags.values_list('name', flat=True))

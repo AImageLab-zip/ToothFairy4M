@@ -3,6 +3,7 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 import json
 import os
 import logging
@@ -308,7 +309,7 @@ def patient_detail(request, patient_id):
     modality_files_json = _json.dumps(modality_files)
 
     context = {
-        'scan_pair': patient,
+        'patient': patient,
         'ai_classification': ai_classification,
         'manual_classification': manual_classification,
         'user_profile': user_profile,
@@ -342,32 +343,38 @@ def patient_detail(request, patient_id):
     return render_with_fallback(request, 'patient_detail', context)
 
 @login_required
+@require_POST
 def update_patient_name(request, patient_id):
     """AJAX endpoint for updating scan name"""
     user_profile = request.user.profile
     Patient = get_domain_models(request)['Patient']
     
     try:
-        scan_pair = get_object_or_404(Patient, patient_id=patient_id)
+        patient = get_object_or_404(Patient, patient_id=patient_id)
         
         can_modify = False
         if user_profile.is_admin():
             can_modify = True
-        elif user_profile.is_annotator() and scan_pair.visibility != 'debug':
+        elif user_profile.is_annotator() and patient.visibility != 'debug':
             can_modify = True
-        elif user_profile.is_student_developer() and scan_pair.visibility == 'debug':
+        elif user_profile.is_student_developer() and patient.visibility == 'debug':
             can_modify = True
         
         if not can_modify:
             return JsonResponse({'error': 'Permission denied'}, status=403)
-        data = json.loads(request.body)
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
         
         new_name = data.get('name', '').strip()
         if not new_name:
             return JsonResponse({'error': 'Name cannot be empty'}, status=400)
+        if len(new_name) > 100:
+            return JsonResponse({'error': 'Name must be 100 characters or fewer'}, status=400)
         
-        scan_pair.name = new_name
-        scan_pair.save()
+        patient.name = new_name
+        patient.save()
         
         return JsonResponse({'success': True, 'name': new_name})
         

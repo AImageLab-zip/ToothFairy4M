@@ -151,12 +151,16 @@
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error deleting export: ' + (data.error || 'Unknown error'));
+                if (typeof window.appNotify === 'function') {
+                    window.appNotify('error', 'Error deleting export: ' + (data.error || 'Unknown error'));
+                }
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error deleting export');
+            if (typeof window.appNotify === 'function') {
+                window.appNotify('error', 'Error deleting export');
+            }
         });
     }
 </script>
