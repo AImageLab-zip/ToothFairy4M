@@ -31,7 +31,7 @@ class NiiVueViewer {
     /**
      * Initialize the viewer with a volume
      * @param {string} modalitySlug - The modality identifier (e.g., 't1', 't2', 'flair')
-     * @param {Blob} fileBlob - The NIfTI volume file as a Blob
+     * @param {Blob|ArrayBuffer} fileBlob - NIfTI payload as Blob or ArrayBuffer
      * @returns {Promise<void>}
      */
     async init(modalitySlug, fileBlob) {
@@ -53,7 +53,8 @@ class NiiVueViewer {
             multiplanarForceRender: false,  // Single view mode
             isColorbar: false,              // No colorbar for simple viewing
             logging: false,                 // Disable console logging
-            dragAndDropEnabled: false       // Grid handles drag-drop, not NiiVue
+            dragAndDropEnabled: false,      // Grid handles drag-drop, not NiiVue
+            forceDevicePixelRatio: 1        // Keep CBCT viewer GPU footprint low
         });
 
         // Attach to canvas element
@@ -62,13 +63,25 @@ class NiiVueViewer {
             throw new Error(`Canvas element with id '${this.containerId}' not found`);
         }
 
-        await this.nv.attachToCanvas(canvas);
+        await this.nv.attachToCanvas(canvas, false);
 
         // Load volume from pre-fetched blob data. loadFromArrayBuffer
         // parses the buffer directly without any HTTP request. The name
         // must end in .nii.gz so NiiVue selects the correct parser.
-        const arrayBuffer = await fileBlob.arrayBuffer();
+        let arrayBuffer;
+        if (fileBlob instanceof ArrayBuffer) {
+            arrayBuffer = fileBlob;
+        } else if (fileBlob && typeof fileBlob.arrayBuffer === 'function') {
+            arrayBuffer = await fileBlob.arrayBuffer();
+        } else {
+            throw new Error('Unsupported volume payload type. Expected Blob or ArrayBuffer.');
+        }
         await this.nv.loadFromArrayBuffer(arrayBuffer, modalitySlug + '.nii.gz');
+
+        // Keep 2D crosshair behavior deterministic across viewers.
+        if (this.nv.opts) {
+            this.nv.opts.crosshairWidth = 2;
+        }
 
         // Set default orientation to axial
         this.setOrientation('axial');
@@ -110,6 +123,7 @@ class NiiVueViewer {
 
         this.nv.setSliceType(sliceType);
         this.currentOrientation = actualOrientation;
+        this.nv.drawScene();
     }
 
     /**
@@ -163,7 +177,10 @@ class NiiVueViewer {
         }
 
         const dims = volumes[0].dimsRAS;
-        const crosshair = [...this.nv.scene.crosshairPos];
+        const crosshair = this.nv.scene.crosshairPos;
+        if (!crosshair || crosshair.length < 3) {
+            return;
+        }
 
         switch (this.currentOrientation) {
             case 'axial':
@@ -180,7 +197,6 @@ class NiiVueViewer {
                 break;
         }
 
-        this.nv.scene.crosshairPos = crosshair;
         this.nv.drawScene();
     }
 

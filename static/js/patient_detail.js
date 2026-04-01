@@ -305,6 +305,24 @@ function initViewerToggle() {
     const cbctControls = document.getElementById('cbctControls');
     const toggleGroup = document.getElementById('modalityToggleGroup');
 
+    const ensureCbctViewerReady = function(modality) {
+        if (typeof window.CBCTViewer === 'undefined') {
+            return;
+        }
+
+        const targetModality = modality || 'cbct';
+        if (targetModality !== 'cbct') {
+            if (!window.CBCTViewer.loading) {
+                window.CBCTViewer.init(targetModality);
+            }
+            return;
+        }
+
+        if (!window.CBCTViewer.loading) {
+            window.CBCTViewer.init('cbct');
+        }
+    };
+
     // Generic modality switching for dynamically rendered toggles
     if (toggleGroup) {
         toggleGroup.addEventListener('change', function(e) {
@@ -316,11 +334,6 @@ function initViewerToggle() {
 
             // Show relevant container
             if (modality === 'ios') {
-                // Dispose any active volume viewers before switching to IOS
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
-                
                 // Hide all image viewers
                 const imageViewers = ['intraoral-viewer', 'teleradiography-viewer', 'panoramic-viewer'];
                 imageViewers.forEach(viewerId => {
@@ -338,11 +351,6 @@ function initViewerToggle() {
                     window.IOSViewer.init();
                 }
             } else if (modality === 'cbct') {
-                // Dispose any existing volume viewers to free GL contexts
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
-                
                 // Hide all image viewers
                 const imageViewers = ['intraoral-viewer', 'teleradiography-viewer', 'panoramic-viewer'];
                 imageViewers.forEach(viewerId => {
@@ -362,18 +370,13 @@ function initViewerToggle() {
                 // Only initialize viewer if CBCT is processed
                 if (window.isCBCTProcessed) {
                     setTimeout(() => {
-                        if (typeof window.CBCTViewer !== 'undefined') {
-                            window.CBCTViewer.init();
-                        }
+                        ensureCbctViewerReady('cbct');
                     }, 100);
                 } else {
                     console.debug('CBCT not processed yet, skipping viewer initialization');
                 }
             } else if (modality === 'intraoral' || modality === 'intraoral-photo') {
                 // Handle intraoral photos viewer
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
                 if (iosContainer) iosContainer.style.display = 'none';
                 if (cbctContainer) cbctContainer.style.display = 'none';
                 if (iosControls) iosControls.style.display = 'none';
@@ -392,9 +395,6 @@ function initViewerToggle() {
                 }
             } else if (modality === 'teleradiography') {
                 // Handle teleradiography viewer
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
                 if (iosContainer) iosContainer.style.display = 'none';
                 if (cbctContainer) cbctContainer.style.display = 'none';
                 if (iosControls) iosControls.style.display = 'none';
@@ -413,9 +413,6 @@ function initViewerToggle() {
                 }
             } else if (modality === 'panoramic') {
                 // Handle panoramic viewer
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
                 if (iosContainer) iosContainer.style.display = 'none';
                 if (cbctContainer) cbctContainer.style.display = 'none';
                 if (iosControls) iosControls.style.display = 'none';
@@ -444,10 +441,6 @@ function initViewerToggle() {
                 }
                 
                 // For actual volume modalities (like brain MRI), reuse CBCT controls (windowing/reset)
-                if (typeof window.CBCTViewer !== 'undefined') {
-                    // Always dispose before switching to a different volume modality
-                    try { window.CBCTViewer.dispose(); } catch (e) { console.warn(e); }
-                }
                 if (iosContainer) iosContainer.style.display = 'none';
                 if (cbctContainer) cbctContainer.style.display = 'none';
                 if (iosControls) iosControls.style.display = 'none';
@@ -467,9 +460,7 @@ function initViewerToggle() {
                 if (generic) {
                     generic.style.display = 'block';
                     // Initialize volume viewer for this modality using CBCT viewer backend
-                    if (typeof window.CBCTViewer !== 'undefined') {
-                        window.CBCTViewer.init(modality);
-                    }
+                    ensureCbctViewerReady(modality);
                 }
             }
         });
@@ -512,15 +503,7 @@ function initViewerToggle() {
         if (iosControls) iosControls.style.display = 'none';
         if (cbctControls) cbctControls.style.display = 'block';
         setTimeout(() => {
-            if (typeof window.CBCTViewer !== 'undefined') {
-                if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
-                    window.CBCTViewer.init();
-                } else if (window.CBCTViewer.initialized) {
-                    window.CBCTViewer.refreshAllViews();
-                    window.CBCTViewer.panoramicLoaded = false;
-                    window.CBCTViewer.loadPanoramicImage();
-                }
-            }
+            ensureCbctViewerReady('cbct');
         }, 100);
         return;
     }
@@ -536,13 +519,7 @@ function initViewerToggle() {
 
     // Handle initial state based on which radio button is checked
     if (cbctRadio && cbctRadio.checked && window.hasCBCT && window.isCBCTProcessed) {
-        if (typeof window.CBCTViewer !== 'undefined') {
-            if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
-                window.CBCTViewer.init();
-            } else if (window.CBCTViewer.initialized) {
-                window.CBCTViewer.refreshAllViews();
-            }
-        }
+        ensureCbctViewerReady('cbct');
     }
 
     if (iosRadio) {
@@ -573,18 +550,7 @@ function initViewerToggle() {
                 if (window.isCBCTProcessed) {
                     // Handle CBCT viewer state with a delay to ensure containers are visible
                     setTimeout(() => {
-                        if (typeof window.CBCTViewer !== 'undefined') {
-                            if (!window.CBCTViewer.initialized && !window.CBCTViewer.loading) {
-                                console.debug('Initializing CBCT viewer after view switch...');
-                                window.CBCTViewer.init();
-                            } else if (window.CBCTViewer.initialized) {
-                                console.debug('Refreshing CBCT viewer after view switch...');
-                                window.CBCTViewer.refreshAllViews();
-                                console.debug('Reloading panoramic image after tab switch...');
-                                window.CBCTViewer.panoramicLoaded = false; // Reset panoramic state
-                                window.CBCTViewer.loadPanoramicImage();
-                            }
-                        }
+                        ensureCbctViewerReady('cbct');
                     }, 100); // 100ms delay to ensure containers are visible and sized
                 } else {
                     console.debug('CBCT not processed yet, skipping viewer initialization');
@@ -674,8 +640,22 @@ document.addEventListener('DOMContentLoaded', function() {
     console.debug('Has CBCT:', window.hasCBCT);
     console.debug('Is CBCT processed:', window.isCBCTProcessed);
 
-    // Preload CBCT volume in background (fetches + parses off main thread)
-    if (window.hasCBCT && window.isCBCTProcessed && typeof window.VolumeLoader !== 'undefined') {
+    // Preload CBCT volume in background only for legacy CBCT pipeline.
+    // Fixed NiiVue grid has its own fetch/cache path and preloading here would duplicate work.
+    let useLegacyVolumePreload = true;
+    const viewerGridDataEl = document.getElementById('viewerGridData');
+    if (viewerGridDataEl) {
+        try {
+            const viewerGridData = JSON.parse(viewerGridDataEl.textContent || '{}');
+            if (viewerGridData.fixedMode) {
+                useLegacyVolumePreload = false;
+            }
+        } catch (e) {
+            console.warn('Unable to parse viewerGridData for preload gating:', e);
+        }
+    }
+
+    if (useLegacyVolumePreload && window.hasCBCT && window.isCBCTProcessed && typeof window.VolumeLoader !== 'undefined') {
         window.VolumeLoader.preload('cbct');
     }
 

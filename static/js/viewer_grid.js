@@ -10,10 +10,20 @@ const ViewerGrid = (function() {
 
     let isInitialized = false;
 
-    // Cache for fetched volume blobs (keyed by fileId)
-    // Note: Cache persists across window clears for network optimization
+    // Cache for fetched volume ArrayBuffers (keyed by fileId).
+    // Note: Cache persists across window clears for network optimization.
     const volumeCache = {};
     const volumeFetchPromises = {};
+
+    // Per-window load generation counters used to invalidate stale async loads.
+    // If a window is cleared or reloaded while an older load is still running,
+    // only the newest generation is allowed to update UI/state.
+    const windowLoadGenerations = {
+        0: 0,
+        1: 0,
+        2: 0,
+        3: 0
+    };
 
     // Window state for 4 grid positions
     const windowStates = {
@@ -22,6 +32,18 @@ const ViewerGrid = (function() {
         2: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' },
         3: { modality: null, loading: false, error: null, fileId: null, niivueInstance: null, currentOrientation: 'axial' }
     };
+
+    function beginWindowLoad(windowIndex) {
+        if (!Object.prototype.hasOwnProperty.call(windowLoadGenerations, windowIndex)) {
+            windowLoadGenerations[windowIndex] = 0;
+        }
+        windowLoadGenerations[windowIndex] += 1;
+        return windowLoadGenerations[windowIndex];
+    }
+
+    function isWindowLoadCurrent(windowIndex, generation) {
+        return windowLoadGenerations[windowIndex] === generation;
+    }
 
     // Synchronization groups - windows viewing the same orientation scroll together
     const synchronizationGroups = {
@@ -45,6 +67,17 @@ const ViewerGrid = (function() {
     let _isSyncing = false;
     let _syncSourceWindow = -1;
     const _syncCrosshairPos = [0, 0, 0];
+    let _syncSuspended = false;
+    const VISIBLE_CROSSHAIR_WIDTH = 2;
+
+    function clampCrosshairCoord(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return 0.5;
+        }
+        if (value < 0) return 0;
+        if (value > 1) return 1;
+        return value;
+    }
 
     const TOOL_IDS = {
         NONE: 'none',
@@ -610,6 +643,8 @@ const ViewerGrid = (function() {
      */
     function initSynchronization() {
         window.addEventListener('sliceIndexChanged', (event) => {
+            if (_syncSuspended) return;
+
             // Ignore events triggered by sync itself to prevent cascade
             if (_isSyncing) return;
 
@@ -621,9 +656,9 @@ const ViewerGrid = (function() {
 
             // Store pending sync data (last writer wins within a frame)
             _syncSourceWindow = windowIndex;
-            _syncCrosshairPos[0] = crosshairPos[0];
-            _syncCrosshairPos[1] = crosshairPos[1];
-            _syncCrosshairPos[2] = crosshairPos[2];
+            _syncCrosshairPos[0] = clampCrosshairCoord(crosshairPos[0]);
+            _syncCrosshairPos[1] = clampCrosshairCoord(crosshairPos[1]);
+            _syncCrosshairPos[2] = clampCrosshairCoord(crosshairPos[2]);
 
             // Coalesce into single rAF — multiple scroll ticks within one
             // frame result in only one sync pass.
@@ -667,6 +702,9 @@ const ViewerGrid = (function() {
      */
     function applyCrosshairSync() {
         _syncRAF = null;
+        if (_syncSuspended) {
+            return;
+        }
         _isSyncing = true;
 
         const sourceIdx = _syncSourceWindow;
@@ -680,9 +718,9 @@ const ViewerGrid = (function() {
                 // Write directly into NiiVue's crosshairPos array — avoids
                 // allocating a new array on every sync.
                 const pos = targetViewer.nv.scene.crosshairPos;
-                pos[0] = _syncCrosshairPos[0];
-                pos[1] = _syncCrosshairPos[1];
-                pos[2] = _syncCrosshairPos[2];
+                pos[0] = clampCrosshairCoord(_syncCrosshairPos[0]);
+                pos[1] = clampCrosshairCoord(_syncCrosshairPos[1]);
+                pos[2] = clampCrosshairCoord(_syncCrosshairPos[2]);
                 targetViewer.nv.drawScene();
 
                 // Update target's slice counter
@@ -928,6 +966,8 @@ const ViewerGrid = (function() {
             return;
         }
 
+        const loadGeneration = beginWindowLoad(windowIndex);
+
         // Dispose existing viewer if present
         const existingState = windowStates[windowIndex];
         if (existingState.niivueInstance) {
@@ -1005,39 +1045,52 @@ const ViewerGrid = (function() {
             return;
         }
 
-        // Fetch file blob from API (with caching)
+        // Fetch file ArrayBuffer from API (with caching)
         try {
-            let fileBlob;
+            let fileArrayBuffer;
             if (volumeCache[fileId]) {
-                console.log(`Using cached blob for fileId ${fileId}`);
-                fileBlob = volumeCache[fileId];
+                console.log(`Using cached ArrayBuffer for fileId ${fileId}`);
+                fileArrayBuffer = volumeCache[fileId];
             } else if (volumeFetchPromises[fileId]) {
-                console.log(`Awaiting in-flight blob fetch for fileId ${fileId}`);
-                fileBlob = await volumeFetchPromises[fileId];
+                console.log(`Awaiting in-flight ArrayBuffer fetch for fileId ${fileId}`);
+                fileArrayBuffer = await volumeFetchPromises[fileId];
             } else {
-                console.log(`Fetching blob for fileId ${fileId}`);
+                console.log(`Fetching ArrayBuffer for fileId ${fileId}`);
                 volumeFetchPromises[fileId] = (async () => {
                     const response = await fetch(buildFileServeUrl(fileId));
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
-                    return response.blob();
+                    return response.arrayBuffer();
                 })();
 
                 try {
-                    fileBlob = await volumeFetchPromises[fileId];
-                    volumeCache[fileId] = fileBlob;
+                    fileArrayBuffer = await volumeFetchPromises[fileId];
+                    volumeCache[fileId] = fileArrayBuffer;
                 } finally {
                     delete volumeFetchPromises[fileId];
                 }
-                console.log(`File blob received and cached: ${fileBlob.size} bytes`);
+                console.log(`File ArrayBuffer received and cached: ${fileArrayBuffer.byteLength} bytes`);
+            }
+
+            if (!isWindowLoadCurrent(windowIndex, loadGeneration)) {
+                return;
             }
 
             // Create new NiiVueViewer instance for this window
             const viewer = new window.NiiVueViewer(canvasId);
 
-            // Initialize viewer with modality and blob
-            await viewer.init(modality, fileBlob);
+            // Initialize viewer with modality and ArrayBuffer
+            await viewer.init(modality, fileArrayBuffer);
+
+            if (!isWindowLoadCurrent(windowIndex, loadGeneration)) {
+                try {
+                    viewer.dispose();
+                } catch (e) {
+                    console.warn('Error disposing stale viewer:', e);
+                }
+                return;
+            }
 
             // Store instance in state
             windowStates[windowIndex].niivueInstance = viewer;
@@ -1063,8 +1116,12 @@ const ViewerGrid = (function() {
                     if (i === windowIndex) continue;
                     const other = windowStates[i].niivueInstance;
                     if (other && other.isReady() && other.nv && !freeScrollWindows[i]) {
-                        viewer.nv.scene.crosshairPos = [...other.nv.scene.crosshairPos];
-                        viewer.nv.updateGLVolume();
+                        const sourcePos = other.nv.scene.crosshairPos;
+                        const targetPos = viewer.nv.scene.crosshairPos;
+                        targetPos[0] = clampCrosshairCoord(sourcePos[0]);
+                        targetPos[1] = clampCrosshairCoord(sourcePos[1]);
+                        targetPos[2] = clampCrosshairCoord(sourcePos[2]);
+                        viewer.nv.drawScene();
                         break;
                     }
                 }
@@ -1167,7 +1224,7 @@ const ViewerGrid = (function() {
                     e.stopPropagation();
                     if (viewer.nv) {
                         const isVisible = viewer.nv.opts.crosshairWidth > 0;
-                        viewer.nv.opts.crosshairWidth = isVisible ? 0 : 1;
+                        viewer.nv.opts.crosshairWidth = isVisible ? 0 : VISIBLE_CROSSHAIR_WIDTH;
                         viewer.nv.drawScene();
                         crosshairBtn.classList.toggle('crosshair-hidden', isVisible);
                         renderMeasurementOverlayForWindow(windowIndex);
@@ -1398,6 +1455,9 @@ const ViewerGrid = (function() {
             console.log(`Successfully loaded ${modality} in window ${windowIndex} using NiiVue`);
 
         } catch (error) {
+            if (!isWindowLoadCurrent(windowIndex, loadGeneration)) {
+                return;
+            }
             console.error(`Error loading ${modality} in window ${windowIndex}:`, error);
 
             // Determine user-friendly message
@@ -1622,7 +1682,7 @@ const ViewerGrid = (function() {
             crosshairVisible ? 'Hide Crosshair' : 'Show Crosshair',
             () => {
                 if (viewer.nv) {
-                    viewer.nv.opts.crosshairWidth = crosshairVisible ? 0 : 1;
+                    viewer.nv.opts.crosshairWidth = crosshairVisible ? 0 : VISIBLE_CROSSHAIR_WIDTH;
                     viewer.nv.drawScene();
                     const crosshairBtn = windowEl.querySelector('.crosshair-toggle-btn');
                     if (crosshairBtn) {
@@ -1704,6 +1764,8 @@ const ViewerGrid = (function() {
      * @param {number} windowIndex - 0-3 for grid position
      */
     function clearWindow(windowIndex) {
+        beginWindowLoad(windowIndex);
+
         // Dispose NiiVue viewer if present
         const state = windowStates[windowIndex];
         if (state.niivueInstance) {
@@ -1772,13 +1834,27 @@ const ViewerGrid = (function() {
         renderMeasurementOverlayForWindow(windowIndex);
     }
 
+    function suspendSynchronization() {
+        _syncSuspended = true;
+        if (_syncRAF) {
+            cancelAnimationFrame(_syncRAF);
+            _syncRAF = null;
+        }
+    }
+
+    function resumeSynchronization() {
+        _syncSuspended = false;
+    }
+
     // Public API
     return {
         init: init,
         windowStates: windowStates,
         loadModalityInWindow: loadModalityInWindow,
         clearWindow: clearWindow,
-        setWindowOrientation: setWindowOrientation
+        setWindowOrientation: setWindowOrientation,
+        suspendSynchronization: suspendSynchronization,
+        resumeSynchronization: resumeSynchronization
     };
 })();
 

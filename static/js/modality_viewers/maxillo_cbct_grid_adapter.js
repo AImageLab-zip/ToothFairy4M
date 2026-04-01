@@ -27,7 +27,7 @@
         }
     }
 
-    async function initFixedCbctGrid() {
+    async function initFixedCbctGrid(cbctFileIdOverride) {
         var viewerGrid = getViewerGrid();
         if (!viewerGrid) {
             throw new Error('ViewerGrid is not available');
@@ -37,7 +37,7 @@
 
         const data = getViewerData();
         const cbctInfo = data.modalityFiles && data.modalityFiles.cbct;
-        const cbctFileId = cbctInfo && cbctInfo.id;
+        const cbctFileId = cbctFileIdOverride || (cbctInfo && cbctInfo.id);
 
         if (!cbctFileId) {
             throw new Error('CBCT file id not found for fixed grid initialization');
@@ -50,11 +50,34 @@
                 });
         }
 
-        await Promise.all([
-            loadAndOrient(0, 'axial'),
-            loadAndOrient(1, 'sagittal'),
-            loadAndOrient(2, 'coronal')
-        ]);
+        if (typeof viewerGrid.suspendSynchronization === 'function') {
+            viewerGrid.suspendSynchronization();
+        }
+
+        try {
+            await loadAndOrient(0, 'axial');
+            await loadAndOrient(1, 'sagittal');
+            await loadAndOrient(2, 'coronal');
+        } finally {
+            if (typeof viewerGrid.resumeSynchronization === 'function') {
+                viewerGrid.resumeSynchronization();
+            }
+        }
+
+        [0, 1, 2].forEach(function(windowIndex) {
+            var state = viewerGrid.windowStates && viewerGrid.windowStates[windowIndex];
+            if (!state || !state.niivueInstance || !state.niivueInstance.isReady() || !state.niivueInstance.nv) {
+                return;
+            }
+            var pos = state.niivueInstance.nv.scene.crosshairPos;
+            if (!pos || pos.length < 3) {
+                return;
+            }
+            pos[0] = 0.5;
+            pos[1] = 0.5;
+            pos[2] = 0.5;
+            state.niivueInstance.nv.drawScene();
+        });
 
         viewerGrid.clearWindow(3);
 
@@ -62,6 +85,8 @@
         if (emptyWindow) {
             emptyWindow.textContent = 'Empty';
         }
+
+        return cbctFileId;
     }
 
     window.CBCTViewer = {
@@ -69,9 +94,20 @@
         loading: false,
         panoramicLoaded: false,
         controlsBound: false,
+        activeFileId: null,
+        _initGeneration: 0,
 
         init: function(modalitySlug) {
             if (modalitySlug && modalitySlug !== 'cbct') {
+                return;
+            }
+
+            const data = getViewerData();
+            const cbctInfo = data.modalityFiles && data.modalityFiles.cbct;
+            const desiredFileId = cbctInfo && cbctInfo.id;
+
+            if (this.initialized && (!desiredFileId || (this.activeFileId && String(this.activeFileId) === String(desiredFileId)))) {
+                this.refreshAllViews();
                 return;
             }
 
@@ -79,15 +115,23 @@
                 return;
             }
 
+            const initGeneration = ++this._initGeneration;
             this.loading = true;
 
-            initFixedCbctGrid()
-                .then(() => {
+            initFixedCbctGrid(desiredFileId)
+                .then((activeFileId) => {
+                    if (initGeneration !== this._initGeneration) {
+                        return;
+                    }
                     this.bindControls();
+                    this.activeFileId = activeFileId;
                     this.initialized = true;
                     this.loading = false;
                 })
                 .catch((e) => {
+                    if (initGeneration !== this._initGeneration) {
+                        return;
+                    }
                     this.initialized = false;
                     this.loading = false;
                     console.error('Failed to initialize fixed CBCT grid:', e);
@@ -309,7 +353,12 @@
                     [0, 1, 2].forEach((idx) => {
                         const state = viewerGrid.windowStates[idx];
                         if (state && state.niivueInstance && state.niivueInstance.isReady() && state.niivueInstance.nv) {
-                            state.niivueInstance.nv.scene.crosshairPos = [0.5, 0.5, 0.5];
+                            const pos = state.niivueInstance.nv.scene.crosshairPos;
+                            if (pos && pos.length >= 3) {
+                                pos[0] = 0.5;
+                                pos[1] = 0.5;
+                                pos[2] = 0.5;
+                            }
                             state.niivueInstance.nv.scene.pan2Dxyzmm = [0, 0, 0, 1];
                             state.niivueInstance.nv.drawScene();
                         }
@@ -329,10 +378,13 @@
         },
 
         dispose: function() {
+            this._initGeneration += 1;
+
             var viewerGrid = getViewerGrid();
             if (!viewerGrid) {
                 this.initialized = false;
                 this.loading = false;
+                this.activeFileId = null;
                 return;
             }
 
@@ -346,6 +398,7 @@
 
             this.initialized = false;
             this.loading = false;
+            this.activeFileId = null;
         }
     };
 })();

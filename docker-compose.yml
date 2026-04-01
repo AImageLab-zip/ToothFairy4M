@@ -6,7 +6,7 @@ services:
     container_name: web${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
     volumes:
       - .:/app
-      - /dataset-dev:/dataset:rw
+      - /dataset:/dataset:rw
     command: /app/entrypoint.sh
     ports:
       - "${WEB_EXTERNAL_PORT:-8000}:8000"
@@ -23,7 +23,6 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     networks:
-      - dev-network
       - proxy-net
 
   db:
@@ -35,7 +34,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - mysql_data_dev:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     ports:
       - "${DB_EXTERNAL_PORT:-3306}:3306"
     healthcheck:
@@ -46,13 +45,11 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - dev-network
+      - proxy-net
 
 volumes:
-  mysql_data_dev:
+  mysql_data:
 
 networks:
-  dev-network:
-    driver: bridge
   proxy-net:
     external: true

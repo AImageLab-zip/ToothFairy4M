@@ -62,6 +62,20 @@ def serve_file(request, file_id):
     """
     try:
         file_obj = FileRegistry.objects.select_related('patient', 'brain_patient').get(id=file_id)
+        resolved_file_path = file_obj.file_path
+
+        # CBCT processed files may be stored as a multi-file bundle where the
+        # actual NIfTI volume path is in metadata.files.volume_nifti.path.
+        if (
+            file_obj.file_type == 'cbct_processed'
+            and file_obj.file_hash == 'multi-file'
+            and isinstance(file_obj.metadata, dict)
+        ):
+            files_data = file_obj.metadata.get('files', {})
+            volume_nifti = files_data.get('volume_nifti', {}) if isinstance(files_data, dict) else {}
+            volume_path = volume_nifti.get('path') if isinstance(volume_nifti, dict) else None
+            if volume_path and os.path.exists(volume_path):
+                resolved_file_path = volume_path
 
         request_namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
         file_domain = file_obj.domain or request_namespace
@@ -69,11 +83,11 @@ def serve_file(request, file_id):
             file_domain = request_namespace
         
         # Check if file exists
-        if not os.path.exists(file_obj.file_path):
+        if not os.path.exists(resolved_file_path):
             raise Http404("File not found on disk")
         
         # SECURITY: Validate file path to prevent directory traversal attacks
-        if not validate_file_path(file_obj.file_path):
+        if not validate_file_path(resolved_file_path):
             logger.warning(f"SECURITY: Invalid file path access attempt by user {request.user.id} for file {file_id}")
             return JsonResponse({'error': 'Invalid file path'}, status=403)
         
@@ -127,7 +141,7 @@ def serve_file(request, file_id):
                 return JsonResponse({'error': 'Permission denied'}, status=403)
         
         # Determine content type
-        content_type, _ = mimetypes.guess_type(file_obj.file_path)
+        content_type, _ = mimetypes.guess_type(resolved_file_path)
         if not content_type:
             if file_obj.file_type.startswith('cbct'):
                 content_type = 'application/octet-stream'
@@ -139,11 +153,11 @@ def serve_file(request, file_id):
                 content_type = 'application/octet-stream'
         
         # Generate filename
-        filename = os.path.basename(file_obj.file_path)
+        filename = os.path.basename(resolved_file_path)
         
         # Return file response - let Django handle file opening/closing
         try:
-            file_handle = open(file_obj.file_path, 'rb')
+            file_handle = open(resolved_file_path, 'rb')
             response = FileResponse(
                 file_handle,
                 content_type=content_type,
