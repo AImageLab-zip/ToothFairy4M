@@ -41,6 +41,9 @@ urlpatterns = [
     path('export/preview/', views.export_preview, name='export_preview'),
     path('export/<int:export_id>/', views.export_status, name='export_status'),
     path('export/<int:export_id>/download/', views.export_download, name='export_download'),
+    path('export/<int:export_id>/share/', views.export_share_update, name='export_share_update'),
+    path('export/shared/<str:share_token>/', views.export_shared_landing, name='export_shared_landing'),
+    path('export/shared/<str:share_token>/download/', views.export_shared_download, name='export_shared_download'),
     path('export/<int:export_id>/delete/', views.export_delete, name='export_delete'),
     
     # API endpoints

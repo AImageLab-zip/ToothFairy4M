@@ -13,6 +13,12 @@ class VocalCaptionRecorder {
         this.totalPausedDuration = 0;
         this.currentPauseStart = null;
         this.timerInterval = null;
+
+        this.audioContext = null;
+        this.analyserNode = null;
+        this.audioSourceNode = null;
+        this.visualizerData = null;
+        this.visualizerAnimationFrame = null;
         
         this.initializeElements();
         this.checkBrowserSupport();
@@ -29,6 +35,10 @@ class VocalCaptionRecorder {
         this.progressBar = document.querySelector('.progress .progress-bar');
         this.audioPlayback = document.querySelector('.audio-playback');
         this.modalityIndicator = document.getElementById('modalityIndicator');
+        this.audioLevelVisualizer = document.getElementById('audioLevelVisualizer');
+        this.audioLevelBars = this.audioLevelVisualizer
+            ? Array.from(this.audioLevelVisualizer.querySelectorAll('.audio-level-bar'))
+            : [];
         
         // Text input elements
         this.voiceInputRadio = document.getElementById('voiceInput');
@@ -183,6 +193,8 @@ class VocalCaptionRecorder {
             this.recordingStartTime = Date.now();
             this.totalPausedDuration = 0;
             this.currentPauseStart = null;
+
+            this.setupAudioVisualization(this.stream);
             
             this.updateUI();
             this.startTimer();
@@ -207,6 +219,9 @@ class VocalCaptionRecorder {
             // Resume
             this.mediaRecorder.resume();
             this.isPaused = false;
+
+            this.audioLevelVisualizer?.classList.remove('is-paused');
+            this.startVisualizer();
             
             // Add the pause duration to total
             if (this.currentPauseStart) {
@@ -221,6 +236,9 @@ class VocalCaptionRecorder {
             this.mediaRecorder.pause();
             this.isPaused = true;
             this.currentPauseStart = Date.now();
+
+            this.audioLevelVisualizer?.classList.add('is-paused');
+            this.stopVisualizer(false);
             
             this.pauseBtn.innerHTML = '<i class="fas fa-play"></i>';
             this.pauseBtn.title = 'Resume';
@@ -236,6 +254,7 @@ class VocalCaptionRecorder {
             this.isRecording = false;
             this.isPaused = true;
             this.stopTimer();
+            this.stopVisualizer(true);
         }
         
         this.cleanup();
@@ -319,6 +338,94 @@ class VocalCaptionRecorder {
             this.timerInterval = null;
         }
     }
+
+    setupAudioVisualization(stream) {
+        if (!stream || !this.audioLevelBars.length) return;
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+
+        try {
+            this.audioContext = new AudioContextClass();
+            this.analyserNode = this.audioContext.createAnalyser();
+            this.analyserNode.fftSize = 256;
+            this.analyserNode.smoothingTimeConstant = 0.55;
+
+            this.audioSourceNode = this.audioContext.createMediaStreamSource(stream);
+            this.audioSourceNode.connect(this.analyserNode);
+            this.visualizerData = new Uint8Array(this.analyserNode.frequencyBinCount);
+
+            this.audioLevelVisualizer.classList.add('is-active');
+            this.audioLevelVisualizer.classList.remove('is-paused');
+            this.startVisualizer();
+        } catch (error) {
+            console.warn('Audio visualization unavailable:', error);
+            this.teardownAudioVisualization();
+        }
+    }
+
+    startVisualizer() {
+        if (!this.analyserNode || !this.visualizerData || !this.audioLevelBars.length) return;
+
+        if (this.visualizerAnimationFrame) {
+            cancelAnimationFrame(this.visualizerAnimationFrame);
+            this.visualizerAnimationFrame = null;
+        }
+
+        const frameStep = () => {
+            if (!this.isRecording || this.isPaused || !this.analyserNode) {
+                return;
+            }
+
+            this.analyserNode.getByteFrequencyData(this.visualizerData);
+            const binWindow = Math.max(1, Math.floor(this.visualizerData.length / this.audioLevelBars.length));
+            let globalSum = 0;
+            for (let i = 0; i < this.visualizerData.length; i++) {
+                globalSum += this.visualizerData[i];
+            }
+            const globalLevel = (globalSum / this.visualizerData.length) / 255;
+            const now = performance.now();
+
+            this.audioLevelBars.forEach((bar, index) => {
+                const start = index * binWindow;
+                const end = Math.min(start + binWindow, this.visualizerData.length);
+                let sum = 0;
+                for (let i = start; i < end; i++) {
+                    sum += this.visualizerData[i];
+                }
+                const average = end > start ? sum / (end - start) : 0;
+                const localLevel = average / 255;
+
+                // Keep all bars responsive while preserving per-band variation.
+                const floorLevel = globalLevel * 0.5;
+                const combinedLevel = Math.max(localLevel, floorLevel);
+                const pulse = Math.sin((now / 85) + (index * 0.8)) * 0.1 * globalLevel;
+                const shapedLevel = Math.min(Math.max(combinedLevel + pulse, 0), 1);
+
+                const minHeight = 12;
+                const maxGain = 88;
+                const height = minHeight + (Math.pow(shapedLevel, 0.72) * maxGain);
+                bar.style.height = `${height.toFixed(1)}%`;
+            });
+
+            this.visualizerAnimationFrame = requestAnimationFrame(frameStep);
+        };
+
+        this.visualizerAnimationFrame = requestAnimationFrame(frameStep);
+    }
+
+    stopVisualizer(resetBars = false) {
+        if (this.visualizerAnimationFrame) {
+            cancelAnimationFrame(this.visualizerAnimationFrame);
+            this.visualizerAnimationFrame = null;
+        }
+
+        if (resetBars && this.audioLevelBars.length) {
+            this.audioLevelBars.forEach((bar) => {
+                bar.style.height = '22%';
+            });
+        }
+    }
     
     updateTimerDisplay(seconds) {
         const minutes = Math.floor(seconds / 60);
@@ -357,6 +464,8 @@ class VocalCaptionRecorder {
             this.startBtn?.classList.add('d-none');
             this.recordingInfo?.classList.remove('d-none');
             this.pauseBtn?.classList.remove('d-none');
+            this.audioLevelVisualizer?.classList.add('is-active');
+            this.audioLevelVisualizer?.classList.remove('is-paused');
         } else {
             this.resetUI();
         }
@@ -381,6 +490,9 @@ class VocalCaptionRecorder {
             this.pauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
             this.pauseBtn.title = 'Pause';
         }
+
+        this.stopVisualizer(true);
+        this.audioLevelVisualizer?.classList.remove('is-active', 'is-paused');
         
         // Reset state
         this.audioChunks = [];
@@ -392,11 +504,29 @@ class VocalCaptionRecorder {
     }
     
     cleanup() {
+        this.stopVisualizer(false);
+        this.teardownAudioVisualization();
+
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
         }
         this.mediaRecorder = null;
+    }
+
+    teardownAudioVisualization() {
+        if (this.audioSourceNode) {
+            this.audioSourceNode.disconnect();
+            this.audioSourceNode = null;
+        }
+
+        this.analyserNode = null;
+        this.visualizerData = null;
+
+        if (this.audioContext) {
+            this.audioContext.close().catch(() => {});
+            this.audioContext = null;
+        }
     }
     
     getRecorderOptions() {

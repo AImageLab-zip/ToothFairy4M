@@ -62,6 +62,10 @@ def upload_patient(request):
 
             # Add modalities to patient
             from common.models import Modality
+
+            uploaded_modalities = []
+            processing_job_ids = []
+            bite_job_ids = []
             
             # Handle CBCT (single file or folder)
             cbct_file = request.FILES.get('cbct')
@@ -79,16 +83,16 @@ def upload_patient(request):
                         from ..file_utils import save_generic_modality_file
                         fr, job = save_generic_modality_file(patient, 'cbct', cbct_file)
                         if fr:
-                            messages.success(request, "CBCT file uploaded successfully")
+                            uploaded_modalities.append('CBCT')
                             if job:
-                                messages.success(request, f"CBCT queued for processing (Job #{job.id})")
+                                processing_job_ids.append(job.id)
                     elif cbct_folder_files:
                         from ..file_utils import save_generic_modality_folder
                         fr, job = save_generic_modality_folder(patient, 'cbct', cbct_folder_files)
                         if fr:
-                            messages.success(request, "CBCT folder uploaded successfully")
+                            uploaded_modalities.append('CBCT')
                             if job:
-                                messages.success(request, f"CBCT queued for processing (Job #{job.id})")
+                                processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving CBCT: {e}")
 
@@ -106,10 +110,11 @@ def upload_patient(request):
                     
                     from ..file_utils import save_ios_to_dataset
                     ios_result = save_ios_to_dataset(patient, ios_upper, ios_lower)
+                    uploaded_modalities.append('IOS')
                     if ios_result.get('processing_job'):
-                        messages.success(request, f"IOS scans uploaded and queued for processing (Job #{ios_result['processing_job'].id})")
+                        processing_job_ids.append(ios_result['processing_job'].id)
                     if ios_result.get('bite_classification_job'):
-                        messages.success(request, f"Bite classification job #{ios_result['bite_classification_job'].id} created")
+                        bite_job_ids.append(ios_result['bite_classification_job'].id)
                 except Exception as e:
                     messages.error(request, f"Error saving IOS: {e}")
 
@@ -123,7 +128,9 @@ def upload_patient(request):
                     from ..file_utils import save_generic_modality_file
                     fr, job = save_generic_modality_file(patient, 'teleradiography', teleradiography_file)
                     if fr:
-                        messages.success(request, "Teleradiography uploaded successfully")
+                        uploaded_modalities.append('Teleradiography')
+                        if job:
+                            processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving Teleradiography: {e}")
 
@@ -137,7 +144,9 @@ def upload_patient(request):
                     from ..file_utils import save_generic_modality_file
                     fr, job = save_generic_modality_file(patient, 'panoramic', panoramic_file)
                     if fr:
-                        messages.success(request, "Panoramic uploaded successfully")
+                        uploaded_modalities.append('Panoramic')
+                        if job:
+                            processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving Panoramic: {e}")
 
@@ -155,7 +164,9 @@ def upload_patient(request):
                     from ..file_utils import save_intraoral_photos_to_dataset
                     saved, errors, job = save_intraoral_photos_to_dataset(patient, intraoral_photos)
                     if saved:
-                        messages.success(request, f"Uploaded {len(saved)} intraoral photograph(s) successfully")
+                        uploaded_modalities.append(f'Intraoral Photos ({len(saved)})')
+                        if job:
+                            processing_job_ids.append(job.id)
                     if errors:
                         messages.warning(request, f"{len(errors)} intraoral photo(s) failed to upload")
                 except Exception as e:
@@ -179,11 +190,25 @@ def upload_patient(request):
                         from ..file_utils import save_generic_modality_file
                         fr, job = save_generic_modality_file(patient, slug, file_obj)
                         if fr:
-                            messages.success(request, f"{display_name} uploaded successfully")
+                            uploaded_modalities.append(display_name)
+                            if job:
+                                processing_job_ids.append(job.id)
                     except Exception as e:
                         messages.error(request, f"Error saving {display_name}: {e}")
 
-            messages.success(request, 'Patient uploaded successfully!')
+            if uploaded_modalities:
+                unique_modalities = list(dict.fromkeys(uploaded_modalities))
+                summary_message = (
+                    f"Patient uploaded successfully with {len(unique_modalities)} modality(s): "
+                    f"{', '.join(unique_modalities)}."
+                )
+                if processing_job_ids:
+                    summary_message += f" Processing jobs: #{', #'.join(str(job_id) for job_id in processing_job_ids)}."
+                if bite_job_ids:
+                    summary_message += f" Bite classification jobs: #{', #'.join(str(job_id) for job_id in bite_job_ids)}."
+                messages.success(request, summary_message)
+            else:
+                messages.success(request, 'Patient uploaded successfully!')
             return redirect_with_namespace(request, 'patient_list')
     else:
         patient_form = PatientForm()

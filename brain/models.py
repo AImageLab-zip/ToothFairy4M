@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
@@ -520,6 +522,12 @@ class VoiceCaption(models.Model):
 
 
 class Export(models.Model):
+    SHARE_MODE_CHOICES = [
+        ('private', 'Private'),
+        ('authenticated', 'Any logged-in user'),
+        ('public', 'Anyone with link'),
+    ]
+
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('processing', 'Processing'),
@@ -538,6 +546,9 @@ class Export(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+    share_mode = models.CharField(max_length=20, choices=SHARE_MODE_CHOICES, default='private')
+    share_token = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    shared_at = models.DateTimeField(null=True, blank=True)
     progress_message = models.CharField(max_length=255, blank=True)
     progress_percent = models.IntegerField(null=True, blank=True)
 
@@ -573,3 +584,9 @@ class Export(models.Model):
         self.completed_at = timezone.now()
         self.error_message = error_message
         self.save()
+
+    def ensure_share_token(self, force_new=False):
+        if force_new or not self.share_token:
+            self.share_token = secrets.token_urlsafe(32)
+            self.save(update_fields=['share_token'])
+        return self.share_token

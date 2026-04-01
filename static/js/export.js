@@ -194,6 +194,7 @@ function startStatusPolling(exportId) {
                 const progressWrap = document.getElementById(`export-progress-wrap-${exportId}`);
                 const progressBar = document.getElementById(`export-progress-bar-${exportId}`);
                 const progressMsg = document.getElementById(`export-progress-msg-${exportId}`);
+                const progressPct = document.getElementById(`export-progress-pct-${exportId}`);
 
                 // Update badge text
                 let badgeText = data.status.charAt(0).toUpperCase() + data.status.slice(1);
@@ -208,13 +209,19 @@ function startStatusPolling(exportId) {
                     badge.classList.add('bg-secondary');
                 } else if (data.status === 'processing') {
                     badge.classList.add('bg-info');
+                    if (progressWrap) {
+                        progressWrap.style.display = 'block';
+                    }
                     // Live progress: bar and message
                     if (progressBar && data.progress_percent != null) {
                         progressBar.style.width = data.progress_percent + '%';
                         progressBar.setAttribute('aria-valuenow', data.progress_percent);
+                        if (progressPct) {
+                            progressPct.textContent = data.progress_percent + '%';
+                        }
                     }
-                    if (progressMsg && data.progress_message) {
-                        progressMsg.textContent = data.progress_message;
+                    if (progressMsg) {
+                        progressMsg.textContent = data.progress_message || 'Processing...';
                     }
                 } else if (data.status === 'completed') {
                     badge.classList.add('bg-success');
@@ -238,6 +245,83 @@ function startStatusPolling(exportId) {
     }, 2000);
 }
 
+function saveShareSettings(exportId) {
+    const modeSelect = document.getElementById(`share-mode-${exportId}`);
+    const copyBtn = document.getElementById(`copy-share-btn-${exportId}`);
+    const statusEl = document.getElementById(`share-status-${exportId}`);
+    const linkInput = document.getElementById(`share-link-${exportId}`);
+    if (!modeSelect) {
+        return;
+    }
+
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
+    const shareUrl = (window.exportShareUpdateUrl || '/maxillo/export/{id}/share/').replace('{id}', exportId);
+
+    fetch(shareUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({
+            share_mode: modeSelect.value,
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            throw new Error(data.error || 'Could not update share settings');
+        }
+
+        if (linkInput) {
+            linkInput.value = data.share_url || '';
+        }
+
+        if (copyBtn) {
+            copyBtn.disabled = !data.share_url;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = data.share_url ? 'Link active' : 'Sharing disabled';
+        }
+
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('success', 'Share settings updated');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating share settings:', error);
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('error', 'Error updating share settings');
+        }
+    });
+}
+
+function copyShareLink(exportId) {
+    const linkInput = document.getElementById(`share-link-${exportId}`);
+    if (!linkInput || !linkInput.value) {
+        if (typeof window.appNotify === 'function') {
+            window.appNotify('warning', 'No active share link yet. Select a sharing mode first.');
+        }
+        return;
+    }
+
+    const url = linkInput.value.startsWith('http') ? linkInput.value : new URL(linkInput.value, window.location.origin).href;
+    navigator.clipboard.writeText(url)
+        .then(() => {
+            if (typeof window.appNotify === 'function') {
+                window.appNotify('success', 'Share link copied');
+            }
+        })
+        .catch(error => {
+            console.error('Error copying share link:', error);
+            if (typeof window.appNotify === 'function') {
+                window.appNotify('error', 'Could not copy link');
+            }
+        });
+}
+
 // Clean up polling intervals on page unload
 window.addEventListener('beforeunload', function() {
     Object.keys(pollingIntervals).forEach(exportId => {
@@ -248,5 +332,7 @@ window.addEventListener('beforeunload', function() {
 // Expose functions to global scope
 window.initExportPage = initExportPage;
 window.startStatusPolling = startStatusPolling;
+window.saveShareSettings = saveShareSettings;
+window.copyShareLink = copyShareLink;
 
 })(); // End IIFE

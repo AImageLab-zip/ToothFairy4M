@@ -3,6 +3,48 @@
 
 {% block title %}Export Dataset - ToothFairy4M{% endblock %}
 
+{% block extra_css %}
+<style>
+    .export-list-table tbody td {
+        vertical-align: middle;
+    }
+
+    .export-list-table .export-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+    }
+
+    .export-list-table .export-action-btn {
+        width: 31px;
+        height: 31px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .export-list-table .export-share-select {
+        width: 145px;
+        height: 31px;
+        margin-top: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+
+    .export-list-table .export-delete-btn {
+        height: 31px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .export-list-table .cell-nowrap {
+        white-space: nowrap;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <!-- Header -->
@@ -18,21 +60,21 @@
         <div class="card">
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover export-list-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
                                 <th>Query Summary</th>
                                 <th>Size</th>
                                 <th>Status</th>
-                                <th>Actions</th>
+                                <th class="cell-nowrap">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for item in exports %}
                                 {% with export=item.export %}
                                 <tr>
-                                    <td>{{ export.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td class="cell-nowrap">{{ export.created_at|date:"Y-m-d H:i" }}</td>
                                     <td>{{ export.query_summary|default:"N/A" }}</td>
                                     <td>
                                         {% if item.size_display %}
@@ -46,6 +88,23 @@
                                             <span class="badge bg-secondary">Pending</span>
                                         {% elif export.status == 'processing' %}
                                             <span class="badge bg-info" id="status-badge-{{ export.id }}">Processing</span>
+                                            <div class="mt-2" id="export-progress-wrap-{{ export.id }}">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <small class="text-muted" id="export-progress-msg-{{ export.id }}">{{ export.progress_message|default:"Processing..." }}</small>
+                                                    <small class="fw-semibold" id="export-progress-pct-{{ export.id }}">{{ export.progress_percent|default:0 }}%</small>
+                                                </div>
+                                                <div class="progress" style="height: 8px;">
+                                                    <div
+                                                        class="progress-bar"
+                                                        id="export-progress-bar-{{ export.id }}"
+                                                        role="progressbar"
+                                                        style="width: {{ export.progress_percent|default:0 }}%;"
+                                                        aria-valuenow="{{ export.progress_percent|default:0 }}"
+                                                        aria-valuemin="0"
+                                                        aria-valuemax="100"
+                                                    ></div>
+                                                </div>
+                                            </div>
                                         {% elif export.status == 'completed' %}
                                             <span class="badge bg-success">Completed</span>
                                         {% elif export.status == 'failed' %}
@@ -53,16 +112,49 @@
                                         {% endif %}
                                     </td>
                                     <td>
+                                        <div class="export-actions">
                                         {% if export.status == 'completed' %}
-                                            <a href="{% url ns|default:'maxillo'|add:':export_download' export.id %}" class="btn btn-sm btn-primary">
-                                                <i class="fas fa-download me-1"></i>Download
+                                            <a
+                                                href="{% url ns|default:'maxillo'|add:':export_download' export.id %}"
+                                                class="btn btn-sm btn-primary export-action-btn"
+                                                title="Download"
+                                                aria-label="Download"
+                                            >
+                                                <i class="fas fa-download"></i>
                                             </a>
+                                            <select
+                                                class="form-select form-select-sm export-share-select"
+                                                id="share-mode-{{ export.id }}"
+                                                onchange="saveShareSettings({{ export.id }})"
+                                                aria-label="Share mode"
+                                                title="Share mode"
+                                            >
+                                                <option value="private" {% if export.share_mode == 'private' %}selected{% endif %}>Private</option>
+                                                <option value="authenticated" {% if export.share_mode == 'authenticated' %}selected{% endif %}>Logged users</option>
+                                                <option value="public" {% if export.share_mode == 'public' %}selected{% endif %}>Anyone with link</option>
+                                            </select>
+                                            <button
+                                                class="btn btn-sm btn-outline-secondary export-action-btn"
+                                                id="copy-share-btn-{{ export.id }}"
+                                                onclick="copyShareLink({{ export.id }})"
+                                                {% if export.share_mode == 'private' %}disabled{% endif %}
+                                                title="Copy share link"
+                                                aria-label="Copy share link"
+                                            >
+                                                <i class="fas fa-link"></i>
+                                            </button>
+                                            <input
+                                                type="hidden"
+                                                id="share-link-{{ export.id }}"
+                                                value="{% if export.share_token %}{% url ns|default:'maxillo'|add:':export_shared_download' export.share_token %}{% endif %}"
+                                            >
                                         {% endif %}
                                         {% if export.status == 'failed' or export.status == 'completed' %}
-                                            <button class="btn btn-sm btn-danger" onclick="deleteExport({{ export.id }})">
+                                            <button class="btn btn-sm btn-danger export-delete-btn" onclick="deleteExport({{ export.id }})">
                                                 <i class="fas fa-trash me-1"></i>Delete
                                             </button>
                                         {% endif %}
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endwith %}
@@ -123,6 +215,7 @@
 <script>
     // Set URLs for JavaScript
     window.exportStatusUrl = '{% url ns|default:"maxillo"|add:":export_status" 0 %}'.replace('0', '{id}');
+    window.exportShareUpdateUrl = '{% url ns|default:"maxillo"|add:":export_share_update" 0 %}'.replace('0', '{id}');
     
     // Start polling for processing exports
     document.addEventListener('DOMContentLoaded', function() {

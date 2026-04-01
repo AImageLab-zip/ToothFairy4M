@@ -340,6 +340,37 @@
     background-color: #198754 !important; /* Green > 45s */
 }
 
+.audio-level-visualizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25rem;
+    height: 44px;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.65rem;
+    border: 1px solid #cfe2ff;
+    background: linear-gradient(180deg, #f4f8ff 0%, #fff 100%);
+}
+
+.audio-level-bar {
+    flex: 1;
+    min-width: 4px;
+    height: 22%;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #8cc8ff 0%, #0d6efd 100%);
+    opacity: 0.9;
+    transition: height 55ms linear, opacity 160ms ease, filter 160ms ease;
+}
+
+.audio-level-visualizer.is-active .audio-level-bar {
+    box-shadow: 0 0 6px rgba(13, 110, 253, 0.22);
+}
+
+.audio-level-visualizer.is-paused .audio-level-bar {
+    opacity: 0.35;
+    filter: saturate(0.75);
+}
+
 .action-buttons {
     display: flex;
     gap: 0.5rem;
@@ -1069,6 +1100,18 @@
     
     .instruction-list li {
         font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .audio-level-visualizer {
+        height: 36px;
+        gap: 0.2rem;
+        padding: 0.3rem 0.45rem;
+    }
+
+    .audio-level-bar {
+        min-width: 3px;
     }
 }
 

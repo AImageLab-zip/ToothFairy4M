@@ -1,11 +1,13 @@
 """Export views for administrator-only dataset export functionality."""
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.views import redirect_to_login
 from django.contrib import messages
 from django.http import JsonResponse, FileResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.db.models import Q, Count, Sum
 from django.conf import settings
+from django.urls import reverse
 from django.utils import timezone
 import os
 import json
@@ -16,6 +18,32 @@ from .domain import get_domain_models, get_namespace
 from .helpers import redirect_with_namespace
 
 logger = logging.getLogger(__name__)
+
+
+def _build_shared_download_url(request, share_token):
+    """Build absolute shared landing URL for an export token."""
+    return request.build_absolute_uri(
+        reverse(f"{get_namespace(request)}:export_shared_landing", kwargs={'share_token': share_token})
+    )
+
+
+def _shared_export_availability(request, share_token):
+    """Return export and availability status for shared access."""
+    ExportModel = get_domain_models(request)['Export']
+    export = ExportModel.objects.filter(share_token=share_token).first()
+    if not export:
+        return None, False, 'invalid'
+
+    if export.share_mode == 'private':
+        return export, False, 'private'
+
+    if export.status != 'completed':
+        return export, False, 'not_completed'
+
+    if not export.file_path or not os.path.exists(export.file_path):
+        return export, False, 'missing_file'
+
+    return export, True, ''
 
 
 def is_admin(user):
@@ -459,6 +487,99 @@ def export_download(request, export_id):
         logger.error(f"Error serving export file: {e}", exc_info=True)
         messages.error(request, 'Error serving export file.')
         return redirect_with_namespace(request, 'export_list')
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def export_share_update(request, export_id):
+    """Update share settings for a completed export."""
+    export = get_object_or_404(get_domain_models(request)['Export'], id=export_id)
+
+    if export.user != request.user and not request.user.is_staff:
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+
+    if export.status != 'completed':
+        return JsonResponse({'success': False, 'error': 'Only completed exports can be shared'}, status=400)
+
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON payload'}, status=400)
+
+    share_mode = data.get('share_mode', '').strip()
+    if share_mode not in ['private', 'authenticated', 'public']:
+        return JsonResponse({'success': False, 'error': 'Invalid share mode'}, status=400)
+
+    regenerate_raw = data.get('regenerate', False)
+    regenerate = str(regenerate_raw).lower() in ['1', 'true', 'yes'] if not isinstance(regenerate_raw, bool) else regenerate_raw
+
+    export.share_mode = share_mode
+    update_fields = ['share_mode']
+
+    if share_mode == 'private':
+        export.share_token = None
+        export.shared_at = None
+        update_fields.extend(['share_token', 'shared_at'])
+        export.save(update_fields=update_fields)
+        return JsonResponse({
+            'success': True,
+            'share_mode': export.share_mode,
+            'share_url': None,
+        })
+
+    if regenerate or not export.share_token:
+        export.ensure_share_token(force_new=regenerate)
+
+    export.shared_at = timezone.now()
+    export.save(update_fields=['share_mode', 'shared_at'])
+
+    return JsonResponse({
+        'success': True,
+        'share_mode': export.share_mode,
+        'share_url': _build_shared_download_url(request, export.share_token),
+    })
+
+
+@require_http_methods(["GET"])
+def export_shared_landing(request, share_token):
+    """Render shared export landing page with availability details."""
+    export, is_available, _reason = _shared_export_availability(request, share_token)
+
+    if export and export.share_mode == 'authenticated' and not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+
+    return render(request, 'maxillo/export_shared_landing.html', {
+        'ns': get_namespace(request),
+        'export': export,
+        'is_available': is_available,
+        'share_token': share_token,
+        'file_size_human': format_file_size(export.file_size) if export and export.file_size else None,
+    })
+
+
+@require_http_methods(["GET"])
+def export_shared_download(request, share_token):
+    """Download export ZIP using a share token."""
+    export, is_available, _reason = _shared_export_availability(request, share_token)
+
+    if not export or not is_available:
+        raise Http404('Export is not available.')
+
+    if export.share_mode == 'authenticated' and not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+
+    try:
+        response = FileResponse(
+            open(export.file_path, 'rb'),
+            content_type='application/zip',
+        )
+        filename = os.path.basename(export.file_path)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Error serving shared export file: {e}", exc_info=True)
+        raise Http404('Error serving export file.')
 
 
 @login_required
