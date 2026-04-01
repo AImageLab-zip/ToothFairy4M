@@ -55,12 +55,14 @@ def user_profile(request, username=None):
     if not active_project_id:
         active_project_id = request.session.get('current_project_id')
 
+    has_project_field = any(field.name == 'project' for field in Patient._meta.fields)
+
     # Statistics (strictly scoped to active project)
     # 1. Patients uploaded
     patients_uploaded = Patient.objects.filter(
         uploaded_by=target_user
     ).order_by('-uploaded_at')
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         patients_uploaded = patients_uploaded.filter(project_id=active_project_id)
     total_patients_uploaded = patients_uploaded.count()
     
@@ -69,7 +71,7 @@ def user_profile(request, username=None):
         annotator=target_user,
         classifier='manual',
     ).select_related('patient').order_by('-timestamp')
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         classifications = classifications.filter(patient__project_id=active_project_id)
     total_classifications = classifications.count()
     
@@ -80,7 +82,7 @@ def user_profile(request, username=None):
     voice_captions = VoiceCaption.objects.filter(
         user=target_user
     ).select_related('patient').order_by('-created_at')
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         voice_captions = voice_captions.filter(patient__project_id=active_project_id)
     total_voice_captions = voice_captions.count()
     
@@ -118,7 +120,7 @@ def user_profile(request, username=None):
         uploaded_by=target_user,
         uploaded_at__gte=seven_days_ago
     ).count()
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         uploads_last_7_days = Patient.objects.filter(
             uploaded_by=target_user,
             project_id=active_project_id,
@@ -130,7 +132,7 @@ def user_profile(request, username=None):
         classifier='manual',
         timestamp__gte=seven_days_ago
     ).count()
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         classifications_last_7_days = Classification.objects.filter(
             annotator=target_user,
             classifier='manual',
@@ -142,7 +144,7 @@ def user_profile(request, username=None):
         user=target_user,
         created_at__gte=seven_days_ago
     ).count()
-    if hasattr(Patient, 'project'):
+    if has_project_field:
         voice_captions_last_7_days = VoiceCaption.objects.filter(
             user=target_user,
             patient__project_id=active_project_id,
