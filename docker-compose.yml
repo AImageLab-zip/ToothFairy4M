@@ -19,7 +19,7 @@ services:
       LETSENCRYPT_HOST: ${DOMAIN:-}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}
     user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     networks:
