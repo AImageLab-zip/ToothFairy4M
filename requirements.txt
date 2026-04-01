@@ -1,4 +1,5 @@
 asgiref==3.9.1
+boto3==1.39.9
 Django==5.2.4
 django-cors-headers==4.7.0
 mysqlclient==2.2.7
