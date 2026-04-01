@@ -189,9 +189,9 @@ class Command(BaseCommand):
         cursor.execute(
             f"""
             INSERT INTO `{app}_patient`
-            (`patient_id`, `name`, `upper_scan_raw`, `lower_scan_raw`, `upper_scan_norm`, `lower_scan_norm`, `cbct`, `ios_processing_status`, `cbct_processing_status`, `visibility`, `uploaded_at`, `dataset_id`, `folder_id`, `uploaded_by_id`)
+            (`patient_id`, `name`, `upper_scan_raw`, `lower_scan_raw`, `upper_scan_norm`, `lower_scan_norm`, `cbct`, `ios_processing_status`, `cbct_processing_status`, `visibility`, `uploaded_at`, `dataset_id`, `folder_id`, `uploaded_by_id`, `deleted`)
             SELECT
-                `patient_id`, `name`, `upper_scan_raw`, `lower_scan_raw`, `upper_scan_norm`, `lower_scan_norm`, `cbct`, `ios_processing_status`, `cbct_processing_status`, `visibility`, `uploaded_at`, `dataset_id`, `folder_id`, `uploaded_by_id`
+                `patient_id`, `name`, `upper_scan_raw`, `lower_scan_raw`, `upper_scan_norm`, `lower_scan_norm`, `cbct`, `ios_processing_status`, `cbct_processing_status`, `visibility`, `uploaded_at`, `dataset_id`, `folder_id`, `uploaded_by_id`, 0
             FROM `{legacy_db}`.`scans_patient`
             WHERE `project_id` = %s
             """,
