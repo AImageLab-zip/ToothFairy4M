@@ -169,8 +169,6 @@ def patient_viewer_data(request, patient_id):
 @login_required
 def patient_cbct_data(request, patient_id):
     """API endpoint to serve CBCT data"""
-    import os
-
     Patient = get_domain_models(request)["Patient"]
     patient = get_object_or_404(Patient, patient_id=patient_id)
     domain = (
@@ -309,8 +307,6 @@ def patient_volume_data(request, patient_id, modality_slug):
     - Prefer processed entry with volume_nifti in metadata for (patient, modality)
     - Fallback to latest FileRegistry entry for (patient, modality) that endswith .nii or .nii.gz
     """
-    import os
-
     Patient = get_domain_models(request)["Patient"]
     patient = get_object_or_404(Patient, patient_id=patient_id)
     domain = (
@@ -546,11 +542,12 @@ def patient_panoramic_data(request, patient_id):
 
         logger.debug(f"Checking if file exists: {panoramic_path}")
         if not artifact_exists(panoramic_path):
-            logger.debug(f"File does not exist on disk: {panoramic_path}")
+            logger.debug(f"File does not exist in storage: {panoramic_path}")
             return JsonResponse(
-                {"error": "Panoramic image file not found on disk"}, status=404
+                {"error": "Panoramic image file not found in storage"},
+                status=404,
             )
-        logger.debug(f"File exists on disk: {panoramic_path}")
+        logger.debug(f"File exists in storage: {panoramic_path}")
 
         return streaming_response(
             path_or_key=panoramic_path,
@@ -612,7 +609,8 @@ def patient_intraoral_data(request, patient_id):
 
         if not images_data:
             return JsonResponse(
-                {"error": "No intraoral image files found on disk"}, status=404
+                {"error": "No intraoral image files found in storage"},
+                status=404,
             )
 
         return JsonResponse({"images": images_data, "count": len(images_data)})
@@ -663,7 +661,8 @@ def patient_teleradiography_data(request, patient_id):
 
         if not artifact_exists(teleradiography_file.file_path):
             return JsonResponse(
-                {"error": "Teleradiography image file not found on disk"}, status=404
+                {"error": "Teleradiography image file not found in storage"},
+                status=404,
             )
 
         # Determine content type

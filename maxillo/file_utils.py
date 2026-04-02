@@ -12,13 +12,7 @@ import json
 import zipfile
 import tarfile
 
-# Get logger for this module
 logger = logging.getLogger(__name__)
-
-
-from django.conf import settings
-
-DATASET_ROOT = settings.DATASET_PATH
 
 from common.file_access import exists as artifact_exists, open_binary
 from common.object_storage import get_object_storage
@@ -202,16 +196,6 @@ def _job_entity_fk_kwargs(job):
     }
 
 
-def _raw_dir_for(patient: Patient, modality_slug: str) -> str:
-    project_slug = _project_slug_from_patient(patient)
-    return os.path.join(DATASET_ROOT, project_slug, "raw", modality_slug)
-
-
-def _processed_dir_for(patient: Patient, modality_slug: str) -> str:
-    project_slug = _project_slug_from_patient(patient)
-    return os.path.join(DATASET_ROOT, project_slug, "processed", modality_slug)
-
-
 def _raw_key_prefix_for(patient: Patient, modality_slug: str) -> str:
     project_slug = _project_slug_from_patient(patient)
     return f"{project_slug}/raw/{modality_slug}".strip("/")
@@ -262,30 +246,11 @@ def _resolve_output_path_or_key(out_spec):
 def _size_hash_for_path_or_key(path_or_key):
     if not path_or_key:
         return None, None
-    if str(path_or_key).startswith("/"):
-        if not os.path.exists(path_or_key):
-            return None, None
-        return os.path.getsize(path_or_key), calculate_file_hash(path_or_key)
     try:
         info = get_object_storage().head(path_or_key)
         return info.content_length, info.etag
     except Exception:
         return None, None
-
-
-def ensure_directories(paths: list[str]):
-    """Ensure provided directories exist"""
-    for dir_path in paths:
-        os.makedirs(dir_path, exist_ok=True)
-
-
-def calculate_file_hash(file_path):
-    """Calculate SHA256 hash of a file"""
-    hash_sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_sha256.update(chunk)
-    return hash_sha256.hexdigest()
 
 
 def _detect_extension_and_format(filename_lower: str):
@@ -320,12 +285,7 @@ def _detect_extension_and_format(filename_lower: str):
 def save_generic_modality_file(
     patient: Patient, modality_slug: str, uploaded_file, job=False
 ):
-    """Save a single file for an arbitrary modality slug and create a Job.
-
-    - Files go to /dataset/raw/<modality_slug>/
-    - A FileRegistry entry is created with modality set, and subtype left blank
-    - A Job is created with modality_slug and input_file_path
-    """
+    """Save a single modality file to object storage and create a Job."""
     original_name = uploaded_file.name
     extension, file_format = _detect_extension_and_format(original_name.lower())
     filename = f"{modality_slug}_patient_{patient.patient_id}{extension}"
@@ -486,7 +446,7 @@ def save_generic_modality_folder(patient: Patient, modality_slug: str, folder_fi
 
 def save_cbct_to_dataset(patient_or_legacy, cbct_file):
     """
-    Save CBCT file to /dataset/raw/cbct/ and create processing job
+    Save CBCT file to object storage and create processing job
     Supports multiple formats: DICOM, NIfTI, MetaImage, NRRD
 
     Args:
@@ -606,7 +566,7 @@ def save_cbct_to_dataset(patient_or_legacy, cbct_file):
 
 def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
     """
-    Save CBCT folder (multiple DICOM files) to /dataset/raw/cbct/ and create processing job
+    Save CBCT folder (multiple DICOM files) to object storage and create processing job
 
     Args:
         patient_or_legacy: Patient or legacy object with .patient
@@ -691,7 +651,7 @@ def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
 
 def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
     """
-    Save IOS files to /dataset/raw/ios/ and create processing job
+    Save IOS files to object storage and create processing job
 
     Args:
         patient_or_legacy: Patient or legacy object with .patient
@@ -823,7 +783,7 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
 
 def save_audio_to_dataset(voice_caption, audio_file):
     """
-    Save audio file to /dataset/raw/audio/ and create processing job
+    Save audio file to object storage and create processing job
 
     Args:
         voice_caption: VoiceCaption instance
@@ -871,7 +831,7 @@ def save_audio_to_dataset(voice_caption, audio_file):
 
 
 def save_rgb_images_to_dataset(patient_or_legacy, images):
-    """Save one or more RGB images for a patient to /dataset/raw/rgb/ and register them.
+    """Save one or more RGB images for a patient to object storage and register them.
 
     Args:
         patient_or_legacy: Patient or legacy object with .patient
@@ -1062,7 +1022,7 @@ def mark_job_completed(job_id, output_files, logs=None):
             existing_processed_files = FileRegistry.objects.filter(
                 file_type=cbct_processed_type, **_job_entity_fk_kwargs(job)
             )
-            # Remove existing DB entries only; keep files on disk
+            # Remove existing DB entries only; keep object storage files
             try:
                 existing_count = existing_processed_files.count()
                 if existing_count:

@@ -7,7 +7,6 @@ from django.contrib import messages
 from django.http import JsonResponse, Http404
 from django.views.decorators.http import require_POST, require_http_methods
 from django.db.models import Q, Count, Sum
-from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 import os
@@ -457,34 +456,44 @@ def export_preview(request):
 
 def _recover_stuck_export(export):
     """
-    If export is stuck in 'processing' but a completed ZIP exists on disk
-    (process died after writing), mark the export as completed.
+    If export is stuck in 'processing' but a completed ZIP exists in object
+    storage (process died before DB update), mark it as completed.
     """
     if export.status != "processing":
         return export
-    export_dir = getattr(settings, "DATASET_PATH", "/dataset")
-    export_dir = os.path.join(export_dir, "exports")
-    if not os.path.isdir(export_dir):
-        return export
-    import glob
-
-    pattern = os.path.join(export_dir, f"export_{export.id}_*.zip")
-    matches = glob.glob(pattern)
-    if not matches:
-        return export
-    # Use the most recent file (by mtime) in case of multiple matches
-    path = max(matches, key=lambda p: os.path.getmtime(p))
-    mtime = os.path.getmtime(path)
-    age_seconds = timezone.now().timestamp() - mtime
-    if age_seconds < 120:
-        # File was modified in last 2 minutes - process might still be writing
-        return export
     try:
-        size = os.path.getsize(path)
-        export.mark_completed(file_path=path, file_size=size)
+        storage = get_object_storage()
+
+        if export.file_path and artifact_exists(export.file_path):
+            info = storage.head(export.file_path)
+            size = int(info.content_length or 0)
+            export.mark_completed(file_path=export.file_path, file_size=size)
+            export.refresh_from_db()
+            logger.info(
+                "Recovered stuck export %s: marked completed from key %s",
+                export.id,
+                export.file_path,
+            )
+            return export
+
+        prefix = f"exports/export_{export.id}_"
+        candidates = [
+            key
+            for key in storage.list_keys(prefix)
+            if key.startswith(prefix) and key.endswith(".zip")
+        ]
+        if not candidates:
+            return export
+
+        key = sorted(candidates)[-1]
+        info = storage.head(key)
+        size = int(info.content_length or 0)
+        export.mark_completed(file_path=key, file_size=size)
         export.refresh_from_db()
         logger.info(
-            f"Recovered stuck export {export.id}: marked completed from existing file {path}"
+            "Recovered stuck export %s: marked completed from key %s",
+            export.id,
+            key,
         )
     except Exception as e:
         logger.warning(f"Could not recover export {export.id}: {e}")
@@ -552,7 +561,7 @@ def export_download(request, export_id):
     # Check file exists
     if not export.file_path or not artifact_exists(export.file_path):
         messages.error(request, "Export file not found.")
-        export.mark_failed("Export file not found on disk")
+        export.mark_failed("Export file not found in storage")
         return redirect_with_namespace(request, "export_list")
 
     # Serve file
@@ -713,11 +722,7 @@ def export_delete(request, export_id):
         # Optionally delete file
         if export.file_path:
             try:
-                if export.file_path.startswith("/"):
-                    if os.path.exists(export.file_path):
-                        os.remove(export.file_path)
-                else:
-                    get_object_storage().delete(export.file_path)
+                get_object_storage().delete(export.file_path)
             except Exception as e:
                 logger.warning(f"Could not delete export file {export.file_path}: {e}")
 

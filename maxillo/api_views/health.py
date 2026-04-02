@@ -3,8 +3,6 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.conf import settings
-import os
 import logging
 from common.models import Job
 from common.object_storage import get_object_storage
@@ -41,13 +39,6 @@ def health_check(request):
                 "processing_jobs": processing_count,
                 "object_storage_ok": object_storage_ok,
                 "object_storage_error": object_storage_error,
-                "dataset_dir_exists": os.path.exists(settings.DATASET_PATH),
-                "dataset_raw_dir_exists": os.path.exists(
-                    os.path.join(settings.DATASET_PATH, "raw")
-                ),
-                "dataset_processed_dir_exists": os.path.exists(
-                    os.path.join(settings.DATASET_PATH, "processed")
-                ),
             }
         )
 

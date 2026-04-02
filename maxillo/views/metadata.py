@@ -4,8 +4,6 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 import json
-import os
-import shutil
 import logging
 
 from common.file_access import exists as artifact_exists
@@ -91,8 +89,6 @@ def get_nifti_metadata(request, patient_id):
                                 {"error": "CBCT file is not in NIFTI format"},
                                 status=400,
                             )
-                elif patient.cbct:  # Fallback to old field
-                    cbct_path = patient.cbct.path
             except:
                 pass
 
@@ -104,12 +100,9 @@ def get_nifti_metadata(request, patient_id):
         import numpy as np
 
         try:
-            if cbct_path.startswith("/"):
-                nifti_img = nib.load(cbct_path)
-            else:
-                suffix = ".nii.gz" if cbct_path.endswith(".nii.gz") else ".nii"
-                with download_to_tempfile(cbct_path, suffix=suffix) as tmp_path:
-                    nifti_img = nib.load(tmp_path)
+            suffix = ".nii.gz" if cbct_path.endswith(".nii.gz") else ".nii"
+            with download_to_tempfile(cbct_path, suffix=suffix) as tmp_path:
+                nifti_img = nib.load(tmp_path)
 
             # Get header information
             header = nifti_img.header
@@ -298,8 +291,6 @@ def update_nifti_metadata(request, patient_id):
                                 {"error": "CBCT file is not in NIFTI format"},
                                 status=400,
                             )
-                elif patient.cbct:
-                    cbct_path = patient.cbct.path
             except:
                 pass
 
@@ -318,15 +309,9 @@ def update_nifti_metadata(request, patient_id):
         import nibabel as nib
         import numpy as np
 
-        backup_path = None
-        local_path = None
-
         try:
-            if cbct_path.startswith("/"):
-                local_path = cbct_path
-                backup_path = local_path + ".backup"
-                shutil.copy2(local_path, backup_path)
-
+            suffix = ".nii.gz" if cbct_path.endswith(".nii.gz") else ".nii"
+            with download_to_tempfile(cbct_path, suffix=suffix) as local_path:
                 nifti_img = nib.load(local_path)
                 current_affine = nifti_img.affine.copy()
 
@@ -338,7 +323,8 @@ def update_nifti_metadata(request, patient_id):
                         current_affine = new_affine_array
                     except Exception as e:
                         return JsonResponse(
-                            {"error": f"Invalid affine matrix: {str(e)}"}, status=400
+                            {"error": f"Invalid affine matrix: {str(e)}"},
+                            status=400,
                         )
 
                 elif new_origin:
@@ -355,50 +341,12 @@ def update_nifti_metadata(request, patient_id):
                     nifti_img.get_fdata(), current_affine, nifti_img.header
                 )
                 nib.save(new_nifti, local_path)
-                os.remove(backup_path)
-            else:
-                suffix = ".nii.gz" if cbct_path.endswith(".nii.gz") else ".nii"
-                with download_to_tempfile(cbct_path, suffix=suffix) as tmp_path:
-                    local_path = tmp_path
-                    backup_path = local_path + ".backup"
-                    shutil.copy2(local_path, backup_path)
 
-                    nifti_img = nib.load(local_path)
-                    current_affine = nifti_img.affine.copy()
-
-                    if new_affine:
-                        try:
-                            new_affine_array = np.array(new_affine, dtype=np.float64)
-                            if new_affine_array.shape != (4, 4):
-                                raise ValueError("Affine matrix must be 4x4")
-                            current_affine = new_affine_array
-                        except Exception as e:
-                            return JsonResponse(
-                                {"error": f"Invalid affine matrix: {str(e)}"},
-                                status=400,
-                            )
-
-                    elif new_origin:
-                        try:
-                            if len(new_origin) != 3:
-                                raise ValueError("Origin must have 3 coordinates")
-                            current_affine[0:3, 3] = new_origin
-                        except Exception as e:
-                            return JsonResponse(
-                                {"error": f"Invalid origin: {str(e)}"}, status=400
-                            )
-
-                    new_nifti = nib.Nifti1Image(
-                        nifti_img.get_fdata(), current_affine, nifti_img.header
-                    )
-                    nib.save(new_nifti, local_path)
-                    os.remove(backup_path)
-
-                    get_object_storage().upload_file(
-                        local_path,
-                        key=cbct_path,
-                        content_type="application/octet-stream",
-                    )
+                get_object_storage().upload_file(
+                    local_path,
+                    key=cbct_path,
+                    content_type="application/octet-stream",
+                )
 
             from common.models import Job
 
@@ -435,10 +383,6 @@ def update_nifti_metadata(request, patient_id):
             return get_nifti_metadata(request, patient_id)
 
         except Exception as e:
-            # Restore backup if exists
-            if backup_path and os.path.exists(backup_path):
-                restore_path = local_path or cbct_path
-                shutil.move(backup_path, restore_path)
             logger.error(f"Error updating NIFTI metadata: {e}")
             return JsonResponse(
                 {"error": f"Error updating NIFTI file: {str(e)}"}, status=500
