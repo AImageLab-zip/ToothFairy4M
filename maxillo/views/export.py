@@ -22,6 +22,96 @@ from .helpers import redirect_with_namespace
 logger = logging.getLogger(__name__)
 
 
+EXPORT_MODALITY_FILE_TYPES = {
+    "cbct": {
+        "raw": ["cbct_raw"],
+        "processed": ["cbct_processed"],
+    },
+    "ios": {
+        "raw": ["ios_raw_upper", "ios_raw_lower"],
+        "processed": ["ios_processed_upper", "ios_processed_lower"],
+    },
+    "audio": {
+        "raw": ["audio_raw"],
+        "processed": ["audio_processed"],
+    },
+    "bite_classification": {
+        "raw": [],
+        "processed": ["bite_classification"],
+    },
+    "intraoral": {
+        "raw": ["intraoral_raw"],
+        "processed": ["intraoral_processed"],
+    },
+    "intraoral-photo": {
+        "raw": ["intraoral_raw"],
+        "processed": ["intraoral_processed"],
+    },
+    "teleradiography": {
+        "raw": ["teleradiography_raw"],
+        "processed": ["teleradiography_processed"],
+    },
+    "panoramic": {
+        "raw": ["panoramic_raw"],
+        "processed": ["panoramic_processed"],
+    },
+    "braintumor-mri-t1": {
+        "raw": ["braintumor_mri_t1_raw"],
+        "processed": ["braintumor_mri_t1_processed"],
+    },
+    "braintumor-mri-t1c": {
+        "raw": ["braintumor_mri_t1c_raw"],
+        "processed": ["braintumor_mri_t1c_processed"],
+    },
+    "braintumor-mri-t2": {
+        "raw": ["braintumor_mri_t2_raw"],
+        "processed": ["braintumor_mri_t2_processed"],
+    },
+    "braintumor-mri-flair": {
+        "raw": ["braintumor_mri_flair_raw"],
+        "processed": ["braintumor_mri_flair_processed"],
+    },
+    "rawzip": {
+        "raw": ["generic_raw"],
+        "processed": ["generic_processed"],
+    },
+}
+
+
+def _coerce_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_content_selection(data, default_when_missing=True):
+    has_raw_key = "include_raw" in data
+    has_processed_key = "include_processed" in data
+
+    if not has_raw_key and not has_processed_key:
+        return (True, True) if default_when_missing else (False, False)
+
+    include_raw = _coerce_bool(data.get("include_raw"), default=False)
+    include_processed = _coerce_bool(data.get("include_processed"), default=False)
+    return include_raw, include_processed
+
+
+def _file_type_map_for_selection(include_raw, include_processed):
+    file_type_map = {}
+    for modality_slug, groups in EXPORT_MODALITY_FILE_TYPES.items():
+        file_types = []
+        if include_raw:
+            file_types.extend(groups.get("raw", []))
+        if include_processed:
+            file_types.extend(groups.get("processed", []))
+        file_type_map[modality_slug] = file_types
+    return file_type_map
+
+
 def _build_shared_download_url(request, share_token):
     """Build absolute shared landing URL for an export token."""
     return request.build_absolute_uri(
@@ -116,6 +206,9 @@ def export_new(request):
         # Get form data
         folder_ids = request.POST.getlist("folder_ids")
         modality_slugs = request.POST.getlist("modality_slugs")
+        include_raw, include_processed = _resolve_content_selection(
+            request.POST, default_when_missing=False
+        )
 
         # Get filters
         filters = {}
@@ -134,11 +227,20 @@ def export_new(request):
             messages.error(request, "Please select at least one modality.")
             return redirect_with_namespace(request, "export_new")
 
+        if not include_raw and not include_processed:
+            messages.error(
+                request,
+                "Please select at least one content type: Raw files and/or Processed files.",
+            )
+            return redirect_with_namespace(request, "export_new")
+
         # Create export record
         query_params = {
             "folder_ids": [int(fid) for fid in folder_ids],
             "modality_slugs": modality_slugs,
             "filters": filters,
+            "include_raw": include_raw,
+            "include_processed": include_processed,
         }
 
         # Generate query summary
@@ -180,6 +282,13 @@ def export_new(request):
             query_summary_parts.append(" + ".join(modality_names))
         if filter_parts:
             query_summary_parts.append(", ".join(filter_parts))
+
+        selected_content = []
+        if include_raw:
+            selected_content.append("Raw")
+        if include_processed:
+            selected_content.append("Processed")
+        query_summary_parts.append(f"Content: {' + '.join(selected_content)}")
 
         query_summary = ", ".join(query_summary_parts)
 
@@ -248,6 +357,8 @@ def export_preview(request):
         folder_ids = data.get("folder_ids", [])
         modality_slugs = data.get("modality_slugs", [])
         filters = data.get("filters", {})
+        include_raw, include_processed = _resolve_content_selection(data)
+        file_type_map = _file_type_map_for_selection(include_raw, include_processed)
 
         # Convert to proper types
         if isinstance(folder_ids, str):
@@ -271,9 +382,12 @@ def export_preview(request):
 
         # Apply filters (checking for processed files)
         if filters.get("has_cbct"):
-            # Patients with CBCT processed files
+            cbct_file_types = file_type_map.get("cbct", [])
+            if not cbct_file_types:
+                patients = PatientModel.objects.none()
+            # Patients with CBCT files for selected content
             cbct_patient_ids = FileRegistry.objects.filter(
-                domain=domain, file_type="cbct_processed"
+                domain=domain, file_type__in=cbct_file_types
             ).values_list(
                 "brain_patient_id" if domain == "brain" else "patient_id", flat=True
             )
@@ -285,10 +399,13 @@ def export_preview(request):
             )
 
         if filters.get("has_ios"):
-            # Patients with IOS processed files
+            ios_file_types = file_type_map.get("ios", [])
+            if not ios_file_types:
+                patients = PatientModel.objects.none()
+            # Patients with IOS files for selected content
             ios_patient_ids = FileRegistry.objects.filter(
                 domain=domain,
-                file_type__in=["ios_processed_upper", "ios_processed_lower"],
+                file_type__in=ios_file_types,
             ).values_list(
                 "brain_patient_id" if domain == "brain" else "patient_id", flat=True
             )
@@ -304,14 +421,6 @@ def export_preview(request):
             if key.startswith("has_") and not key.startswith("has_reports_") and value:
                 modality_slug = key.replace("has_", "")
                 # Map modality slug to file types
-                file_type_map = {
-                    "cbct": ["cbct_processed"],
-                    "ios": ["ios_processed_upper", "ios_processed_lower"],
-                    "teleradiography": ["teleradiography_raw"],
-                    "panoramic": ["panoramic_raw"],
-                    "intraoral": ["intraoral_raw"],
-                    "intraoral-photo": ["intraoral_raw"],
-                }
                 file_types = file_type_map.get(modality_slug, [])
                 if file_types:
                     modality_patient_ids = FileRegistry.objects.filter(
@@ -328,6 +437,8 @@ def export_preview(request):
                             "patient_id", flat=True
                         )
                     )
+                else:
+                    patients = PatientModel.objects.none()
 
         # Report presence filters
         for key, value in filters.items():
@@ -377,13 +488,6 @@ def export_preview(request):
             total_size = 0
             if actual_modality_slugs:
                 # Get files for selected modalities
-                file_type_map = {
-                    "cbct": ["cbct_processed"],
-                    "ios": ["ios_processed_upper", "ios_processed_lower"],
-                    "teleradiography": ["teleradiography_raw"],
-                    "panoramic": ["panoramic_raw"],
-                    "intraoral": ["intraoral_processed"],
-                }
                 file_types = []
                 for slug in actual_modality_slugs:
                     file_types.extend(file_type_map.get(slug, []))

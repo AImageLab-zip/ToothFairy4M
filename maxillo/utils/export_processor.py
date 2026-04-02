@@ -20,26 +20,60 @@ logger = logging.getLogger(__name__)
 class ExportProcessor:
     """Processes export jobs by querying patients, collecting files, and creating ZIP archives."""
 
-    RAW_ONLY_MODALITY_SLUGS = {
-        "teleradiography",
-        "panoramic",
-    }
-
-    # Map modality slugs to file types (only processed files, except intraoral which has no processing step)
+    # Map modality slugs to raw/processed file types.
     MODALITY_TO_FILE_TYPES = {
-        "cbct": ["cbct_processed"],  # Only processed
-        "ios": ["ios_processed_upper", "ios_processed_lower"],  # Only processed
-        "audio": ["audio_processed"],  # Only processed
-        "bite_classification": ["bite_classification"],
-        "intraoral": ["intraoral_raw"],  # No processing step; raw IS the usable file
-        "intraoral-photo": ["intraoral_raw"],  # Actual DB slug; same as above
-        "teleradiography": ["teleradiography_raw"],  # Raw by default
-        "panoramic": ["panoramic_raw"],  # Raw by default
-        "braintumor-mri-t1": ["braintumor_mri_t1_processed"],  # Only processed
-        "braintumor-mri-t1c": ["braintumor_mri_t1c_processed"],  # Only processed
-        "braintumor-mri-t2": ["braintumor_mri_t2_processed"],  # Only processed
-        "braintumor-mri-flair": ["braintumor_mri_flair_processed"],  # Only processed
-        "rawzip": ["generic_processed"],  # Only processed
+        "cbct": {
+            "raw": ["cbct_raw"],
+            "processed": ["cbct_processed"],
+        },
+        "ios": {
+            "raw": ["ios_raw_upper", "ios_raw_lower"],
+            "processed": ["ios_processed_upper", "ios_processed_lower"],
+        },
+        "audio": {
+            "raw": ["audio_raw"],
+            "processed": ["audio_processed"],
+        },
+        "bite_classification": {
+            "raw": [],
+            "processed": ["bite_classification"],
+        },
+        "intraoral": {
+            "raw": ["intraoral_raw"],
+            "processed": ["intraoral_processed"],
+        },
+        "intraoral-photo": {
+            "raw": ["intraoral_raw"],
+            "processed": ["intraoral_processed"],
+        },
+        "teleradiography": {
+            "raw": ["teleradiography_raw"],
+            "processed": ["teleradiography_processed"],
+        },
+        "panoramic": {
+            "raw": ["panoramic_raw"],
+            "processed": ["panoramic_processed"],
+        },
+        "braintumor-mri-t1": {
+            "raw": ["braintumor_mri_t1_raw"],
+            "processed": ["braintumor_mri_t1_processed"],
+        },
+        "braintumor-mri-t1c": {
+            "raw": ["braintumor_mri_t1c_raw"],
+            "processed": ["braintumor_mri_t1c_processed"],
+        },
+        "braintumor-mri-t2": {
+            "raw": ["braintumor_mri_t2_raw"],
+            "processed": ["braintumor_mri_t2_processed"],
+        },
+        "braintumor-mri-flair": {
+            "raw": ["braintumor_mri_flair_raw"],
+            "processed": ["braintumor_mri_flair_processed"],
+        },
+        "rawzip": {
+            "raw": ["generic_raw"],
+            "processed": ["generic_processed"],
+        },
     }
 
     def __init__(self, export, domain="maxillo"):
@@ -50,6 +84,114 @@ class ExportProcessor:
         self.folder_ids = self.query_params.get("folder_ids", [])
         self.modality_slugs = self.query_params.get("modality_slugs", [])
         self.filters = self.query_params.get("filters", {})
+        self.has_content_selection = (
+            "include_raw" in self.query_params
+            or "include_processed" in self.query_params
+        )
+        if self.has_content_selection:
+            self.include_raw = self._coerce_bool(
+                self.query_params.get("include_raw"), default=False
+            )
+            self.include_processed = self._coerce_bool(
+                self.query_params.get("include_processed"), default=False
+            )
+        else:
+            # Legacy exports created before content selection existed.
+            self.include_raw = True
+            self.include_processed = True
+
+    @staticmethod
+    def _coerce_bool(value, default=False):
+        """Convert common truthy/falsy values into bool."""
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _modality_file_type_groups(self, modality_slug):
+        return self.MODALITY_TO_FILE_TYPES.get(
+            modality_slug, {"raw": [], "processed": []}
+        )
+
+    def _modality_requested_file_types(self, modality_slug):
+        groups = self._modality_file_type_groups(modality_slug)
+        file_types = []
+        if self.include_raw:
+            file_types.extend(groups.get("raw", []))
+        if self.include_processed:
+            file_types.extend(groups.get("processed", []))
+        return file_types
+
+    def _file_type_matches_requested_content(self, file_type):
+        is_raw = file_type.endswith("_raw") or file_type.startswith("ios_raw_")
+        is_processed = (
+            file_type.endswith("_processed")
+            or file_type.startswith("ios_processed_")
+            or file_type == "bite_classification"
+        )
+
+        if self.include_raw and is_raw:
+            return True
+        if self.include_processed and is_processed:
+            return True
+        return False
+
+    def _patient_file_queryset(self, patients):
+        from common.models import FileRegistry
+
+        if self.domain == "brain":
+            return FileRegistry.objects.filter(
+                domain="brain", brain_patient__in=patients
+            )
+        return FileRegistry.objects.filter(domain="maxillo", patient__in=patients)
+
+    def _build_no_files_found_error(self, patients):
+        actual_modality_slugs = [s for s in self.modality_slugs if s != "reports"]
+        selected_content = []
+        if self.include_raw:
+            selected_content.append("raw")
+        if self.include_processed:
+            selected_content.append("processed")
+
+        if not selected_content:
+            return "No export content selected. Enable at least one of Raw files or Processed files."
+
+        patient_qs = self._patient_file_queryset(patients)
+        modality_summaries = []
+        for modality_slug in actual_modality_slugs:
+            groups = self._modality_file_type_groups(modality_slug)
+            parts = []
+            if self.include_raw:
+                raw_types = groups.get("raw", [])
+                raw_count = (
+                    patient_qs.filter(file_type__in=raw_types).count()
+                    if raw_types
+                    else 0
+                )
+                parts.append(f"raw={raw_count}")
+            if self.include_processed:
+                processed_types = groups.get("processed", [])
+                processed_count = (
+                    patient_qs.filter(file_type__in=processed_types).count()
+                    if processed_types
+                    else 0
+                )
+                parts.append(f"processed={processed_count}")
+            if parts:
+                modality_summaries.append(f"{modality_slug}({', '.join(parts)})")
+
+        message = (
+            f"No files found for {patients.count()} matching patient(s). "
+            f"Requested content: {', '.join(selected_content)}."
+        )
+        if modality_summaries:
+            message += f" Availability by modality: {'; '.join(modality_summaries)}."
+        if self.include_processed and not self.include_raw:
+            message += " Tip: enable Raw files if post-processing has not finished yet."
+        return message
 
     def _update_progress(self, message, percent=None):
         """Update progress on the Export record for live feedback."""
@@ -82,7 +224,10 @@ class ExportProcessor:
 
         # Apply modality presence filters (checking for processed files)
         if self.filters.get("has_cbct"):
-            file_filter = {"file_type": "cbct_processed", "domain": self.domain}
+            cbct_file_types = self._modality_requested_file_types("cbct")
+            if not cbct_file_types:
+                return patients.none()
+            file_filter = {"file_type__in": cbct_file_types, "domain": self.domain}
             if self.domain == "brain":
                 cbct_patients = Patient.objects.filter(
                     patient_id__in=FileRegistry.objects.filter(
@@ -91,23 +236,26 @@ class ExportProcessor:
                 ).distinct()
             else:
                 cbct_patients = Patient.objects.filter(
-                    files__file_type="cbct_processed"
+                    files__file_type__in=cbct_file_types
                 ).distinct()
             patients = patients.filter(
                 patient_id__in=cbct_patients.values_list("patient_id", flat=True)
             )
 
         if self.filters.get("has_ios"):
+            ios_file_types = self._modality_requested_file_types("ios")
+            if not ios_file_types:
+                return patients.none()
             if self.domain == "brain":
                 ios_patients = Patient.objects.filter(
                     patient_id__in=FileRegistry.objects.filter(
                         domain="brain",
-                        file_type__in=["ios_processed_upper", "ios_processed_lower"],
+                        file_type__in=ios_file_types,
                     ).values_list("brain_patient_id", flat=True)
                 ).distinct()
             else:
                 ios_patients = Patient.objects.filter(
-                    files__file_type__in=["ios_processed_upper", "ios_processed_lower"]
+                    files__file_type__in=ios_file_types
                 ).distinct()
             patients = patients.filter(
                 patient_id__in=ios_patients.values_list("patient_id", flat=True)
@@ -117,7 +265,7 @@ class ExportProcessor:
         for key, value in self.filters.items():
             if key.startswith("has_") and not key.startswith("has_reports_") and value:
                 modality_slug = key.replace("has_", "")
-                file_types = self.MODALITY_TO_FILE_TYPES.get(modality_slug, [])
+                file_types = self._modality_requested_file_types(modality_slug)
                 if file_types:
                     if self.domain == "brain":
                         modality_patients = Patient.objects.filter(
@@ -179,23 +327,15 @@ class ExportProcessor:
         # Get file types for selected modalities (excluding reports)
         file_types = []
         for modality_slug in actual_modality_slugs:
-            file_types.extend(self.MODALITY_TO_FILE_TYPES.get(modality_slug, []))
+            file_types.extend(self._modality_requested_file_types(modality_slug))
+        file_types = list(set(file_types))
 
         logger.info(
             f"Collecting files for modalities: {actual_modality_slugs}, file_types: {file_types}"
         )
 
-        processed_fallback_slugs = [
-            slug
-            for slug in actual_modality_slugs
-            if slug not in self.RAW_ONLY_MODALITY_SLUGS
-        ]
-
         # Also check by modality relationship
         modality_objects = Modality.objects.filter(slug__in=actual_modality_slugs)
-        fallback_modality_objects = Modality.objects.filter(
-            slug__in=processed_fallback_slugs
-        )
         logger.info(f"Found {modality_objects.count()} modality objects")
 
         for patient in patients:
@@ -207,17 +347,21 @@ class ExportProcessor:
             query = Q(file_type__in=file_types)
 
             # For modality-based matching, also include files that match by modality relationship
-            # (even if file_type is not in our explicit list, but modality matches)
-            if fallback_modality_objects.exists():
-                # Match by modality relationship (for files that have modality set)
-                # Only include processed files
-                query |= Q(
-                    modality__in=fallback_modality_objects,
-                    file_type__endswith="_processed",
-                ) | Q(
-                    modality__in=fallback_modality_objects,
-                    file_type="bite_classification",
-                )
+            # and selected content types (raw and/or processed)
+            if modality_objects.exists():
+                content_query = Q()
+                if self.include_raw:
+                    content_query |= Q(file_type__endswith="_raw") | Q(
+                        file_type__startswith="ios_raw_"
+                    )
+                if self.include_processed:
+                    content_query |= (
+                        Q(file_type__endswith="_processed")
+                        | Q(file_type__startswith="ios_processed_")
+                        | Q(file_type="bite_classification")
+                    )
+                if content_query:
+                    query |= Q(modality__in=modality_objects) & content_query
 
             if self.domain == "brain":
                 patient_files = (
@@ -244,15 +388,12 @@ class ExportProcessor:
                 # '_processed'), or any other processed/bite_classification file from a modality
                 # relationship match.
                 is_mapped_file_type = file_reg.file_type in file_types
-                is_processed_fallback = (
+                is_modality_fallback = (
                     file_reg.modality is not None
-                    and file_reg.modality.slug in processed_fallback_slugs
-                    and (
-                        file_reg.file_type.endswith("_processed")
-                        or file_reg.file_type == "bite_classification"
-                    )
+                    and file_reg.modality.slug in actual_modality_slugs
+                    and self._file_type_matches_requested_content(file_reg.file_type)
                 )
-                if is_mapped_file_type or is_processed_fallback:
+                if is_mapped_file_type or is_modality_fallback:
                     # Determine modality slug for file organization
                     if file_reg.modality:
                         modality_slug = file_reg.modality.slug
@@ -331,7 +472,7 @@ class ExportProcessor:
                         )
                 else:
                     logger.debug(
-                        f"  Skipping file {file_reg.file_type}: not in expected mapped types and not eligible processed fallback"
+                        f"  Skipping file {file_reg.file_type}: not in expected mapped types and not eligible modality fallback"
                     )
 
             # Collect VoiceCaption text files for reports (only if 'reports' is selected)
@@ -527,6 +668,14 @@ class ExportProcessor:
     def process_export(self):
         """Main processing method. Queries patients, collects files, creates ZIP, and updates export."""
         try:
+            if self.has_content_selection and not (
+                self.include_raw or self.include_processed
+            ):
+                self.export.mark_failed(
+                    "No export content selected. Please enable Raw files and/or Processed files."
+                )
+                return
+
             # Query patients
             patients = self.query_patients()
             patient_count = patients.count()
@@ -545,9 +694,7 @@ class ExportProcessor:
             files_to_export, estimated_size = self.collect_files(patients)
 
             if not files_to_export:
-                self.export.mark_failed(
-                    "No files found for the selected patients and modalities."
-                )
+                self.export.mark_failed(self._build_no_files_found_error(patients))
                 return
 
             # Generate filename
