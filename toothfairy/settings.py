@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import json as _json
 from pathlib import Path
 from decouple import config
 
@@ -240,6 +241,53 @@ OBJECT_STORAGE_ADDRESSING_STYLE = config(
     "OBJECT_STORAGE_ADDRESSING_STYLE", default="path"
 )
 OBJECT_STORAGE_KEY_PREFIX = config("OBJECT_STORAGE_KEY_PREFIX", default="")
+
+# Async jobs (distributed runners)
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://redis:6379/1")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = config("CELERY_TIMEZONE", default="UTC")
+
+RUNNER_DEFAULT_QUEUE = config("RUNNER_DEFAULT_QUEUE", default="runner")
+RUNNER_QUEUE_BY_MODALITY = _json.loads(config("RUNNER_QUEUE_BY_MODALITY", default="{}"))
+if not isinstance(RUNNER_QUEUE_BY_MODALITY, dict):
+    RUNNER_QUEUE_BY_MODALITY = {}
+RUNNER_QUEUE_BY_PROJECT = _json.loads(config("RUNNER_QUEUE_BY_PROJECT", default="{}"))
+if not isinstance(RUNNER_QUEUE_BY_PROJECT, dict):
+    RUNNER_QUEUE_BY_PROJECT = {}
+RUNNER_TASK_NAME = config("RUNNER_TASK_NAME", default="toothfairy4m_runner.process_job")
+
+
+def _parse_runner_tokens(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return set()
+
+    if raw.startswith("{") or raw.startswith("["):
+        try:
+            parsed = _json.loads(raw)
+            if isinstance(parsed, list):
+                return {str(v).strip() for v in parsed if str(v).strip()}
+            if isinstance(parsed, dict):
+                vals = []
+                for v in parsed.values():
+                    if isinstance(v, list):
+                        vals.extend(v)
+                    else:
+                        vals.append(v)
+                return {str(v).strip() for v in vals if str(v).strip()}
+        except Exception:
+            pass
+
+    return {tok.strip() for tok in raw.split(",") if tok.strip()}
+
+
+RUNNER_API_TOKENS = _parse_runner_tokens(config("RUNNER_API_TOKENS", default=""))
+CELERY_TASK_ROUTES = {
+    RUNNER_TASK_NAME: {"queue": RUNNER_DEFAULT_QUEUE},
+}
 
 # Logging Configuration
 LOG_LEVEL = config("LOG_LEVEL", default="DEBUG" if DEBUG else "INFO")

@@ -964,23 +964,6 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
     return saved_entries, errors, job
 
 
-def get_pending_jobs_for_type(job_type):
-    """
-    Get pending processing jobs for a specific type.
-    This is what the external Docker containers will call.
-
-    Args:
-        job_type: Any valid job type from ProcessingJob.JOB_TYPE_CHOICES
-
-    Returns:
-        QuerySet of ProcessingJob objects
-    """
-    # job_type corresponds to modality_slug now
-    return Job.objects.filter(
-        modality_slug=job_type, status__in=["pending", "retrying"]
-    ).order_by("-priority", "created_at")
-
-
 def mark_job_completed(job_id, output_files, logs=None):
     """
     Mark a processing job as completed and register output files.

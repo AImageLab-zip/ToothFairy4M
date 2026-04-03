@@ -12,6 +12,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       VIRTUAL_HOST: $DOMAIN
       VIRTUAL_PORT: $WEB_EXTERNAL_PORT
@@ -46,6 +48,13 @@ services:
       retries: 10
       interval: 10s
       start_period: 30s
+    restart: unless-stopped
+    networks:
+      - app-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: toothfairy4m-redis-$DOCKER_SUFFIX
     restart: unless-stopped
     networks:
       - app-net
