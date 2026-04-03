@@ -6,7 +6,6 @@ services:
     container_name: toothfairy4m-web-$DOCKER_SUFFIX
     volumes:
       - .:/app
-      - ${DATASET_MOUNT_SOURCE:-./dataset}:/dataset:rw
     command: /app/entrypoint.sh
     ports:
       - "$WEB_EXTERNAL_PORT:8000"

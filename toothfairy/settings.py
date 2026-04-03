@@ -172,10 +172,6 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
-# Media files (uploaded files)
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "storage"
-
 # File Upload Settings
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1048576000 * 5  # 5GB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 1048576000 * 5  # 5GB
@@ -225,9 +221,6 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", cast=bool)
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
-
-# Dataset path configuration
-DATASET_PATH = config("DATASET_PATH", default="/dataset")
 
 # Object storage (S3-compatible, e.g. Garage)
 OBJECT_STORAGE_ENDPOINT_URL = config(
