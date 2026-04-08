@@ -66,4 +66,5 @@ networks:
   proxy-net:
     external: true
   app-net:
-    internal: true
+    name: app-net-$DOCKER_SUFFIX
+    external: true
