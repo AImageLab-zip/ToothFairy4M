@@ -821,9 +821,13 @@ const ViewerGrid = (function() {
         });
     }
 
-    function buildFileServeUrl(fileId) {
+    function buildFileServeUrl(fileId, fileKey) {
         const namespace = djangoData.projectNamespace || 'maxillo';
-        return `/${namespace}/api/processing/files/serve/${fileId}/`;
+        let url = `/${namespace}/api/processing/files/serve/${fileId}/`;
+        if (fileKey) {
+            url += `?file_key=${encodeURIComponent(fileKey)}`;
+        }
+        return url;
     }
 
     /**
@@ -1057,7 +1061,7 @@ const ViewerGrid = (function() {
             } else {
                 console.log(`Fetching ArrayBuffer for fileId ${fileId}`);
                 volumeFetchPromises[fileId] = (async () => {
-                    const response = await fetch(buildFileServeUrl(fileId));
+                    const response = await fetch(buildFileServeUrl(fileId, 'volume_nifti'));
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }

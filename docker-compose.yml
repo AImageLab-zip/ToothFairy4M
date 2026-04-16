@@ -14,6 +14,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      DB_HOST: prod-db
       VIRTUAL_HOST: ${DOMAIN:-}
       VIRTUAL_PORT: 8000
       LETSENCRYPT_HOST: ${DOMAIN:-}
@@ -24,6 +25,7 @@ services:
     restart: unless-stopped
     networks:
       - proxy-net
+      - app-net
 
   db:
     image: mysql:8.0
@@ -45,7 +47,9 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - proxy-net
+      app-net:
+        aliases:
+          - prod-db
 
 volumes:
   mysql_data:
@@ -53,3 +57,5 @@ volumes:
 networks:
   proxy-net:
     external: true
+  app-net:
+    internal: true

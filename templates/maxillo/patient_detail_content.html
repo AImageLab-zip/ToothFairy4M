@@ -263,6 +263,34 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="cbct-inline-panoramic" id="cbctInlinePanoramic">
+                            <div class="cbct-inline-panoramic-header">
+                                <i class="fas fa-panorama me-2"></i>Panoramic
+                            </div>
+                            <div class="cbct-inline-panoramic-body">
+                                <div class="panoramic-loading" id="cbctPanoramicLoading" style="display: none;">
+                                    <div class="text-center py-3">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted mb-0">Loading panoramic image...</p>
+                                    </div>
+                                </div>
+                                <div class="panoramic-content" id="cbctPanoramicContent" style="display: none;">
+                                    <div class="d-flex align-items-center justify-content-center h-100">
+                                        <img id="cbctPanoramicImage" class="img-fluid" style="max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer;" alt="CBCT panoramic image">
+                                    </div>
+                                </div>
+                                <div class="panoramic-error" id="cbctPanoramicError" style="display: none;">
+                                    <div class="text-center py-3">
+                                        <div class="mb-2">
+                                            <i class="fas fa-exclamation-triangle fa-2x text-secondary"></i>
+                                        </div>
+                                        <p class="text-muted mb-0">Panoramic image not available.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     {% endif %}
                 </div>
 
@@ -318,6 +346,7 @@
                     </div>
                 </div>
 
+                {% if has_uploaded_panoramic %}
                 <!-- panoramic Viewer -->
                 <div id="panoramic-viewer" class="viewer-container" {% if default_modality_slug != 'panoramic' %}style="display: none;"{% endif %}>
                     <div class="panoramic-loading" id="panoramicLoading" style="display: none;">
@@ -343,6 +372,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
 
                 {# Generic placeholders for other modalities (like brain MRI) #}
                 {% if patient_modalities %}

@@ -63,6 +63,7 @@ def serve_file(request, file_id):
     try:
         file_obj = FileRegistry.objects.select_related('patient', 'brain_patient').get(id=file_id)
         resolved_file_path = file_obj.file_path
+        requested_file_key = (request.GET.get('file_key') or '').strip()
 
         # CBCT processed files may be stored as a multi-file bundle where the
         # actual NIfTI volume path is in metadata.files.volume_nifti.path.
@@ -72,10 +73,20 @@ def serve_file(request, file_id):
             and isinstance(file_obj.metadata, dict)
         ):
             files_data = file_obj.metadata.get('files', {})
-            volume_nifti = files_data.get('volume_nifti', {}) if isinstance(files_data, dict) else {}
-            volume_path = volume_nifti.get('path') if isinstance(volume_nifti, dict) else None
-            if volume_path and os.path.exists(volume_path):
-                resolved_file_path = volume_path
+            files_data = files_data if isinstance(files_data, dict) else {}
+
+            if requested_file_key and requested_file_key != 'primary':
+                selected_file_data = files_data.get(requested_file_key, {})
+                selected_path = selected_file_data.get('path') if isinstance(selected_file_data, dict) else None
+                if not selected_path:
+                    return JsonResponse({'error': f'File variant "{requested_file_key}" not found'}, status=404)
+                resolved_file_path = selected_path
+            elif not requested_file_key:
+                # Backward compatibility: default CBCT multi-file requests to volume.
+                volume_nifti = files_data.get('volume_nifti', {})
+                volume_path = volume_nifti.get('path') if isinstance(volume_nifti, dict) else None
+                if volume_path and os.path.exists(volume_path):
+                    resolved_file_path = volume_path
 
         request_namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
         file_domain = file_obj.domain or request_namespace
