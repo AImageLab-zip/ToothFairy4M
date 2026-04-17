@@ -1,4 +1,5 @@
 import json
+import logging
 from functools import wraps
 
 from django.conf import settings
@@ -12,6 +13,9 @@ from maxillo.runner_api_service import (
     complete_job_from_runner,
     fail_job_from_runner,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_bearer_token(request):
@@ -68,7 +72,11 @@ def runner_claim_job(request, job_id: int):
         return JsonResponse({"error": "Job not found"}, status=404)
 
     worker_id = _worker_id_from_request(request)
-    result = claim_job_for_runner(job_id=job_id, worker_id=worker_id)
+    try:
+        result = claim_job_for_runner(job_id=job_id, worker_id=worker_id)
+    except Exception as e:
+        logger.exception("Runner claim API failed for job %s", job_id)
+        return JsonResponse({"error": f"Runner API internal error: {e}"}, status=500)
     status = 200 if result.get("claimed") else 409
     return JsonResponse(result, status=status)
 
@@ -95,12 +103,16 @@ def runner_complete_job(request, job_id: int):
         return JsonResponse({"error": "logs must be a string"}, status=400)
 
     worker_id = _worker_id_from_request(request)
-    result = complete_job_from_runner(
-        job_id=job_id,
-        worker_id=worker_id,
-        output_files=output_files or {},
-        logs=logs or "",
-    )
+    try:
+        result = complete_job_from_runner(
+            job_id=job_id,
+            worker_id=worker_id,
+            output_files=output_files or {},
+            logs=logs or "",
+        )
+    except Exception as e:
+        logger.exception("Runner complete API failed for job %s", job_id)
+        return JsonResponse({"error": f"Runner API internal error: {e}"}, status=500)
     status = 200 if result.get("completed") else 409
     return JsonResponse(result, status=status)
 
@@ -123,8 +135,12 @@ def runner_fail_job(request, job_id: int):
         return JsonResponse({"error": "error must be a string"}, status=400)
 
     worker_id = _worker_id_from_request(request)
-    result = fail_job_from_runner(
-        job_id=job_id, worker_id=worker_id, error_msg=error_msg
-    )
+    try:
+        result = fail_job_from_runner(
+            job_id=job_id, worker_id=worker_id, error_msg=error_msg
+        )
+    except Exception as e:
+        logger.exception("Runner fail API failed for job %s", job_id)
+        return JsonResponse({"error": f"Runner API internal error: {e}"}, status=500)
     status = 200 if result.get("failed") else 409
     return JsonResponse(result, status=status)

@@ -46,6 +46,8 @@ CBCT/IOS preprocessing is executed by external Celery runners.
 
 - Web app enqueues `RUNNER_TASK_NAME` (default: `toothfairy4m_runner.process_job`).
 - Job routing uses `RUNNER_DEFAULT_QUEUE` with optional `RUNNER_QUEUE_BY_MODALITY` / `RUNNER_QUEUE_BY_PROJECT`.
+- For two-stage IOS workflows, map queues by modality, for example:
+  - `{"ios":"runner_ios_dev","bite_classification":"runner_bite_dev","cbct":"runner_cbct_dev"}`
 - External runner claims/completes/fails through token-protected endpoints:
   - `POST /api/runner/jobs/<id>/claim/`
   - `POST /api/runner/jobs/<id>/complete/`

@@ -6,6 +6,7 @@ import traceback
 from pathlib import Path
 import tempfile
 from django.utils import timezone
+from django.db import transaction
 from common.models import FileRegistry, Job
 from .models import VoiceCaption, Classification, Patient
 import json
@@ -735,43 +736,25 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
             input_file_path=json.dumps(input_files),
         )
 
-        # Need to double check this, i think we can be sure 100% that it does not exists, but what about
-        # when we rerun some jobs? Is this always true? We should delete it and create a new one?
-        existing_bite_job = Job.objects.filter(
-            **_entity_fk_kwargs(patient), modality_slug="bite_classification"
-        ).first()
+        # Always create a fresh stage-2 bite job for every new IOS upload.
+        # Reusing completed jobs can leave status transitions stale and skip execution.
+        bite_classification_job = Job.objects.create(
+            modality_slug="bite_classification",
+            status="dependency",
+            **_entity_fk_kwargs(patient),
+            input_file_path=f"Waiting for IOS Job #{processing_job.id} to complete",
+            priority=processing_job.priority,
+            output_files={
+                "expected_outputs": ["*_bite_classification_results.json"],
+                "depends_on_ios_job": processing_job.id,
+                "ios_job_id": processing_job.id,
+            },
+        )
+        bite_classification_job.add_dependency(processing_job)
 
-        if existing_bite_job:
-            existing_bite_job.add_dependency(processing_job)
-
-            current_output_files = existing_bite_job.output_files or {}
-            current_output_files["depends_on_ios_job"] = processing_job.id
-            current_output_files["ios_job_id"] = processing_job.id
-            existing_bite_job.output_files = current_output_files
-            existing_bite_job.save()
-
-            bite_classification_job = existing_bite_job
-            logger.info(
-                f"Updated existing bite classification job #{existing_bite_job.id} with dependency on IOS job #{processing_job.id}"
-            )
-        else:
-            bite_classification_job = Job.objects.create(
-                modality_slug="bite_classification",
-                status="dependency",
-                **_entity_fk_kwargs(patient),
-                input_file_path=f"Waiting for IOS Job #{processing_job.id} to complete",
-                priority=processing_job.priority,
-                output_files={
-                    "expected_outputs": ["*_bite_classification_results.json"],
-                    "depends_on_ios_job": processing_job.id,
-                    "ios_job_id": processing_job.id,
-                },
-            )
-            bite_classification_job.add_dependency(processing_job)
-
-            logger.info(
-                f"Created bite classification job #{bite_classification_job.id} with dependency on IOS job #{processing_job.id}"
-            )
+        logger.info(
+            f"Created bite classification job #{bite_classification_job.id} with dependency on IOS job #{processing_job.id}"
+        )
 
     return {
         "files": saved_files,
@@ -988,6 +971,25 @@ def mark_job_completed(job_id, output_files, logs=None):
         job_patient = _job_patient(job)
         job_voice_caption = _job_voice_caption(job)
 
+        # For IOS -> bite stage chaining, update dependent job inputs before
+        # marking IOS as completed. This avoids enqueueing bite jobs with stale
+        # placeholder input paths when dependency status flips to pending.
+        if job.modality_slug == "ios" and output_files:
+            try:
+                dependent_bite_jobs = job.dependent_jobs.filter(
+                    modality_slug="bite_classification"
+                )
+                for bite_job in dependent_bite_jobs:
+                    bite_job.input_file_path = json.dumps(output_files)
+                    bite_job.save(update_fields=["input_file_path"])
+                    logger.info(
+                        f"Pre-updated bite classification job #{bite_job.id} with IOS output files: {list(output_files.keys())}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error pre-updating dependent bite classification jobs: {e}"
+                )
+
         job.mark_completed(output_files)
         logger.info(f"Job marked as completed successfully")
 
@@ -1064,51 +1066,42 @@ def mark_job_completed(job_id, output_files, logs=None):
                 )
 
         else:
-            # For IOS and audio, use the original single-file approach
-            for file_type, out_spec in output_files.items():
-                path_or_key = _resolve_output_path_or_key(out_spec)
-                logger.info(
-                    f"Processing output file: type={file_type}, path_or_key={path_or_key}"
-                )
-                if not path_or_key or not artifact_exists(path_or_key):
-                    continue
+            # For non-CBCT modalities, register simple outputs idempotently.
+            # Bite classification has a dedicated handler below.
+            if job.modality_slug != "bite_classification":
+                for file_type, out_spec in output_files.items():
+                    path_or_key = _resolve_output_path_or_key(out_spec)
+                    logger.info(
+                        f"Processing output file: type={file_type}, path_or_key={path_or_key}"
+                    )
+                    if not path_or_key or not artifact_exists(path_or_key):
+                        continue
 
-                try:
-                    deleted, _ = FileRegistry.objects.filter(
-                        file_path=path_or_key
-                    ).delete()
-                    if deleted:
-                        logger.info(
-                            f"Deleted existing FileRegistry entry for path={path_or_key}"
+                    file_size, file_hash = _size_hash_for_path_or_key(path_or_key)
+
+                    if job.modality_slug == "ios":
+                        registry_type = f"ios_processed_{file_type}"
+                    else:
+                        registry_type = get_file_type_for_modality(
+                            job.modality_slug, is_processed=True
                         )
-                except Exception as e:
-                    logger.error(
-                        f"Error deleting existing FileRegistry entry for path={path_or_key}: {e}"
+                    logger.info(f"Storing FileRegistry entry with type={registry_type}")
+
+                    FileRegistry.objects.update_or_create(
+                        file_path=path_or_key,
+                        defaults={
+                            "file_type": registry_type,
+                            "file_size": file_size or 0,
+                            "file_hash": file_hash or "object",
+                            "processing_job": job,
+                            **_job_entity_fk_kwargs(job),
+                            "metadata": {
+                                "processed_at": timezone.now().isoformat(),
+                                "logs": logs if logs else "",
+                            },
+                        },
                     )
-
-                file_size, file_hash = _size_hash_for_path_or_key(path_or_key)
-
-                if job.modality_slug == "ios":
-                    registry_type = f"ios_processed_{file_type}"
-                else:
-                    registry_type = get_file_type_for_modality(
-                        job.modality_slug, is_processed=True
-                    )
-                logger.info(f"Creating FileRegistry entry with type={registry_type}")
-
-                FileRegistry.objects.create(
-                    file_type=registry_type,
-                    file_path=path_or_key,
-                    file_size=file_size or 0,
-                    file_hash=file_hash or "object",
-                    processing_job=job,
-                    **_job_entity_fk_kwargs(job),
-                    metadata={
-                        "processed_at": timezone.now().isoformat(),
-                        "logs": logs if logs else "",
-                    },
-                )
-                logger.info("FileRegistry entry created successfully")
+                    logger.info("FileRegistry entry stored/updated successfully")
 
         # Update related model status
         logger.info(f"Updating related model status for modality: {job.modality_slug}")
@@ -1120,25 +1113,6 @@ def mark_job_completed(job_id, output_files, logs=None):
             logger.info(f"Updating patient IOS processing status")
             job_patient.ios_processing_status = "processed"
             job_patient.save()
-
-            # Update bite classification jobs that depend on this IOS job
-            try:
-                dependent_bite_jobs = job.dependent_jobs.filter(
-                    modality_slug="bite_classification"
-                )
-                for bite_job in dependent_bite_jobs:
-                    if output_files:
-                        bite_job.input_file_path = json.dumps(output_files)
-                        bite_job.save()
-                        logger.info(
-                            f"Updated bite classification job #{bite_job.id} with IOS output files: {list(output_files.keys())}"
-                        )
-                    else:
-                        logger.warning(
-                            f"No output files found for IOS job #{job.id}, cannot update bite classification job #{bite_job.id}"
-                        )
-            except Exception as e:
-                logger.error(f"Error updating dependent bite classification jobs: {e}")
         elif job_voice_caption and job.modality_slug == "audio":
             job_voice_caption.processing_status = "completed"
 
@@ -1234,52 +1208,62 @@ def mark_job_completed(job_id, output_files, logs=None):
                             midline,
                         ]
                     ):
-                        classification, created = Classification.objects.get_or_create(
-                            patient=job_patient,
-                            classifier="pipeline",
-                            defaults={
-                                "sagittal_left": sagittal_left,
-                                "sagittal_right": sagittal_right,
-                                "vertical": vertical,
-                                "transverse": transverse,
-                                "midline": midline,
-                                "annotator": None,
-                            },
-                        )
+                        # Keep classification-specific writes in a savepoint so
+                        # optional metadata failures do not poison the outer
+                        # completion transaction.
+                        with transaction.atomic():
+                            classification, created = (
+                                Classification.objects.get_or_create(
+                                    patient=job_patient,
+                                    classifier="pipeline",
+                                    defaults={
+                                        "sagittal_left": sagittal_left,
+                                        "sagittal_right": sagittal_right,
+                                        "vertical": vertical,
+                                        "transverse": transverse,
+                                        "midline": midline,
+                                        "annotator": None,
+                                    },
+                                )
+                            )
 
-                        if not created:
-                            classification.sagittal_left = sagittal_left
-                            classification.sagittal_right = sagittal_right
-                            classification.vertical = vertical
-                            classification.transverse = transverse
-                            classification.midline = midline
-                            classification.save()
+                            if not created:
+                                classification.sagittal_left = sagittal_left
+                                classification.sagittal_right = sagittal_right
+                                classification.vertical = vertical
+                                classification.transverse = transverse
+                                classification.midline = midline
+                                classification.save()
 
-                        logger.info(
-                            f"{'Created' if created else 'Updated'} classification for patient {getattr(job_patient, 'patient_id', 'unknown')}"
-                        )
+                            logger.info(
+                                f"{'Created' if created else 'Updated'} classification for patient {getattr(job_patient, 'patient_id', 'unknown')}"
+                            )
 
-                        file_size, file_hash = _size_hash_for_path_or_key(
-                            classification_file
-                        )
+                            file_size, file_hash = _size_hash_for_path_or_key(
+                                classification_file
+                            )
 
-                        FileRegistry.objects.create(
-                            file_type=get_file_type_for_modality(
-                                "bite_classification", is_processed=True
-                            ),
-                            file_path=classification_file,
-                            file_size=file_size or 0,
-                            file_hash=file_hash or "object",
-                            processing_job=job,
-                            **_job_entity_fk_kwargs(job),
-                            metadata={
-                                "processed_at": timezone.now().isoformat(),
-                                "classification_results": classification_data,
-                                "logs": logs if logs else "",
-                            },
-                        )
+                            FileRegistry.objects.update_or_create(
+                                file_path=classification_file,
+                                defaults={
+                                    "file_type": get_file_type_for_modality(
+                                        "bite_classification", is_processed=True
+                                    ),
+                                    "file_size": file_size or 0,
+                                    "file_hash": file_hash or "object",
+                                    "processing_job": job,
+                                    **_job_entity_fk_kwargs(job),
+                                    "metadata": {
+                                        "processed_at": timezone.now().isoformat(),
+                                        "classification_results": classification_data,
+                                        "logs": logs if logs else "",
+                                    },
+                                },
+                            )
 
-                        logger.info(f"Stored classification file in FileRegistry")
+                            logger.info(
+                                "Stored/updated classification file in FileRegistry"
+                            )
                     else:
                         logger.warning(
                             f"Classification file contains no valid classification data: {classification_data}"
