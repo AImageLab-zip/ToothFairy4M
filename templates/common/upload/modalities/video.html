@@ -1,0 +1,94 @@
+<div class="mb-4" id="video-upload-section">
+    <h6 class="mb-2"><i class="fas fa-video me-2"></i>Laparoscopy Video</h6>
+    <div class="mb-3">
+        <label for="id_video" class="form-label">Video File</label>
+        <input
+            type="file"
+            name="video"
+            id="id_video"
+            class="form-control"
+            accept="video/*"
+        >
+        <div class="form-text">
+            Any video format accepted. Files larger than 500 MB are supported.
+            A compressed MP4 (audio stripped) will be generated automatically after upload.
+        </div>
+    </div>
+
+    <!-- Upload progress bar (shown only during XHR submission) -->
+    <div id="video-upload-progress" class="d-none">
+        <div class="d-flex justify-content-between mb-1">
+            <small class="text-muted">Uploading video&hellip;</small>
+            <small id="video-upload-pct" class="text-muted">0%</small>
+        </div>
+        <div class="progress" style="height: 6px;">
+            <div id="video-upload-bar"
+                 class="progress-bar progress-bar-striped progress-bar-animated"
+                 role="progressbar"
+                 style="width: 0%"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            </div>
+        </div>
+        <small class="text-muted mt-1 d-block">
+            Large files may take several minutes. Please keep this page open.
+        </small>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var fileInput = document.getElementById('id_video');
+    var form = fileInput ? fileInput.closest('form') : null;
+    if (!form || !fileInput) return;
+
+    var progressWrap = document.getElementById('video-upload-progress');
+    var bar          = document.getElementById('video-upload-bar');
+    var pct          = document.getElementById('video-upload-pct');
+    var submitBtn    = form.querySelector('[type="submit"]');
+
+    form.addEventListener('submit', function (e) {
+        // Only intercept when the user actually selected a video file
+        if (!fileInput.files || fileInput.files.length === 0) return;
+
+        e.preventDefault();
+
+        // Show progress, disable submit button to prevent double-submission
+        progressWrap.classList.remove('d-none');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading\u2026';
+        }
+
+        var formData = new FormData(form);
+        var xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', function (ev) {
+            if (ev.lengthComputable) {
+                var percent = Math.round((ev.loaded / ev.total) * 100);
+                bar.style.width = percent + '%';
+                bar.setAttribute('aria-valuenow', percent);
+                pct.textContent = percent + '%';
+            }
+        });
+
+        xhr.addEventListener('load', function () {
+            // The server responds with a redirect after a successful POST.
+            // Follow it by assigning responseURL (the final URL after redirect).
+            window.location.href = xhr.responseURL || window.location.pathname;
+        });
+
+        xhr.addEventListener('error', function () {
+            progressWrap.classList.add('d-none');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload & Process';
+            }
+            alert('Upload failed. Please check your connection and try again.');
+        });
+
+        xhr.open(form.method || 'POST', form.action || window.location.pathname);
+        xhr.send(formData);
+    });
+})();
+</script>

@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     lsb-release \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI
@@ -57,7 +58,9 @@ RUN mkdir -p \
     /dataset/maxillo/raw/panoramich \
     /dataset/maxillo/raw/rawzip \
     /dataset/maxillo/raw/rgb \
-    /dataset/maxillo/raw/teleradiography
+    /dataset/maxillo/raw/teleradiography \
+    /dataset/maxillo/raw/video \
+    /dataset/maxillo/processed/video
 
 EXPOSE 8000
 

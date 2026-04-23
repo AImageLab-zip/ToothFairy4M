@@ -465,6 +465,10 @@ class FileRegistry(models.Model):
 		('teleradiography_processed', 'Teleradiography Processed'),
 		('panoramic_raw', 'panoramic Raw'),
 		('panoramic_processed', 'panoramic Processed'),
+		# Laparoscopy video modality
+		('video_raw', 'Video Raw'),
+		('video_compressed', 'Video Compressed'),
+		('video_subsampled', 'Video Subsampled'),
 	]
 
 	file_type = models.CharField(max_length=255, choices=FILE_TYPE_CHOICES)

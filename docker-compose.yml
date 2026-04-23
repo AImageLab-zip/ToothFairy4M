@@ -6,7 +6,7 @@ services:
     container_name: web${DOCKER_SUFFIX:+-${DOCKER_SUFFIX}}
     volumes:
       - .:/app
-      - /dataset:/dataset:rw
+      - /media/raid0/tootfairy_dataset:/dataset:rw
     command: /app/entrypoint.sh
     ports:
       - "${WEB_EXTERNAL_PORT:-8000}:8000"

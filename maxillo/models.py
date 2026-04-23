@@ -241,6 +241,7 @@ class Patient(models.Model):
     
     patient_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, blank=True)
+    project = models.ForeignKey('common.Project', on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
     dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
     modalities = models.ManyToManyField(Modality, blank=True, related_name='patients', help_text='Modalities available for this patient')
     folder = models.ForeignKey('Folder', on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
@@ -323,17 +324,6 @@ class Patient(models.Model):
     def __str__(self):
         return f"Patient {self.patient_id} - {self.name}"
 
-    @property
-    def project(self):
-        from common.models import Project
-
-        return Project.objects.filter(slug='maxillo').first() or Project.objects.filter(name__iexact='maxillo').first()
-
-    @property
-    def project_id(self):
-        project = self.project
-        return project.id if project else None
-    
     class Meta:
         indexes = [
             models.Index(fields=['visibility']),

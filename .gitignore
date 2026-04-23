@@ -1,4 +1,6 @@
 *.zip
+node_modules/
+.superpowers/
 .claude
 backup*
 # Python
@@ -200,3 +202,5 @@ ANALYSIS.md
 MODULE_DESIGN.md
 Trace-*.json
 .tmp_trace_*.tsv
+# Added by code-review-graph
+.code-review-graph/

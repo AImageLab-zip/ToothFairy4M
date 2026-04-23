@@ -1,0 +1,11 @@
+{
+  "name": "toothfairy4m",
+  "private": true,
+  "scripts": {
+    "build:lap": "esbuild static/js/src/laparoscopy/core.js --bundle --format=iife --outfile=static/js/dist/laparoscopy_annotator.bundle.js --minify",
+    "watch:lap": "esbuild static/js/src/laparoscopy/core.js --bundle --format=iife --outfile=static/js/dist/laparoscopy_annotator.bundle.js --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25"
+  }
+}

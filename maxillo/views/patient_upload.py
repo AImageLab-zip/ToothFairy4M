@@ -1,11 +1,15 @@
 """Patient upload view."""
+
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+import logging
 
 from common.models import Project
-from .domain import get_domain_forms, get_domain_models
+from .domain import get_domain_forms, get_domain_models, get_namespace
 from .helpers import redirect_with_namespace
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -14,44 +18,83 @@ def upload_patient(request):
     domain_models = get_domain_models(request)
     domain_forms = get_domain_forms(request)
 
-    PatientForm = domain_forms['PatientForm']
-    PatientUploadForm = domain_forms['PatientUploadForm']
-    Folder = domain_models['Folder']
-    
+    PatientForm = domain_forms["PatientForm"]
+    PatientUploadForm = domain_forms["PatientUploadForm"]
+    Folder = domain_models["Folder"]
+
     if not user_profile.can_upload_scans():
-        messages.error(request, 'You do not have permission to upload scans.')
-        return redirect_with_namespace(request, 'patient_list')
-    
+        messages.error(request, "You do not have permission to upload scans.")
+        return redirect_with_namespace(request, "patient_list")
+
     # Enforce per-project upload permission
-    current_project_id = request.session.get('current_project_id')
+    current_project_id = request.session.get("current_project_id")
+    namespace = get_namespace(request)
+
+    # Laparoscopy has its own project bucket; force session/project assignment
+    # from URL namespace so uploads never leak into maxillo.
+    if namespace == "laparoscopy":
+        laparoscopy_project = (
+            Project.objects.filter(slug="laparoscopy").first()
+            or Project.objects.filter(name__iexact="laparoscopy").first()
+        )
+        if not laparoscopy_project:
+            laparoscopy_project = Project.objects.create(
+                name="laparoscopy", slug="laparoscopy"
+            )
+        if laparoscopy_project:
+            current_project_id = laparoscopy_project.id
+            if request.session.get("current_project_id") != laparoscopy_project.id:
+                request.session["current_project_id"] = laparoscopy_project.id
+    elif not current_project_id and namespace in ["maxillo", "brain"]:
+        project = Project.objects.filter(slug=namespace).first()
+        if project:
+            current_project_id = project.id
+            request.session["current_project_id"] = current_project_id
+
     if current_project_id and not user_profile.can_upload_scans():
-        messages.error(request, 'You are not allowed to upload in this project.')
-        return redirect_with_namespace(request, 'patient_list')
-    
-    if request.method == 'POST':
-        patient_upload_form = PatientUploadForm(request.POST, request.FILES, user=request.user)
+        messages.error(request, "You are not allowed to upload in this project.")
+        return redirect_with_namespace(request, "patient_list")
+
+    if request.method == "POST":
+        patient_upload_form = PatientUploadForm(
+            request.POST, request.FILES, user=request.user
+        )
         patient_form = PatientForm()
 
         # For now, we do not support CBCT folder uploads
-        cbct_upload_type = request.POST.get('cbct_upload_type', 'file')
-        if cbct_upload_type == 'folder' and request.FILES.getlist('cbct_folder_files'):
-            messages.error(request, 'CBCT Folder uploads have been disabled.')
-            return render(request, 'common/upload/upload.html', {
-                'patient_form': patient_form,
-                'patient_upload_form': patient_upload_form,
-                'folders': Folder.objects.filter(parent__isnull=True).order_by('name'),
-            })
+        cbct_upload_type = request.POST.get("cbct_upload_type", "file")
+        if cbct_upload_type == "folder" and request.FILES.getlist("cbct_folder_files"):
+            messages.error(request, "CBCT Folder uploads have been disabled.")
+            return render(
+                request,
+                "common/upload/upload.html",
+                {
+                    "patient_form": patient_form,
+                    "patient_upload_form": patient_upload_form,
+                    "folders": Folder.objects.filter(parent__isnull=True).order_by(
+                        "name"
+                    ),
+                },
+            )
 
         if patient_upload_form.is_valid():
             # Create and populate Patient from the form
             patient = patient_upload_form.save(commit=False)
             patient.uploaded_by = request.user
-            
+
+            # Keep uploads scoped to the active project (maxillo/brain/laparoscopy).
+            # Without this, records can be created with project=NULL and disappear
+            # from project-filtered patient lists.
+            if current_project_id and any(
+                field.name == "project" for field in patient._meta.fields
+            ):
+                patient.project_id = current_project_id
+
             if user_profile.is_student_developer():
-                patient.visibility = 'debug'
-                
+                patient.visibility = "debug"
+
             # Assign folder if provided
-            folder = patient_upload_form.cleaned_data.get('folder')
+            folder = patient_upload_form.cleaned_data.get("folder")
             if folder:
                 patient.folder = folder
             patient.save()
@@ -66,118 +109,193 @@ def upload_patient(request):
             uploaded_modalities = []
             processing_job_ids = []
             bite_job_ids = []
-            
+
             # Handle CBCT (single file or folder)
-            cbct_file = request.FILES.get('cbct')
-            cbct_folder_files = request.FILES.getlist('cbct_folder_files')
+            cbct_file = request.FILES.get("cbct")
+            cbct_folder_files = request.FILES.getlist("cbct_folder_files")
             if cbct_file or cbct_folder_files:
                 try:
-                    modality = Modality.objects.get(slug='cbct')
+                    modality = Modality.objects.get(slug="cbct")
                     patient.modalities.add(modality)
-                    
+
                     # Update processing status
-                    patient.cbct_processing_status = 'processing'
+                    patient.cbct_processing_status = "processing"
                     patient.save()
-                    
+
                     if cbct_file:
                         from ..file_utils import save_generic_modality_file
-                        fr, job = save_generic_modality_file(patient, 'cbct', cbct_file)
+
+                        fr, job = save_generic_modality_file(patient, "cbct", cbct_file)
                         if fr:
-                            uploaded_modalities.append('CBCT')
+                            uploaded_modalities.append("CBCT")
                             if job:
                                 processing_job_ids.append(job.id)
                     elif cbct_folder_files:
                         from ..file_utils import save_generic_modality_folder
-                        fr, job = save_generic_modality_folder(patient, 'cbct', cbct_folder_files)
+
+                        fr, job = save_generic_modality_folder(
+                            patient, "cbct", cbct_folder_files
+                        )
                         if fr:
-                            uploaded_modalities.append('CBCT')
+                            uploaded_modalities.append("CBCT")
                             if job:
                                 processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving CBCT: {e}")
 
             # Handle IOS (upper + lower)
-            ios_upper = request.FILES.get('ios_upper')
-            ios_lower = request.FILES.get('ios_lower')
+            ios_upper = request.FILES.get("ios_upper")
+            ios_lower = request.FILES.get("ios_lower")
             if ios_upper and ios_lower:
                 try:
-                    modality = Modality.objects.get(slug='ios')
+                    modality = Modality.objects.get(slug="ios")
                     patient.modalities.add(modality)
-                    
+
                     # Update processing status
-                    patient.ios_processing_status = 'processing'
+                    patient.ios_processing_status = "processing"
                     patient.save()
-                    
+
                     from ..file_utils import save_ios_to_dataset
+
                     ios_result = save_ios_to_dataset(patient, ios_upper, ios_lower)
-                    uploaded_modalities.append('IOS')
-                    if ios_result.get('processing_job'):
-                        processing_job_ids.append(ios_result['processing_job'].id)
-                    if ios_result.get('bite_classification_job'):
-                        bite_job_ids.append(ios_result['bite_classification_job'].id)
+                    uploaded_modalities.append("IOS")
+                    if ios_result.get("processing_job"):
+                        processing_job_ids.append(ios_result["processing_job"].id)
+                    if ios_result.get("bite_classification_job"):
+                        bite_job_ids.append(ios_result["bite_classification_job"].id)
                 except Exception as e:
                     messages.error(request, f"Error saving IOS: {e}")
 
             # Handle Teleradiography
-            teleradiography_file = request.FILES.get('teleradiography')
+            teleradiography_file = request.FILES.get("teleradiography")
             if teleradiography_file:
                 try:
-                    modality = Modality.objects.get(slug='teleradiography')
+                    modality = Modality.objects.get(slug="teleradiography")
                     patient.modalities.add(modality)
-                    
+
                     from ..file_utils import save_generic_modality_file
-                    fr, job = save_generic_modality_file(patient, 'teleradiography', teleradiography_file)
+
+                    fr, job = save_generic_modality_file(
+                        patient, "teleradiography", teleradiography_file
+                    )
                     if fr:
-                        uploaded_modalities.append('Teleradiography')
+                        uploaded_modalities.append("Teleradiography")
                         if job:
                             processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving Teleradiography: {e}")
 
             # Handle Panoramic
-            panoramic_file = request.FILES.get('panoramic')
+            panoramic_file = request.FILES.get("panoramic")
             if panoramic_file:
                 try:
-                    modality = Modality.objects.get(slug='panoramic')
+                    modality = Modality.objects.get(slug="panoramic")
                     patient.modalities.add(modality)
-                    
+
                     from ..file_utils import save_generic_modality_file
-                    fr, job = save_generic_modality_file(patient, 'panoramic', panoramic_file)
+
+                    fr, job = save_generic_modality_file(
+                        patient, "panoramic", panoramic_file
+                    )
                     if fr:
-                        uploaded_modalities.append('Panoramic')
+                        uploaded_modalities.append("Panoramic")
                         if job:
                             processing_job_ids.append(job.id)
                 except Exception as e:
                     messages.error(request, f"Error saving Panoramic: {e}")
 
             # Handle Intraoral Photos (multiple files)
-            intraoral_photos = request.FILES.getlist('intraoral-photos')
+            intraoral_photos = request.FILES.getlist("intraoral-photos")
             if intraoral_photos:
                 try:
-                    modality = Modality.objects.get(slug='intraoral-photo')
+                    modality = Modality.objects.get(slug="intraoral-photo")
                     patient.modalities.add(modality)
 
                     if len(intraoral_photos) > 10:
-                        messages.warning(request, f"Too many intraoral images ({len(intraoral_photos)}). Only first 10 will be processed.")
+                        messages.warning(
+                            request,
+                            f"Too many intraoral images ({len(intraoral_photos)}). Only first 10 will be processed.",
+                        )
                         intraoral_photos = intraoral_photos[:10]
 
                     from ..file_utils import save_intraoral_photos_to_dataset
-                    saved, errors, job = save_intraoral_photos_to_dataset(patient, intraoral_photos)
+
+                    saved, errors, job = save_intraoral_photos_to_dataset(
+                        patient, intraoral_photos
+                    )
                     if saved:
-                        uploaded_modalities.append(f'Intraoral Photos ({len(saved)})')
+                        uploaded_modalities.append(f"Intraoral Photos ({len(saved)})")
                         if job:
                             processing_job_ids.append(job.id)
                     if errors:
-                        messages.warning(request, f"{len(errors)} intraoral photo(s) failed to upload")
+                        messages.warning(
+                            request,
+                            f"{len(errors)} intraoral photo(s) failed to upload",
+                        )
                 except Exception as e:
                     messages.error(request, f"Error saving Intraoral Photos: {e}")
 
+            # Handle Video (laparoscopy)
+            video_file = request.FILES.get("video")
+            if video_file:
+                try:
+                    modality = Modality.objects.get(slug="video")
+                    patient.modalities.add(modality)
+                    from ..file_utils import save_generic_modality_file
+
+                    fr, job = save_generic_modality_file(patient, "video", video_file)
+                    if fr:
+                        uploaded_modalities.append("Video")
+                        if job:
+                            processing_job_ids.append(job.id)
+                            import os as _os
+                            from common.models import Job as _Job
+                            from laparoscopy.file_utils import (
+                                launch_video_compression,
+                                launch_video_subsampling,
+                            )
+
+                            _base = _os.path.splitext(_os.path.basename(fr.file_path))[
+                                0
+                            ]
+                            _processed_dir = _os.path.dirname(fr.file_path).replace(
+                                "/raw/", "/processed/"
+                            )
+
+                            # Compression job (existing)
+                            _out = _os.path.join(
+                                _processed_dir, _base + "_compressed.mp4"
+                            )
+                            launch_video_compression(job.id, fr.file_path, _out)
+
+                            # Subsampling job (1 fps), own Job row
+                            _sub_out = _os.path.join(
+                                _processed_dir, "subsampled_" + _base + ".mp4"
+                            )
+                            sub_job = _Job.objects.create(
+                                modality_slug="video_subsampled",
+                                patient=patient,
+                                brain_patient=None,
+                                domain="maxillo",
+                                input_file_path=fr.file_path,
+                                status="pending",
+                                output_files={},
+                            )
+                            processing_job_ids.append(sub_job.id)
+                            launch_video_subsampling(sub_job.id, fr.file_path, _sub_out)
+                except Modality.DoesNotExist:
+                    logger.warning(
+                        "Video modality not found in DB; run setup_video_modality management command"
+                    )
+                except Exception as e:
+                    messages.error(request, f"Error saving Video: {e}")
+
             # Handle Brain MRI modalities (T1, T2, FLAIR, T1c)
             brain_modalities = {
-                'braintumor-mri-t1': 'Brain MRI T1',
-                'braintumor-mri-t2': 'Brain MRI T2',
-                'braintumor-mri-flair': 'Brain MRI FLAIR',
-                'braintumor-mri-t1c': 'Brain MRI T1c',
+                "braintumor-mri-t1": "Brain MRI T1",
+                "braintumor-mri-t2": "Brain MRI T2",
+                "braintumor-mri-flair": "Brain MRI FLAIR",
+                "braintumor-mri-t1c": "Brain MRI T1c",
             }
 
             for slug, display_name in brain_modalities.items():
@@ -188,6 +306,7 @@ def upload_patient(request):
                         patient.modalities.add(modality)
 
                         from ..file_utils import save_generic_modality_file
+
                         fr, job = save_generic_modality_file(patient, slug, file_obj)
                         if fr:
                             uploaded_modalities.append(display_name)
@@ -208,28 +327,28 @@ def upload_patient(request):
                     summary_message += f" Bite classification jobs: #{', #'.join(str(job_id) for job_id in bite_job_ids)}."
                 messages.success(request, summary_message)
             else:
-                messages.success(request, 'Patient uploaded successfully!')
-            return redirect_with_namespace(request, 'patient_list')
+                messages.success(request, "Patient uploaded successfully!")
+            return redirect_with_namespace(request, "patient_list")
     else:
         patient_form = PatientForm()
         patient_upload_form = PatientUploadForm(user=request.user)
-    
-    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
-    
+
+    folders = Folder.objects.filter(parent__isnull=True).order_by("name")
+
     # Get allowed modalities for template rendering
     allowed_modalities = []
-    cp_id = request.session.get('current_project_id')
+    cp_id = request.session.get("current_project_id")
     if cp_id:
         try:
-            proj = Project.objects.prefetch_related('modalities').get(id=cp_id)
+            proj = Project.objects.prefetch_related("modalities").get(id=cp_id)
             allowed_modalities = list(proj.modalities.filter(is_active=True))
         except Project.DoesNotExist:
             pass
-    
+
     context = {
-        'patient_form': patient_form,
-        'patient_upload_form': patient_upload_form,
-        'folders': folders,
-        'allowed_modalities': allowed_modalities,
+        "patient_form": patient_form,
+        "patient_upload_form": patient_upload_form,
+        "folders": folders,
+        "allowed_modalities": allowed_modalities,
     }
-    return render(request, 'common/upload/upload.html', context)
+    return render(request, "common/upload/upload.html", context)

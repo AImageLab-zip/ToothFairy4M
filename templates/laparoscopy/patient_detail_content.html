@@ -1,0 +1,438 @@
+{% load static %}
+
+<div class="container-fluid">
+    <div class="row">
+
+        <!-- ======================================================== -->
+        <!-- Left column: video player + annotation interface          -->
+        <!-- ======================================================== -->
+        <div class="col-lg-8">
+
+            <!-- Patient header -->
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <h4 class="mb-0">
+                    <i class="fas fa-video me-2"></i>
+                    {% if patient.name %}{{ patient.name }}{% else %}Patient {{ patient.patient_id }}{% endif %}
+                </h4>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <button id="annotation-toggle-btn" class="btn btn-sm btn-outline-warning d-none">
+                        <i class="fas fa-draw-polygon me-1"></i>Enter Annotation Mode
+                    </button>
+                </div>
+            </div>
+
+            <!-- Annotation toolbar (hidden until annotation mode) -->
+            <div id="annotation-toolbar" class="d-none mb-2">
+                <div class="card">
+                    <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-3">
+
+                        <!-- Tool buttons -->
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary active" data-tool="brush"
+                                    title="Brush (B)">
+                                <i class="fas fa-paint-brush"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-tool="eraser"
+                                    title="Eraser (E)">
+                                <i class="fas fa-eraser"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-tool="polygon"
+                                    title="Polygon (P) — click to add vertices, Enter to close, Esc to cancel">
+                                <i class="fas fa-draw-polygon"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-tool="pan"
+                                    title="Pan (H) — drag to move the view&#10;Also: hold Ctrl or Space while using any tool">
+                                <i class="fas fa-hand-paper"></i>
+                            </button>
+                        </div>
+
+                        <!-- Brush size -->
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="small mb-0 text-nowrap"><i class="fas fa-circle me-1"></i>Size</label>
+                            <input id="brush-size-input" type="range" class="form-range"
+                                   min="1" max="60" value="8" style="width:90px;">
+                            <span id="brush-size-label" class="small text-muted" style="min-width:20px;">8</span>
+                        </div>
+
+                        <!-- Zoom buttons -->
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button id="zoom-in-btn" class="btn btn-outline-secondary" title="Zoom in">
+                                <i class="fas fa-search-plus"></i>
+                            </button>
+                            <button id="zoom-reset-btn" class="btn btn-outline-secondary" title="Reset zoom">
+                                <i class="fas fa-compress-arrows-alt"></i>
+                            </button>
+                            <button id="zoom-out-btn" class="btn btn-outline-secondary" title="Zoom out">
+                                <i class="fas fa-search-minus"></i>
+                            </button>
+                        </div>
+
+                        <!-- Controls legend -->
+                        <div class="ms-auto d-none d-lg-flex flex-column align-items-end" style="font-size:0.72rem;color:#6c757d;line-height:1.6;">
+                            <span>
+                                <kbd>B</kbd> brush &nbsp;
+                                <kbd>E</kbd> eraser &nbsp;
+                                <kbd>P</kbd> polygon &nbsp;
+                                <kbd>H</kbd> pan
+                            </span>
+                            <span>
+                                <kbd>Ctrl</kbd>/<kbd>Space</kbd>+drag pan &nbsp;&middot;&nbsp;
+                                <kbd>←</kbd><kbd>→</kbd> frame &nbsp;&middot;&nbsp;
+                                <kbd>Shift+←</kbd><kbd>Shift+→</kbd> ±10 seconds
+                            </span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video + canvas container.
+                 overflow:hidden clips zoomed content; the inner #video-zoom-inner
+                 div receives the CSS transform so both video and canvas scale together. -->
+            <div id="video-player-wrap" class="mb-2" style="background:#000;line-height:0;overflow:hidden;">
+                <p class="text-muted p-3 mb-0" id="video-placeholder">
+                    <i class="fas fa-hourglass-half me-2"></i>No video uploaded for this patient.
+                </p>
+            </div>
+
+            <!-- Frame navigation bar (hidden until a video is loaded) -->
+            <div id="frame-nav-bar" class="d-none">
+                <div class="card">
+                    <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-3">
+
+                        <!-- Frame step buttons -->
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button id="frame-first" class="btn btn-outline-secondary" title="Go to start">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button id="frame-prev10" class="btn btn-outline-secondary" title="Step back 10 seconds (Shift+←)" style="font-size:0.75rem;font-weight:600;">
+                                &minus;10s
+                            </button>
+                            <button id="frame-prev" class="btn btn-outline-secondary" title="Step back 1 second (←)" style="font-size:0.75rem;font-weight:600;">
+                                &minus;1s
+                            </button>
+                            <button id="frame-play" class="btn btn-outline-secondary" title="Play / Pause">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="frame-next" class="btn btn-outline-secondary" title="Step forward 1 second (→)" style="font-size:0.75rem;font-weight:600;">
+                                +1s
+                            </button>
+                            <button id="frame-next10" class="btn btn-outline-secondary" title="Step forward 10 seconds (Shift+→)" style="font-size:0.75rem;font-weight:600;">
+                                +10s
+                            </button>
+                            <button id="frame-last" class="btn btn-outline-secondary" title="Go to end">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
+
+                        <!-- Timestamp display -->
+                        <span class="font-monospace small text-muted" id="frame-timestamp">00:00.000</span>
+
+                        <!-- Polygon drawing hint — visible only while a polygon is being drawn -->
+                        <div id="polygon-drawing-hint" class="d-none ms-auto small text-info">
+                            <i class="fas fa-draw-polygon me-1"></i>
+                            Click to add points &nbsp;&middot;&nbsp; <kbd>Enter</kbd> to close &nbsp;&middot;&nbsp; <kbd>Esc</kbd> to cancel
+                        </div>
+
+                    </div>
+                </div>
+            </div><!-- /frame-nav-bar -->
+
+            <!-- Keyframe-based quadrant classification timeline -->
+            <div id="temporal-classification-bar" class="d-none mt-2">
+                <div class="card">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                            <strong class="small me-1">
+                                <i class="fas fa-stream me-1"></i>Quadrant Classification
+                            </strong>
+
+                            <button id="timeline-add-pin-btn" class="btn btn-sm btn-outline-primary" type="button" title="Add marker at the current playhead time">
+                                <i class="fas fa-map-pin me-1"></i>Add Marker
+                            </button>
+
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                        id="timeline-class-dropdown-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span id="timeline-class-active-swatch" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;margin-right:3px;"></span>
+                                    <span id="timeline-class-active-label">—</span>
+                                </button>
+                                <ul id="timeline-class-list" class="dropdown-menu" aria-labelledby="timeline-class-dropdown-btn"></ul>
+                            </div>
+
+                            <span id="timeline-active-class" class="badge text-bg-secondary ms-auto">Current: -</span>
+                        </div>
+
+                        <div id="timeline-track-wrap" class="timeline-track-wrap">
+                            <div id="timeline-track" class="timeline-track" role="slider" aria-label="Video timeline"></div>
+                            <div id="timeline-segments-layer" class="timeline-segments-layer"></div>
+                            <div id="timeline-pins-layer" class="timeline-pins-layer"></div>
+                            <button id="timeline-playhead" class="timeline-playhead" type="button" aria-label="Current frame position"></button>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-1 small text-muted font-monospace">
+                            <span id="timeline-current-time">00:00.000</span>
+                            <span id="timeline-duration">00:00.000</span>
+                        </div>
+
+                        <div class="small text-muted mt-1">
+                            Drag the playhead to scrub. Use Add Marker for new markers. Right-click a marker for actions.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /col-lg-8 -->
+
+        <!-- ======================================================== -->
+        <!-- Right column: annotation shapes list, region types, etc.  -->
+        <!-- ======================================================== -->
+        <div class="col-lg-4">
+
+            <!-- Annotations list (visible only in annotation mode) -->
+            <div id="shapes-list-panel" class="d-none mb-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <strong class="small"><i class="fas fa-shapes me-1"></i>Annotations</strong>
+                        <small class="text-muted">click to select &middot; use Delete to remove</small>
+                    </div>
+                    <ul id="shapes-list" class="list-group list-group-flush"
+                        style="max-height:200px;overflow-y:auto;"></ul>
+                </div>
+            </div>
+
+            <!-- Region Types panel (visible only in annotation mode) -->
+            <div id="region-types-panel" class="d-none mb-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <strong class="small"><i class="fas fa-layer-group me-1"></i>Region Types</strong>
+                        <div class="d-flex align-items-center gap-2">
+                            <button id="toggle-regions-visibility-btn" type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                    title="Hide all regions">
+                                <i class="fas fa-eye-slash me-1"></i>Hide all
+                            </button>
+                            {% if user_profile.is_admin %}
+                            <button id="add-region-btn" class="btn btn-sm btn-outline-success py-0">
+                                <i class="fas fa-plus me-1"></i>Add
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <ul id="region-list" class="list-unstyled d-flex flex-wrap gap-2 mb-0"
+                        style="max-height:220px;overflow-y:auto;"></ul>
+                </div>
+            </div>
+
+            <div id="magic-toolbox-panel" class="d-none mb-3">
+                <div class="card border-info-subtle">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <strong class="small"><i class="fas fa-magic me-1"></i>Magic Toolbox</strong>
+                        <span id="magic-prompts-count" class="badge text-bg-light">0</span>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <button id="magic-tool-point-btn" type="button" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-crosshairs me-1"></i>Point Tool
+                            </button>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Magic point label">
+                                <button id="magic-point-positive-btn" type="button" class="btn btn-success active" title="Positive prompt point">
+                                    +
+                                </button>
+                                <button id="magic-point-negative-btn" type="button" class="btn btn-outline-danger" title="Negative prompt point (sent to worker)">
+                                    -
+                                </button>
+                            </div>
+                            <button id="magic-send-prompts-btn" type="button" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-paper-plane me-1"></i>Send
+                            </button>
+                            <button id="magic-clear-frame-btn" type="button" class="btn btn-sm btn-outline-secondary">
+                                Clear frame
+                            </button>
+                            <button id="magic-clear-all-btn" type="button" class="btn btn-sm btn-outline-danger">
+                                Clear all
+                            </button>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <label for="magic-window-seconds-input" class="small mb-0 text-muted">Window (s)</label>
+                            <input id="magic-window-seconds-input" type="number" class="form-control form-control-sm"
+                                   value="5.0" min="0.1" step="0.1" style="max-width:110px;">
+                        </div>
+                        <div class="small text-muted mb-1">
+                            Active region sets prompt color. Choose +/- point label. Negative points are sent with label <code>0</code>.
+                        </div>
+                        <ul id="magic-prompts-list" class="list-group list-group-flush mt-2"
+                            style="max-height:140px;overflow-y:auto;"></ul>
+                    </div>
+                </div>
+            </div>
+
+            {% include 'common/sections/vocal_caption_section.html' %}
+            {% include 'common/sections/scan_settings_section.html' %}
+            {% include 'common/sections/file_management_section.html' %}
+
+
+        </div><!-- /col-lg-4 -->
+
+    </div><!-- /row -->
+
+    <!-- Back button -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <a href="{% url 'laparoscopy:patient_list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Scan List
+            </a>
+        </div>
+    </div>
+</div>
+
+<!--
+    Inline JSON: patient files (raw + processed) passed to JS without custom filters.
+-->
+<script id="_pf_raw" type="application/json">
+[{% for f in patient_files.raw %}{"id":{{ f.id }},"file_type":"{{ f.file_type }}","file_path":"{{ f.file_path|escapejs }}","file_size_mb":"{{ f.file_size_mb }}","filename":"{{ f.filename|escapejs }}","original_filename":"{{ f.original_filename|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+</script>
+<script id="_pf_processed" type="application/json">
+[{% for f in patient_files.processed %}{"id":{{ f.id }},"file_type":"{{ f.file_type }}","file_path":"{{ f.file_path|escapejs }}","file_size_mb":"{{ f.file_size_mb }}","filename":"{{ f.filename|escapejs }}","original_filename":"{{ f.original_filename|escapejs }}","fps":{{ f.metadata.fps|default:1 }}}{% if not forloop.last %},{% endif %}{% endfor %}]
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    var allRaw       = JSON.parse(document.getElementById('_pf_raw').textContent);
+    var allProcessed = JSON.parse(document.getElementById('_pf_processed').textContent);
+
+    var rawVideo        = allRaw.find(function (f) { return f.file_type === 'video_raw'; });
+    var compressedVideo = allProcessed.find(function (f) { return f.file_type === 'video_compressed'; });
+    var subsampledVideo = allProcessed.find(function (f) { return f.file_type === 'video_subsampled'; });
+    var playFile = compressedVideo || rawVideo;
+
+    window.subsampledVideoId   = subsampledVideo ? subsampledVideo.id        : null;
+    window.subsampledVideoPath = subsampledVideo ? subsampledVideo.file_path : null;
+    window.subsampledVideoFps  = subsampledVideo ? (subsampledVideo.fps || 1) : 1;
+    window.workerWsHost        = window.location.host;
+    window.workerVideoId       = window.subsampledVideoId
+        ? 'lap-{{ patient.patient_id }}-' + window.subsampledVideoId
+        : null;
+    window.workerVideoPath     = window.subsampledVideoPath;
+
+    if (!playFile) return;
+
+    var playerWrap  = document.getElementById('video-player-wrap');
+    var placeholder = document.getElementById('video-placeholder');
+    var toggleBtn   = document.getElementById('annotation-toggle-btn');
+    var frameNavBar = document.getElementById('frame-nav-bar');
+    var temporalBar = document.getElementById('temporal-classification-bar');
+    var magicPanel   = document.getElementById('magic-toolbox-panel');
+    var regionPanel  = document.getElementById('region-types-panel');
+
+    placeholder.remove();
+
+    var zoomInner = document.createElement('div');
+    zoomInner.id = 'video-zoom-inner';
+    zoomInner.style.cssText = 'position:relative;transform-origin:0 0;';
+    playerWrap.appendChild(zoomInner);
+
+    var video = document.createElement('video');
+    video.controls = true;
+    video.style.cssText = 'width:100%;display:block;max-height:65vh;background:#000;position:relative;z-index:1;';
+    video.setAttribute('preload', 'metadata');
+    video.src = '/laparoscopy/video/' + playFile.id + '/';
+    window.__laparoscopyVideoEl = video;
+    zoomInner.appendChild(video);
+
+    var subsampledPreviewVideo = null;
+    if (subsampledVideo) {
+        subsampledPreviewVideo = document.createElement('video');
+        subsampledPreviewVideo.muted = true;
+        subsampledPreviewVideo.setAttribute('playsinline', 'playsinline');
+        subsampledPreviewVideo.setAttribute('preload', 'auto');
+        subsampledPreviewVideo.style.cssText =
+            'position:absolute;top:0;left:0;width:100%;height:100%;display:none;' +
+            'pointer-events:none;background:#000;object-fit:contain;z-index:2;';
+        subsampledPreviewVideo.src = '/laparoscopy/video/' + subsampledVideo.id + '/';
+        zoomInner.appendChild(subsampledPreviewVideo);
+    }
+
+    toggleBtn.classList.remove('d-none');
+    frameNavBar.classList.remove('d-none');
+    temporalBar.classList.remove('d-none');
+    if (regionPanel) regionPanel.classList.remove('d-none');
+
+    function initAnnotator() {
+        var shapesPanelEl = document.getElementById('shapes-list-panel');
+        var regionPanelEl = document.getElementById('region-types-panel');
+
+        var annotator = new VideoAnnotator({
+            videoEl:        video,
+            wrapEl:         zoomInner,
+            outerEl:        playerWrap,
+            toolbarEl:      document.getElementById('annotation-toolbar'),
+            regionListEl:   document.getElementById('region-list'),
+            shapesListEl:   document.getElementById('shapes-list'),
+            toggleBtn:      toggleBtn,
+            timestampEl:    document.getElementById('frame-timestamp'),
+            brushSizeInput: document.getElementById('brush-size-input'),
+            brushSizeLabel: document.getElementById('brush-size-label'),
+            polygonHintEl:  document.getElementById('polygon-drawing-hint'),
+            timelineTrackWrapEl:     document.getElementById('timeline-track-wrap'),
+            timelineTrackEl:         document.getElementById('timeline-track'),
+            timelineSegmentsLayerEl: document.getElementById('timeline-segments-layer'),
+            timelinePinsLayerEl:     document.getElementById('timeline-pins-layer'),
+            timelinePlayheadEl:      document.getElementById('timeline-playhead'),
+            timelineCurrentTimeEl:   document.getElementById('timeline-current-time'),
+            timelineDurationEl:      document.getElementById('timeline-duration'),
+            timelineActiveClassEl:   document.getElementById('timeline-active-class'),
+            timelineAddPinBtnEl:     document.getElementById('timeline-add-pin-btn'),
+            timelineClassListEl:     document.getElementById('timeline-class-list'),
+            patientId:               {{ patient.patient_id }},
+            isAdmin:                 {{ user_profile.is_admin|yesno:"true,false" }},
+            csrfToken:               '{{ csrf_token }}',
+            subsampledVideoFps:      window.subsampledVideoFps,
+            workerWsHost:            window.workerWsHost,
+            workerVideoId:           window.workerVideoId,
+            workerVideoSource:       window.workerVideoPath,
+            subsampledVideoEl:       subsampledPreviewVideo,
+            magicPointPositiveBtnEl: document.getElementById('magic-point-positive-btn'),
+            magicPointNegativeBtnEl: document.getElementById('magic-point-negative-btn'),
+        });
+
+        var origEnter = annotator._enterAnnotationMode.bind(annotator);
+        var origExit  = annotator._exitAnnotationMode.bind(annotator);
+
+        annotator._enterAnnotationMode = function () {
+            origEnter();
+            shapesPanelEl.classList.remove('d-none');
+            regionPanelEl.classList.remove('d-none');
+            if (magicPanel) magicPanel.classList.remove('d-none');
+        };
+        annotator._exitAnnotationMode = function () {
+            origExit();
+            shapesPanelEl.classList.add('d-none');
+            if (magicPanel) magicPanel.classList.add('d-none');
+            // Deactivate magic point tool if it was active
+            if (annotator._magicPointActive) {
+                annotator._magicPointActive = false;
+                if (annotator._magicOverlayEl) {
+                    annotator._magicOverlayEl.style.pointerEvents = 'none';
+                    annotator._magicOverlayEl.style.cursor = 'default';
+                }
+                if (annotator._magicPointToolBtnEl) {
+                    annotator._magicPointToolBtnEl.classList.remove('active', 'btn-primary');
+                    annotator._magicPointToolBtnEl.classList.add('btn-outline-primary');
+                }
+            }
+            if (typeof annotator._hideMagicAcceptBtn === 'function') {
+                annotator._hideMagicAcceptBtn();
+            }
+        };
+    }
+
+    if (video.readyState >= 1) {
+        initAnnotator();
+    } else {
+        video.addEventListener('loadedmetadata', initAnnotator, { once: true });
+    }
+
+})();
+</script>

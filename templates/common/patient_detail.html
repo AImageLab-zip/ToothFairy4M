@@ -51,10 +51,15 @@
 {# Main patient detail controller #}
 <script src="{% static 'js/patient_detail.js' %}"></script>
 
+{% if ns == 'laparoscopy' %}
+{# Konva.js — canvas library for annotation overlay #}
+<script src="https://cdn.jsdelivr.net/npm/konva@9/konva.min.js"></script>
+<script src="{% static 'js/dist/laparoscopy_annotator.bundle.js' %}"></script>
+{% endif %}
+
 {# Additional features #}
 <script src="{% static 'js/vocal_caption.js' %}"></script>
 <script src="{% static 'js/nifti_metadata.js' %}"></script>
 <script src="{% static 'js/collapse_sections.js' %}"></script>
 <script src="{% static 'js/cbct_upload.js' %}"></script>
 {% endblock %}
-
