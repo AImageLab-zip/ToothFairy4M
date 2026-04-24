@@ -1,0 +1,15 @@
+<div class="card mb-3">
+    <div class="card-header">
+        <i class="fas fa-draw-polygon me-2"></i>Tooth Segmentation
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-2">
+            Edit segmented teeth and correct annotations.
+        </p>
+
+        <a href="{% url 'maxillo:patient_segmentation' patient.patient_id %}" 
+           class="btn btn-primary btn-sm w-100">
+            <i class="fas fa-edit me-1"></i>Open Segmentation
+        </a>
+    </div>
+</div>

@@ -157,9 +157,9 @@ def upload_patient(request):
                     modality = Modality.objects.get(slug='intraoral-photo')
                     patient.modalities.add(modality)
 
-                    if len(intraoral_photos) > 10:
+                    if len(intraoral_photos) > 20:
                         messages.warning(request, f"Too many intraoral images ({len(intraoral_photos)}). Only first 10 will be processed.")
-                        intraoral_photos = intraoral_photos[:10]
+                        intraoral_photos = intraoral_photos[:20]
 
                     from ..file_utils import save_intraoral_photos_to_dataset
                     saved, errors, job = save_intraoral_photos_to_dataset(patient, intraoral_photos)
