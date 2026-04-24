@@ -1,0 +1,133 @@
+.tool-btn.active-tool {
+    background-color: var(--bs-primary);
+    color: white;
+    border-color: var(--bs-primary);
+}
+
+#segmentation-thumbnails .thumb-card.active-thumb {
+    border: 2px solid var(--bs-primary) !important;
+}
+
+#canvas-wrapper {
+    overflow: auto;
+    min-height: 600px;
+    max-height: 75vh;
+    text-align: center;
+    cursor: crosshair;
+}
+
+#segmentation-canvas {
+    border: 1px solid #ddd;
+    background: #fff;
+    display: inline-block;
+    max-width: none;
+}
+
+.fdi-color-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.fdi-color-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.fdi-color-list::-webkit-scrollbar-track {
+    background: #eef1f4;
+    border-radius: 10px;
+}
+
+.fdi-color-list::-webkit-scrollbar-thumb {
+    background: #b8bec6;
+    border-radius: 10px;
+}
+
+.fdi-color-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #f3f4f6;
+    border: 1px solid #d8dde3;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fdi-color-item:hover {
+    background: #e9edf2;
+    transform: translateY(-1px);
+}
+
+.fdi-color-item.active {
+    background: #e2ecff;
+    border: 1px solid #86b7fe;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.08);
+}
+
+.fdi-color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid rgba(0,0,0,0.15);
+    flex-shrink: 0;
+}
+
+.fdi-color-label {
+    font-weight: 600;
+    color: #5b6472;
+    font-size: 0.95rem;
+    line-height: 1.2;
+}
+
+.selected-color-preview {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.seg-progress-wrap {
+    position: sticky;
+    top: 10px;
+    z-index: 1050;
+}
+
+.seg-progress-card {
+    background: #fff;
+    border: 1px solid #d8dde3;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.canvas-busy-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    border-radius: 0.375rem;
+}
+
+.canvas-busy-box {
+    background: white;
+    border: 1px solid #d8dde3;
+    border-radius: 12px;
+    padding: 10px 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    font-weight: 600;
+    color: #495057;
+    display: flex;
+    align-items: center;
+}
+
+.is-busy {
+    pointer-events: none;
+    opacity: 0.7;
+}

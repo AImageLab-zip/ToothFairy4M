@@ -384,6 +384,33 @@ def patient_detail(request, patient_id):
     return render_with_fallback(request, 'patient_detail', context)
 
 @login_required
+def patient_segmentation(request, patient_id):
+    """Segmentation page for intraoral photographs."""
+    domain_models = get_domain_models(request)
+    Patient = domain_models['Patient']
+
+    patient = get_object_or_404(Patient, patient_id=patient_id)
+    user_profile = request.user.profile
+
+    can_view = False
+    if user_profile.is_admin():
+        can_view = True
+    elif user_profile.is_annotator() and patient.visibility != 'debug':
+        can_view = True
+    elif user_profile.is_student_developer() and patient.visibility == 'debug':
+        can_view = True
+    elif patient.visibility == 'public':
+        can_view = True
+
+    if not can_view:
+        messages.error(request, 'You do not have permission to view this segmentation.')
+        return redirect_with_namespace(request, 'patient_list')
+
+    context = {
+        'patient': patient,
+    }
+    return render_with_fallback(request, 'patient_segmentation', context)
+@login_required
 @require_POST
 def update_patient_name(request, patient_id):
     """AJAX endpoint for updating scan name"""

@@ -180,22 +180,38 @@ def project_upload_api(request, project_slug):
         except Exception as e:
             upload_results['messages'].append(f"Error creating CBCT processing job: {e}\ntraceback: {traceback.format_exc()}")
 
+        
         # Handle intraoral photographs
         try:
             intraoral_files = request.FILES.getlist('intraoral_photos')
             if intraoral_files:
-                from ..file_utils import save_intraoral_photos_to_dataset
-                saved_entries, errors, job = save_intraoral_photos_to_dataset(patient, intraoral_files)
-                if saved_entries:
-                    upload_results['messages'].append(f"Uploaded {len(saved_entries)} intraoral image(s)")
+                from ..file_utils import save_intraoral_files_to_dataset
+
+                saved_entries, errors, job, original_count, mask_count = save_intraoral_files_to_dataset(
+                    patient,
+                    intraoral_files
+                )
+
+                if original_count:
+                    upload_results['messages'].append(
+                        f"Uploaded {original_count} original intraoral image(s)"
+                    )
+
+                if mask_count:
+                    upload_results['messages'].append(
+                        f"Uploaded {mask_count} intraoral mask image(s)"
+                    )
+
                 if errors:
                     upload_results['messages'].extend(errors)
+
                 if job:
                     upload_results['jobs'].append({
                         'id': job.id,
                         'type': 'intraoral-photo',
                         'status': job.status
                     })
+
         except Exception as e:
             upload_results['messages'].append(f"Error creating intraoral processing job: {e}")
         

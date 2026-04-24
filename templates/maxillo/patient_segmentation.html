@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/tooth_segmentation.css' %}">
+
+<div class="container-fluid mt-4" id="tooth-segmentation-root" data-patient-id="{{ patient.patient_id }}">
+    <input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Tooth Segmentation</h2>
+            <p class="text-muted mb-0">Patient {{ patient.patient_id }}</p>
+        </div>
+        <a href="{% url 'maxillo:patient_detail' patient.patient_id %}" class="btn btn-outline-secondary">
+            Back to Patient
+        </a>
+    </div>
+
+    <div id="segmentation-progress-wrap" class="seg-progress-wrap d-none mb-3">
+        <div class="seg-progress-card">
+            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div id="segmentation-progress-spinner" class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span id="segmentation-progress-text" class="fw-semibold">Loading...</span>
+                </div>
+                <span id="segmentation-progress-percent" class="small text-muted">0%</span>
+            </div>
+
+            <div class="progress" style="height: 10px;">
+                <div
+                    id="segmentation-progress-bar"
+                    class="progress-bar progress-bar-striped progress-bar-animated"
+                    role="progressbar"
+                    style="width: 0%;"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-3">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">Views</div>
+                <div class="card-body">
+                    <div id="segmentation-thumbnails" class="d-grid gap-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <div class="fw-semibold">Segmentation Canvas</div>
+                            <small class="text-muted">Review and edit tooth segmentation</small>
+                        </div>
+
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span id="mode-badge" class="badge bg-primary">Select</span>
+                            <span id="zoom-badge" class="badge bg-light text-dark border">100%</span>
+
+                            <button id="zoom-out-btn" type="button" class="btn btn-sm btn-outline-secondary">-</button>
+                            <button id="zoom-in-btn" type="button" class="btn btn-sm btn-outline-secondary">+</button>
+                            <button id="zoom-reset-btn" type="button" class="btn btn-sm btn-outline-secondary">Reset</button>
+
+                            <button id="save-segmentation-btn" type="button" class="btn btn-sm btn-success">Save</button>
+                            <button id="cancel-segmentation-btn" type="button" class="btn btn-sm btn-outline-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div id="canvas-area" class="position-relative">
+                        <div id="canvas-busy-overlay" class="canvas-busy-overlay d-none">
+                            <div class="canvas-busy-box">
+                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                <span id="canvas-busy-text">Loading segmentation...</span>
+                            </div>
+                        </div>
+
+                        <div id="canvas-wrapper" class="border rounded p-2 bg-light text-center">
+                            <canvas id="segmentation-canvas"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="mt-2 small text-muted" id="canvas-help">
+                        Click a tooth to inspect it. Use the tools to edit segmentation and save when finished.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-2">
+            <div class="d-grid gap-2">
+                <div class="card">
+                    <div class="card-header fw-semibold">Edit Tools</div>
+                    <div class="card-body d-grid gap-1">
+                        <button type="button" id="tool-select" class="btn btn-outline-primary tool-btn active-tool" data-tool="select">Select</button>
+                        <button type="button" id="tool-add" class="btn btn-outline-primary tool-btn" data-tool="add">Add Object</button>
+                        <button type="button" id="tool-split" class="btn btn-outline-primary tool-btn" data-tool="split">Split Mask</button>
+                        <button type="button" id="tool-delete" class="btn btn-outline-danger tool-btn" data-tool="delete">Delete Mask</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header fw-semibold">FDI Color List</div>
+                    <div class="card-body p-2">
+                        <div id="fdi-color-list" class="fdi-color-list"></div>
+
+                        <div class="mt-3 d-flex align-items-center gap-2 px-2 pb-1">
+                            <div id="selected-color-preview" class="selected-color-preview"></div>
+                            <small id="selected-color-text" class="text-muted">No FDI selected</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header fw-semibold">Save Status</div>
+                    <div class="card-body">
+                        <div id="save-status" class="small text-muted">No unsaved changes.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="{% static 'js/function_of_button.js' %}"></script>
+<script src="{% static 'js/tooth_segmentation_core.js' %}"></script>
+<script src="{% static 'js/tooth_segmentation_canvas.js' %}"></script>
+<script src="{% static 'js/tooth_segmentation_init.js' %}"></script>
+{% endblock %}

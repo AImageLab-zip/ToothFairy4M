@@ -90,7 +90,16 @@ def _get_patient(obj):
         return getattr(obj, 'patient')
     raise ValueError('Cannot resolve Patient from object')
 
-
+def _segmented_dir_for(patient: Patient, modality_slug: str) -> str:
+    project_slug = _project_slug_from_patient(patient)
+    return os.path.join(DATASET_ROOT, project_slug, 'segmented', modality_slug)
+def save_intraoral_photos_to_dataset(patient_or_legacy, images):
+    saved_entries, errors, job, _, _ = save_intraoral_files_to_dataset(
+        patient_or_legacy,
+        images
+    )
+    return saved_entries, errors, job    
+    
 def _domain_for_patient(patient) -> str:
     app_label = getattr(getattr(patient, '_meta', None), 'app_label', '')
     if app_label == 'brain':
@@ -865,35 +874,151 @@ def save_rgb_images_to_dataset(patient_or_legacy, images):
     return saved_entries, errors
 
 
-def save_intraoral_photos_to_dataset(patient_or_legacy, images):
-    """Save multiple intraoral images for a patient and create FileRegistry entries.
-    Returns (saved_entries, errors, job) where saved_entries is a list of FileRegistry objects,
-    errors is a list of error messages for failed uploads, and job is the processing job.
+def save_intraoral_files_to_dataset(patient_or_legacy, images):
     """
+    Save intraoral files from one upload batch.
+
+    Accepted input examples:
+    - Center_intraoral_1_patient_1983_original.png
+    - Center_intraoral_1_patient_1983_mask.png
+    - Center_intraoral_1_patient_1983_color_mask.png
+    - Center_intraoral_1_patient_1983.json
+
+    Output naming:
+    - original: intraoral_<index>_patient_<patient_id>.<ext>
+    - mask:     intraoral_<index>_patient_<patient_id>_mask.png
+    - color:    intraoral_<index>_patient_<patient_id>_color.png
+    - json:     intraoral_<index>_patient_<patient_id>_json.json
+
+    Storage rule:
+    - originals -> raw/intraoral
+    - masks/json/color -> segmented/intraoral
+    """
+    import re
+
     patient = _get_patient(patient_or_legacy)
+
     raw_dir = _raw_dir_for(patient, 'intraoral')
+    segmented_dir = _segmented_dir_for(patient, 'intraoral')
     processed_dir = _processed_dir_for(patient, 'intraoral')
-    ensure_directories([raw_dir, processed_dir])
-    
+
+    ensure_directories([raw_dir, segmented_dir, processed_dir])
+
     saved_entries = []
     errors = []
-    saved_files = []
-    
-    # Resolve modality FK for FileRegistry
+    saved_original_files = []
+    saved_segmented_files = []
+
     modality_fk = None
     try:
         from common.models import Modality as _Modality
         modality_fk = _Modality.objects.filter(slug='intraoral-photo').first()
     except Exception:
         pass
-    
-    for idx, img in enumerate(images):
+
+    VIEW_ORDER = {
+        'center': 1,
+        'left': 2,
+        'right': 3,
+        'upper': 4,
+        'down': 5,
+    }
+
+    def extract_intraoral_index(filename: str):
+        """
+        Try to extract index from:
+        - intraoral_1_patient_11.png
+        - Center_intraoral_1_patient_1983_original.png
+        """
+        base = os.path.basename(filename)
+        match = re.search(r'intraoral_(\d+)', base, re.IGNORECASE)
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
+        return None
+
+    def extract_view_index(filename: str):
+        """
+        Example:
+        Center_intraoral_2_patient_1981_mask.png -> 1
+        Left_intraoral_3_patient_1979_original.png -> 2
+        """
+        base = os.path.basename(filename)
+        first_token = base.split('_')[0].lower() if '_' in base else ''
+        return VIEW_ORDER.get(first_token)
+
+    def detect_kind(filename: str):
+        lower = os.path.basename(filename).lower()
+        if lower.endswith('_color_mask.png'):
+            return 'color'
+        if lower.endswith('_mask.png'):
+            return 'mask'
+        if lower.endswith('_original.png'):
+            return 'original'
+        if lower.endswith('.json'):
+            return 'json'
+
+        # fallback behavior for older uploads
+        if '_mask' in lower:
+            return 'mask'
+        return 'original'
+
+    for img in images:
         try:
-            original_name = getattr(img, 'name', f'intraoral_{idx}.jpg')
-            ext = os.path.splitext(original_name)[1].lower() or '.jpg'
-            
-            filename = f"intraoral_{idx + 1}_patient_{patient.patient_id}{ext}"
-            file_path = os.path.join(raw_dir, filename)
+            original_name = getattr(img, 'name', 'intraoral.png')
+            base_name = os.path.basename(original_name)
+            lower_name = base_name.lower()
+
+            kind = detect_kind(original_name)
+
+            parsed_index = extract_view_index(original_name)
+            if parsed_index is None:
+                parsed_index = extract_intraoral_index(original_name)
+            if parsed_index is None:
+                errors.append(f"Could not determine intraoral index from filename: {original_name}")
+                continue
+
+            if kind == 'json':
+                ext = '.json'
+            elif kind in ['mask', 'color']:
+                ext = '.png'
+            else:
+                ext = os.path.splitext(original_name)[1].lower() or '.png'
+
+            if kind == 'original':
+                save_dir = raw_dir
+                filename = f"intraoral_{parsed_index}_patient_{patient.patient_id}{ext}"
+                storage_group = 'raw'
+                file_type = get_file_type_for_modality('intraoral', is_processed=False, file_format=ext)
+
+            elif kind == 'mask':
+                save_dir = segmented_dir
+                filename = f"intraoral_{parsed_index}_patient_{patient.patient_id}_mask.png"
+                storage_group = 'segmented'
+                file_type = get_file_type_for_modality('intraoral', is_processed=True, file_format='.png')
+
+            elif kind == 'color':
+                save_dir = segmented_dir
+                filename = f"intraoral_{parsed_index}_patient_{patient.patient_id}_color.png"
+                storage_group = 'segmented'
+                file_type = get_file_type_for_modality('intraoral', is_processed=True, file_format='.png')
+
+            elif kind == 'json':
+                save_dir = segmented_dir
+                filename = f"intraoral_{parsed_index}_patient_{patient.patient_id}_json.json"
+                storage_group = 'segmented'
+                file_type = get_file_type_for_modality('intraoral', is_processed=True, file_format='.json')
+
+            else:
+                errors.append(f"Unsupported file kind for {original_name}")
+                continue
+
+            file_path = os.path.join(save_dir, filename)
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
             with open(file_path, 'wb+') as destination:
                 for chunk in img.chunks():
@@ -902,8 +1027,10 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
             file_hash = calculate_file_hash(file_path)
             file_size = os.path.getsize(file_path)
 
+            FileRegistry.objects.filter(file_path=file_path).delete()
+
             entry = FileRegistry.objects.create(
-                file_type='intraoral_raw',  # Use legacy file_type for FileRegistry
+                file_type=file_type,
                 file_path=file_path,
                 file_size=file_size,
                 file_hash=file_hash,
@@ -911,25 +1038,42 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
                 modality=modality_fk,
                 metadata={
                     'original_filename': original_name,
-                    'image_index': idx + 1,
+                    'saved_filename': filename,
+                    'image_index': parsed_index,
                     'uploaded_at': timezone.now().isoformat(),
+                    'kind': kind,
+                    'is_original': kind == 'original',
+                    'is_mask': kind == 'mask',
+                    'is_color_mask': kind == 'color',
+                    'is_json': kind == 'json',
+                    'storage_group': storage_group,
                 }
             )
+
             saved_entries.append(entry)
-            saved_files.append(file_path)
+
+            if kind == 'original':
+                saved_original_files.append(file_path)
+            else:
+                saved_segmented_files.append(file_path)
+
         except Exception as e:
-            logger.error(f"Error saving intraoral image {idx}: {e}", exc_info=True)
-            errors.append(f"Failed to save image {idx + 1}: {str(e)}")
-    
-    # Create completed job (intraoral photos don't need processing)
+            logger.error(f"Error saving intraoral file {getattr(img, 'name', '')}: {e}", exc_info=True)
+            errors.append(f"Failed to save intraoral file {getattr(img, 'name', '')}: {str(e)}")
+
     job = None
-    if saved_files:
+    if saved_original_files or saved_segmented_files:
         try:
-            # Create a summary file listing all uploaded images
-            summary_path = os.path.join(raw_dir, f"intraoral_patient_{patient.patient_id}_summary.txt")
-            with open(summary_path, 'w') as f:
-                f.write('\n'.join(saved_files))
-            
+            summary_path = os.path.join(
+                raw_dir,
+                f"intraoral_patient_{patient.patient_id}_summary.txt"
+            )
+            with open(summary_path, 'w', encoding='utf-8') as f:
+                for p in saved_original_files:
+                    f.write(f"ORIGINAL: {p}\n")
+                for p in saved_segmented_files:
+                    f.write(f"SEGMENTED: {p}\n")
+
             job = Job.objects.create(
                 modality_slug='intraoral-photo',
                 **_entity_fk_kwargs(patient),
@@ -937,17 +1081,20 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
                 status='completed',
                 output_files={
                     'input_type': 'multiple_images',
-                    'file_count': len(saved_files),
-                    'files': saved_files
+                    'original_count': len(saved_original_files),
+                    'segmented_count': len(saved_segmented_files),
+                    'original_files': saved_original_files,
+                    'segmented_files': saved_segmented_files,
                 }
             )
             job.started_at = timezone.now()
             job.completed_at = timezone.now()
             job.save()
+
         except Exception as e:
             logger.error(f"Error creating intraoral job: {e}", exc_info=True)
-    
-    return saved_entries, errors, job
+
+    return saved_entries, errors, job, len(saved_original_files), len(saved_segmented_files)
 
 def get_pending_jobs_for_type(job_type):
     """
