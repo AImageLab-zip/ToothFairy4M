@@ -323,6 +323,16 @@ function initViewerToggle() {
         }
     };
 
+    const loadCbctInlinePanoramic = function() {
+        if (typeof window.PanoramicViewer === 'undefined') {
+            return;
+        }
+        if (typeof window.PanoramicViewer.loadInlineForCBCT !== 'function') {
+            return;
+        }
+        window.PanoramicViewer.loadInlineForCBCT();
+    };
+
     // Generic modality switching for dynamically rendered toggles
     if (toggleGroup) {
         toggleGroup.addEventListener('change', function(e) {
@@ -371,6 +381,7 @@ function initViewerToggle() {
                 if (window.isCBCTProcessed) {
                     setTimeout(() => {
                         ensureCbctViewerReady('cbct');
+                        loadCbctInlinePanoramic();
                     }, 100);
                 } else {
                     console.debug('CBCT not processed yet, skipping viewer initialization');
@@ -504,6 +515,7 @@ function initViewerToggle() {
         if (cbctControls) cbctControls.style.display = 'block';
         setTimeout(() => {
             ensureCbctViewerReady('cbct');
+            loadCbctInlinePanoramic();
         }, 100);
         return;
     }
@@ -520,6 +532,7 @@ function initViewerToggle() {
     // Handle initial state based on which radio button is checked
     if (cbctRadio && cbctRadio.checked && window.hasCBCT && window.isCBCTProcessed) {
         ensureCbctViewerReady('cbct');
+        loadCbctInlinePanoramic();
     }
 
     if (iosRadio) {
@@ -551,6 +564,7 @@ function initViewerToggle() {
                     // Handle CBCT viewer state with a delay to ensure containers are visible
                     setTimeout(() => {
                         ensureCbctViewerReady('cbct');
+                        loadCbctInlinePanoramic();
                     }, 100); // 100ms delay to ensure containers are visible and sized
                 } else {
                     console.debug('CBCT not processed yet, skipping viewer initialization');

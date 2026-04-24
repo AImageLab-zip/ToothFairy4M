@@ -54,6 +54,23 @@ def patient_detail(request, patient_id):
             has_cbct = True
     except:
         pass
+
+    has_uploaded_panoramic = False
+    try:
+        panoramic_candidates = list(
+            patient.files.filter(modality__slug='panoramic').order_by('-created_at')
+        )
+        if not panoramic_candidates:
+            panoramic_candidates = list(
+                patient.files.filter(file_type__in=['panoramic_raw', 'panoramic_processed']).order_by('-created_at')
+            )
+
+        for panoramic_entry in panoramic_candidates:
+            if panoramic_entry.file_path and os.path.exists(panoramic_entry.file_path):
+                has_uploaded_panoramic = True
+                break
+    except Exception as e:
+        logger.warning(f"Error checking uploaded panoramic availability: {e}")
     
     can_modify = False
     if user_profile.is_admin():
@@ -206,6 +223,9 @@ def patient_detail(request, patient_id):
     except Exception:
         patient_modalities = []
 
+    if not has_uploaded_panoramic:
+        patient_modalities = [m for m in patient_modalities if m.get('slug') != 'panoramic']
+
     # Choose default modality: prefer first available (skip modalities marked as non-default)
     default_modality_slug = None
     try:
@@ -337,6 +357,7 @@ def patient_detail(request, patient_id):
         'user_profile': user_profile,
         'management_form': management_form,
         'has_cbct': has_cbct,
+        'has_uploaded_panoramic': has_uploaded_panoramic,
         'patient_modalities': patient_modalities,
         'default_modality_slug': default_modality_slug,
         'patient_modalities_json': patient_modalities_json,

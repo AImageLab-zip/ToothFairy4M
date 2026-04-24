@@ -36,7 +36,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}?file_key=primary" 
                                    class="btn btn-outline-primary btn-sm" 
                                    title="Download file"
                                    download>
@@ -84,7 +84,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}?file_key=primary" 
                                    class="btn btn-outline-success btn-sm" 
                                    title="Download file"
                                    download>
@@ -115,7 +115,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <a href="{% url 'api:api_serve_file' file_id=file.id %}" 
+                                <a href="{% url 'api:api_serve_file' file_id=file.id %}?file_key=primary" 
                                    class="btn btn-outline-secondary btn-sm" 
                                    title="Download file"
                                    download>
@@ -138,5 +138,4 @@
         </div>
     </div>
 </div>
-
 

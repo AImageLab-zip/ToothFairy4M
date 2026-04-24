@@ -15,12 +15,12 @@ services:
       redis:
         condition: service_started
     environment:
-      VIRTUAL_HOST: $DOMAIN
-      VIRTUAL_PORT: $WEB_EXTERNAL_PORT
-      LETSENCRYPT_HOST: $DOMAIN
-      LETSENCRYPT_EMAIL: $LETSENCRYPT_EMAIL
+      DB_HOST: prod-db
+      VIRTUAL_HOST: ${DOMAIN:-}
+      VIRTUAL_PORT: ${WEB_EXTERNAL_PORT:-}
+      LETSENCRYPT_HOST: ${DOMAIN:-}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
       DB_HOST: toothfairy4m-db-$DOCKER_SUFFIX
-      
 
     env_file:
       - ${ENV_FILE:-.env-$DOCKER_SUFFIX}
@@ -29,6 +29,7 @@ services:
     networks:
       - app-net
       - proxy-net
+      - app-net
 
   db:
     image: mysql:8.0

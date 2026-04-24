@@ -13,19 +13,24 @@ window.PanoramicViewer = {
         console.debug('Panoramic Viewer initialized for patient', patientId);
     },
     
-    load: function() {
+    getApiUrl: function() {
+        const namespace = window.projectNamespace || 'maxillo';
+        return `/${namespace}/api/patient/${this.patientId}/panoramic/`;
+    },
+
+    loadInto: function(config) {
         if (!this.patientId) {
             console.error('No patient ID set for panoramic viewer');
             return;
         }
-        
-        const loading = document.getElementById('panoramicLoading');
-        const content = document.getElementById('panoramicContent');
-        const error = document.getElementById('panoramicError');
-        const img = document.getElementById('panoramicStandaloneImage');
+
+        const loading = document.getElementById(config.loadingId);
+        const content = document.getElementById(config.contentId);
+        const error = document.getElementById(config.errorId);
+        const img = document.getElementById(config.imageId);
         
         if (!img) {
-            console.error('Panoramic image element not found');
+            console.debug('Panoramic image element not found for target:', config.imageId);
             return;
         }
         
@@ -49,11 +54,11 @@ window.PanoramicViewer = {
         
         // Add click handler for fullscreen view
         img.onclick = () => {
-            this.showFullscreenImage(img.src, 'Panoramic');
+            this.showFullscreenImage(img.src, config.title || 'Panoramic');
         };
         
         // Set the image source (this triggers loading)
-        img.src = `/maxillo/api/patient/${this.patientId}/panoramic/`;
+        img.src = this.getApiUrl();
         
         // Handle case where image is already cached
         if (img.complete && img.naturalHeight !== 0) {
@@ -61,6 +66,26 @@ window.PanoramicViewer = {
             if (loading) loading.style.display = 'none';
             if (content) content.style.display = 'block';
         }
+    },
+
+    load: function() {
+        this.loadInto({
+            loadingId: 'panoramicLoading',
+            contentId: 'panoramicContent',
+            errorId: 'panoramicError',
+            imageId: 'panoramicStandaloneImage',
+            title: 'Panoramic'
+        });
+    },
+
+    loadInlineForCBCT: function() {
+        this.loadInto({
+            loadingId: 'cbctPanoramicLoading',
+            contentId: 'cbctPanoramicContent',
+            errorId: 'cbctPanoramicError',
+            imageId: 'cbctPanoramicImage',
+            title: 'CBCT Panoramic'
+        });
     },
     
     showFullscreenImage: function(src, title) {
@@ -77,6 +102,5 @@ window.PanoramicViewer = {
         }
     }
 };
-
 
 

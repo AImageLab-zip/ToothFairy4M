@@ -151,6 +151,33 @@
   color: #0d6efd;
 }
 
+.cbct-inline-panoramic {
+  margin-top: 0.75rem;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.cbct-inline-panoramic-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #495057;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.cbct-inline-panoramic-body {
+  height: 220px;
+  position: relative;
+}
+
+.cbct-inline-panoramic-body .panoramic-loading,
+.cbct-inline-panoramic-body .panoramic-content,
+.cbct-inline-panoramic-body .panoramic-error {
+  height: 100%;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .viewer-grid {
@@ -169,6 +196,10 @@
 
   .viewer-tools-bar {
     flex-wrap: wrap;
+  }
+
+  .cbct-inline-panoramic-body {
+    height: 180px;
   }
 }
 

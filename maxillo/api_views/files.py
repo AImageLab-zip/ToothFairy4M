@@ -29,6 +29,7 @@ def serve_file(request, file_id):
             id=file_id
         )
         resolved_file_path = file_obj.file_path
+        requested_file_key = (request.GET.get('file_key') or '').strip()
 
         # CBCT processed files may be stored as a multi-file bundle where the
         # actual NIfTI volume path is in metadata.files.volume_nifti.path.
