@@ -8,6 +8,8 @@ import json
 import os
 import logging
 
+from common.file_access import exists as artifact_exists
+
 from .domain import get_domain_forms, get_domain_models
 from .helpers import redirect_with_namespace, render_with_fallback
 
@@ -46,7 +48,7 @@ def patient_detail(request, patient_id):
     has_cbct = False
     try:
         raw_cbct = patient.get_cbct_raw_file()
-        if raw_cbct and os.path.exists(raw_cbct.file_path):
+        if raw_cbct and artifact_exists(raw_cbct.file_path):
             has_cbct = True
         elif patient.cbct:  # Fallback to old field
             has_cbct = True
@@ -317,7 +319,7 @@ def patient_detail(request, patient_id):
                                 files_data = processed_entry.metadata.get('files', {})
                                 volume_data = files_data.get('volume_nifti', {}) if isinstance(files_data, dict) else {}
                                 volume_path = volume_data.get('path') if isinstance(volume_data, dict) else None
-                                if volume_path and os.path.exists(volume_path):
+                                if volume_path and artifact_exists(volume_path):
                                     file_obj = processed_entry
                                     break
                             elif processed_entry.file_path and (
