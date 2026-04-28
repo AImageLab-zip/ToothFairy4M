@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y docker-ce-cli && rm -rf /var/lib/apt/li
 RUN groupadd -g 999 docker || true
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
