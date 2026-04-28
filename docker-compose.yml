@@ -15,7 +15,6 @@ services:
       redis:
         condition: service_started
     environment:
-      DB_HOST: prod-db
       VIRTUAL_HOST: ${DOMAIN:-}
       VIRTUAL_PORT: ${WEB_EXTERNAL_PORT:-}
       LETSENCRYPT_HOST: ${DOMAIN:-}
@@ -29,7 +28,6 @@ services:
     networks:
       - app-net
       - proxy-net
-      - app-net
 
   db:
     image: mysql:8.0

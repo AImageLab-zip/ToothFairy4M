@@ -140,6 +140,16 @@ urlpatterns = [
         name="patient_intraoral_photo_data",
     ),
     path(
+        "api/patient/<int:patient_id>/intraoral-segmentation/",
+        views.patient_intraoral_segmentation_data,
+        name="patient_intraoral_segmentation_data",
+    ),
+    path(
+        "api/patient/<int:patient_id>/intraoral-segmentation/update/",
+        views.update_patient_intraoral_segmentation,
+        name="update_patient_intraoral_segmentation",
+    ),
+    path(
         "api/patient/<int:patient_id>/teleradiography/",
         views.patient_teleradiography_data,
         name="patient_teleradiography_data",

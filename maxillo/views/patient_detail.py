@@ -226,6 +226,11 @@ def patient_detail(request, patient_id):
     if not has_uploaded_panoramic:
         patient_modalities = [m for m in patient_modalities if m.get('slug') != 'panoramic']
 
+    has_intraoral_modality = any(
+        (m.get('slug') in ['intraoral', 'intraoral-photo'])
+        for m in patient_modalities
+    )
+
     # Choose default modality: prefer first available (skip modalities marked as non-default)
     default_modality_slug = None
     try:
@@ -358,6 +363,8 @@ def patient_detail(request, patient_id):
         'management_form': management_form,
         'has_cbct': has_cbct,
         'has_uploaded_panoramic': has_uploaded_panoramic,
+        'has_intraoral_modality': has_intraoral_modality,
+        'can_modify_segmentation': can_modify,
         'patient_modalities': patient_modalities,
         'default_modality_slug': default_modality_slug,
         'patient_modalities_json': patient_modalities_json,
