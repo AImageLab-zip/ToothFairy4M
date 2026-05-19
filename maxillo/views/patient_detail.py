@@ -284,10 +284,14 @@ def patient_detail(request, patient_id):
         logger.error(f"Error organizing patient files: {e}")
 
 
-    # Voice captions -- filter only captions made by the current user for all captions
+    # Voice captions
+    # Non-admin users can see caption metadata for all captions, but only access
+    # content (text/audio) for their own captions.
     voice_captions = patient.voice_captions.all()
-    if not user_is_project_admin(request.user, request):
-        voice_captions = voice_captions.filter(user=request.user)
+    is_admin_user = user_is_project_admin(request.user, request)
+    for caption in voice_captions:
+        caption.can_view_content = bool(is_admin_user or caption.user_id == request.user.id)
+        caption.is_ghost = not caption.can_view_content
 
     # Build modality files lookup for drag-drop grid
     modality_files = {}
@@ -357,6 +361,7 @@ def patient_detail(request, patient_id):
         'default_modality_json': default_modality_json,
         'patient_files': patient_files,
         'voice_captions': voice_captions,
+        'is_admin_user': is_admin_user,
         'modality_files': modality_files,
         'modality_files_json': modality_files_json,
     }

@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 from common.models import Project
-from common.permissions import user_is_project_admin
+from common.permissions import filter_folders_for_user, user_is_project_admin
 from .domain import get_domain_forms, get_domain_models
 from .helpers import redirect_with_namespace
 
@@ -18,6 +18,7 @@ def upload_patient(request):
     PatientForm = domain_forms['PatientForm']
     PatientUploadForm = domain_forms['PatientUploadForm']
     Folder = domain_models['Folder']
+    namespace = (getattr(request, 'resolver_match', None) and request.resolver_match.namespace) or 'maxillo'
     
     if not request.user.profile:
         messages.error(request, 'You do not have permission to upload scans.')
@@ -41,10 +42,15 @@ def upload_patient(request):
         cbct_upload_type = request.POST.get('cbct_upload_type', 'file')
         if cbct_upload_type == 'folder' and request.FILES.getlist('cbct_folder_files'):
             messages.error(request, 'CBCT Folder uploads have been disabled.')
+            allowed_folders = filter_folders_for_user(
+                request.user,
+                Folder.objects.filter(parent__isnull=True).order_by('name'),
+                namespace,
+            )
             return render(request, 'common/upload/upload.html', {
                 'patient_form': patient_form,
                 'patient_upload_form': patient_upload_form,
-                'folders': Folder.objects.filter(parent__isnull=True).order_by('name'),
+                'folders': allowed_folders,
             })
 
         if patient_upload_form.is_valid():
@@ -55,6 +61,25 @@ def upload_patient(request):
             # Assign folder if provided
             folder = patient_upload_form.cleaned_data.get('folder')
             if folder:
+                allowed_folder_ids = set(
+                    filter_folders_for_user(
+                        request.user,
+                        Folder.objects.filter(parent__isnull=True).only('id'),
+                        namespace,
+                    ).values_list('id', flat=True)
+                )
+                if folder.id not in allowed_folder_ids:
+                    messages.error(request, 'You do not have permission to upload to the selected folder.')
+                    allowed_folders = filter_folders_for_user(
+                        request.user,
+                        Folder.objects.filter(parent__isnull=True).order_by('name'),
+                        namespace,
+                    )
+                    return render(request, 'common/upload/upload.html', {
+                        'patient_form': patient_form,
+                        'patient_upload_form': patient_upload_form,
+                        'folders': allowed_folders,
+                    })
                 patient.folder = folder
             patient.save()
 
@@ -208,7 +233,11 @@ def upload_patient(request):
         patient_form = PatientForm()
         patient_upload_form = PatientUploadForm(user=request.user)
     
-    folders = Folder.objects.filter(parent__isnull=True).order_by('name')
+    folders = filter_folders_for_user(
+        request.user,
+        Folder.objects.filter(parent__isnull=True).order_by('name'),
+        namespace,
+    )
     
     # Get allowed modalities for template rendering
     allowed_modalities = []
