@@ -1,6 +1,5 @@
 import contextlib
 import hashlib
-import io
 import json
 import logging
 import os
@@ -65,9 +64,7 @@ def get_file_type_for_modality(
     # Fallback mappings for special cases
     fallback_mappings = {
         "cbct": "cbct_raw" if not is_processed else "cbct_processed",
-        "ios": "cbct_raw"
-        if not is_processed
-        else "cbct_processed",  # Keep existing behavior
+        "ios": "ios_raw_upper" if not is_processed else "ios_processed_upper",
         "audio": "audio_raw" if not is_processed else "audio_processed",
         "bite_classification": "bite_classification",  # Special case - no raw/processed distinction
         "intraoral-photo": "intraoral_raw"
@@ -355,9 +352,8 @@ def save_generic_modality_file(
             job_obj = Job.objects.create(
                 modality_slug=modality_slug,
                 **_entity_fk_kwargs(patient),
-                input_file_path=key,
+                input_files={"input": key},
                 status="completed",
-                output_files={"input_format": file_format, "file_path": key},
             )
             job_obj.started_at = timezone.now()
             job_obj.completed_at = timezone.now()
@@ -367,9 +363,8 @@ def save_generic_modality_file(
             job_obj = Job.objects.create(
                 modality_slug=modality_slug,
                 **_entity_fk_kwargs(patient),
-                input_file_path=key,
+                input_files={"input": key},
                 status="pending",
-                output_files={"input_format": file_format, "expected_outputs": []},
             )
     except Exception as e:
         logger.error(f"Failed to create Job for {modality_slug}: {e}")
@@ -439,13 +434,7 @@ def save_generic_modality_folder(patient: Patient, modality_slug: str, folder_fi
     job = Job.objects.create(
         modality_slug=modality_slug,
         **_entity_fk_kwargs(patient),
-        input_file_path=base_prefix,
-        output_files={
-            "input_type": "folder",
-            "file_count": len(saved_files),
-            "input_files": [f.get("path") for f in saved_files if isinstance(f, dict)],
-            "expected_outputs": [],
-        },
+        input_files={"files": [f.get("path") for f in saved_files if isinstance(f, dict)]},
     )
     return fr, job
 
@@ -556,15 +545,7 @@ def save_cbct_to_dataset(patient_or_legacy, cbct_file):
     processing_job = Job.objects.create(
         modality_slug="cbct",
         **_entity_fk_kwargs(patient),
-        input_file_path=key,
-        output_files={
-            "input_format": file_format,
-            "expected_outputs": [
-                "volume_nifti",
-                "panoramic_view",
-                "structures_mesh",
-            ],
-        },
+        input_files={"input": key},
     )
 
     return key, processing_job
@@ -638,18 +619,7 @@ def save_cbct_folder_to_dataset(patient_or_legacy, folder_files):
     processing_job = Job.objects.create(
         modality_slug="cbct",
         **_entity_fk_kwargs(patient),
-        input_file_path=base_prefix,
-        output_files={
-            "input_format": "dicom_folder",
-            "input_type": "folder",
-            "file_count": len(saved_files),
-            "input_files": [f.get("path") for f in saved_files if isinstance(f, dict)],
-            "expected_outputs": [
-                "volume_nifti",
-                "panoramic_view",
-                "structures_mesh",
-            ],
-        },
+        input_files={"files": [f.get("path") for f in saved_files if isinstance(f, dict)]},
     )
 
     return base_prefix, processing_job
@@ -738,7 +708,7 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
         processing_job = Job.objects.create(
             modality_slug="ios",
             **_entity_fk_kwargs(patient),
-            input_file_path=json.dumps(input_files),
+            input_files=input_files,
         )
 
         # Always create a fresh stage-2 bite job for every new IOS upload.
@@ -747,13 +717,8 @@ def save_ios_to_dataset(patient_or_legacy, upper_file=None, lower_file=None):
             modality_slug="bite_classification",
             status="dependency",
             **_entity_fk_kwargs(patient),
-            input_file_path=f"Waiting for IOS Job #{processing_job.id} to complete",
+            input_files={},
             priority=processing_job.priority,
-            output_files={
-                "expected_outputs": ["*_bite_classification_results.json"],
-                "depends_on_ios_job": processing_job.id,
-                "ios_job_id": processing_job.id,
-            },
         )
         bite_classification_job.add_dependency(processing_job)
 
@@ -812,7 +777,7 @@ def save_audio_to_dataset(voice_caption, audio_file):
         modality_slug="audio",
         **_voice_entity_fk_kwargs(voice_caption),
         **_entity_fk_kwargs(patient),
-        input_file_path=key,
+        input_files={"input": key},
     )
 
     return key, processing_job
@@ -885,8 +850,6 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
     saved_entries = []
     errors = []
     saved_files = []
-    summary_key = f"{_raw_key_prefix_for(patient, 'intraoral-photo')}/intraoral_patient_{patient.patient_id}_manifest.json"
-
     # Resolve modality FK for FileRegistry
     modality_fk = None
     try:
@@ -936,32 +899,11 @@ def save_intraoral_photos_to_dataset(patient_or_legacy, images):
     job = None
     if saved_files:
         try:
-            manifest = {
-                "schema_version": 1,
-                "patient_id": patient.patient_id,
-                "modality": "intraoral-photo",
-                "images": saved_files,
-            }
-            manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode("utf-8")
-            get_object_storage().upload_fileobj(
-                io.BytesIO(manifest_bytes),
-                key=summary_key,
-                content_type="application/json",
-            )
-
             job = Job.objects.create(
                 modality_slug="intraoral-photo",
                 **_entity_fk_kwargs(patient),
-                input_file_path=summary_key,
+                input_files={str(item["file_id"]): item["path"] for item in saved_files},
                 status="pending",
-                output_files={
-                    "input_manifest": summary_key,
-                    "input_files": {
-                        str(item["file_id"]): item["path"] for item in saved_files
-                    },
-                    "input_type": "multiple_images",
-                    "file_count": len(saved_files),
-                },
             )
         except Exception as e:
             logger.error(f"Error creating intraoral job: {e}", exc_info=True)
@@ -994,16 +936,21 @@ def mark_job_completed(job_id, output_files, logs=None):
         job_voice_caption = _job_voice_caption(job)
 
         # For IOS -> bite stage chaining, update dependent job inputs before
-        # marking IOS as completed. This avoids enqueueing bite jobs with stale
-        # placeholder input paths when dependency status flips to pending.
+        # marking IOS as completed. This avoids enqueueing bite jobs without
+        # the oriented IOS artifacts when dependency status flips to pending.
         if job.modality_slug == "ios" and output_files:
             try:
                 dependent_bite_jobs = job.dependent_jobs.filter(
                     modality_slug="bite_classification"
                 )
                 for bite_job in dependent_bite_jobs:
-                    bite_job.input_file_path = json.dumps(output_files)
-                    bite_job.save(update_fields=["input_file_path"])
+                    bite_inputs = {}
+                    for logical_name, out_spec in output_files.items():
+                        path_or_key = _resolve_output_path_or_key(out_spec)
+                        if path_or_key:
+                            bite_inputs[str(logical_name)] = path_or_key
+                    bite_job.input_files = bite_inputs
+                    bite_job.save(update_fields=["input_files"])
                     logger.info(
                         f"Pre-updated bite classification job #{bite_job.id} with IOS output files: {list(output_files.keys())}"
                     )

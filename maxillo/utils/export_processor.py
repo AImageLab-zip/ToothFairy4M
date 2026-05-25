@@ -139,6 +139,23 @@ class ExportProcessor:
             return True
         return False
 
+    @staticmethod
+    def _infer_modality_slug_from_path(file_path):
+        path = (file_path or "").lower()
+        if "/raw/ios/" in path or "/processed/ios/" in path:
+            return "ios"
+        if "/raw/cbct/" in path or "/processed/cbct/" in path:
+            return "cbct"
+        if "/raw/audio/" in path or "/processed/audio/" in path:
+            return "audio"
+        if "/raw/intraoral/" in path or "/processed/intraoral/" in path:
+            return "intraoral-photo"
+        if "/raw/teleradiography/" in path or "/processed/teleradiography/" in path:
+            return "teleradiography"
+        if "/raw/panoramic/" in path or "/processed/panoramic/" in path:
+            return "panoramic"
+        return None
+
     def _patient_file_queryset(self, patients):
         from common.models import FileRegistry
 
@@ -346,6 +363,11 @@ class ExportProcessor:
             # Base query: match by file_type (this catches files even if modality is None)
             query = Q(file_type__in=file_types)
 
+            # Resilience for legacy/mis-typed rows: include IOS paths when IOS raw is requested,
+            # even if file_type was stored incorrectly.
+            if self.include_raw and "ios" in actual_modality_slugs:
+                query |= Q(file_path__icontains="/raw/ios/")
+
             # For modality-based matching, also include files that match by modality relationship
             # and selected content types (raw and/or processed)
             if modality_objects.exists():
@@ -388,15 +410,28 @@ class ExportProcessor:
                 # '_processed'), or any other processed/bite_classification file from a modality
                 # relationship match.
                 is_mapped_file_type = file_reg.file_type in file_types
+                inferred_modality_from_path = self._infer_modality_slug_from_path(
+                    file_reg.file_path
+                )
                 is_modality_fallback = (
-                    file_reg.modality is not None
-                    and file_reg.modality.slug in actual_modality_slugs
+                    (
+                        (
+                            file_reg.modality is not None
+                            and file_reg.modality.slug in actual_modality_slugs
+                        )
+                        or (
+                            inferred_modality_from_path is not None
+                            and inferred_modality_from_path in actual_modality_slugs
+                        )
+                    )
                     and self._file_type_matches_requested_content(file_reg.file_type)
                 )
                 if is_mapped_file_type or is_modality_fallback:
                     # Determine modality slug for file organization
                     if file_reg.modality:
                         modality_slug = file_reg.modality.slug
+                    elif inferred_modality_from_path:
+                        modality_slug = inferred_modality_from_path
                     else:
                         # Infer from file_type if modality is not set
                         if file_reg.file_type.startswith("ios_"):
