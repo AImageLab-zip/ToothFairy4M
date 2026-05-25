@@ -9,6 +9,7 @@
     const namespace = window.projectNamespace || 'maxillo';
     const segmentationBox = labelRoot.querySelector('[data-segmentation-root]');
     const teethGrid = document.getElementById('intraoralSegmentationTeethGrid');
+    const emptyHint = document.getElementById('segEmptyHint');
     const confirmBtn = document.getElementById('segConfirmBtn');
     const onlySelectedBtn = document.getElementById('segOnlySelectedBtn');
     const resetViewBtn = document.getElementById('segResetViewBtn');
@@ -33,7 +34,7 @@
         images: [],
         teethByFileId: {},
         selectedImage: null,
-        selectedTooth: toothCodes[0],
+        selectedTooth: null,
         selectedPolygon: null,
         selectedVertex: null,
         drawing: false,
@@ -61,6 +62,7 @@
         currentDraftId: null,
         nextDraftId: 1,
         onlySelectedTooth: false,
+        segmentationJobRunning: false,
     };
 
     function setStatus(text) {
@@ -68,9 +70,25 @@
     }
 
     function imageStatusText(image = state.selectedImage, tooth = state.selectedTooth) {
-        if (!image) return 'Select an image to start annotation.';
+        if (!image) {
+            return state.segmentationJobRunning
+                ? 'AI segmentation is running. Labels will appear automatically when ready.'
+                : 'Select an image to start annotation.';
+        }
         if (image.is_confirmed) return 'Confirmed. Reopen to edit.';
+        if (!tooth) return `Image ${image.index}. Select a tooth to start annotation.`;
         return `Tooth ${tooth}. Click image to add polygon points.`;
+    }
+
+    function setJobRunningHint() {
+        if (!segmentationBox) return;
+        segmentationBox.classList.toggle('job-running', !!state.segmentationJobRunning);
+        if (!emptyHint) return;
+        if (state.segmentationJobRunning) {
+            emptyHint.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Image is getting segmented by AI...';
+            return;
+        }
+        emptyHint.textContent = 'Select an image to start annotation.';
     }
 
     function escapeHtml(text) {
@@ -596,6 +614,7 @@
 
     function renderLabels() {
         if (segmentationBox) segmentationBox.classList.toggle('has-selected-image', !!state.selectedImage);
+        setJobRunningHint();
         if (!teethGrid) return;
         teethGrid.innerHTML = '';
         toothCodes.forEach((code) => {
@@ -622,6 +641,13 @@
             codeText.className = 'seg-tooth-code';
             codeText.textContent = code;
             btn.appendChild(codeText);
+            if (code === state.selectedTooth) {
+                const selectedBadge = document.createElement('span');
+                selectedBadge.className = 'seg-selected-badge';
+                selectedBadge.setAttribute('aria-hidden', 'true');
+                selectedBadge.innerHTML = '<i class="fas fa-paint-brush"></i>';
+                btn.appendChild(selectedBadge);
+            }
             if (count > 0) {
                 const badge = document.createElement('span');
                 badge.className = 'seg-count';
@@ -638,7 +664,7 @@
                         points: clonePolygon(state.draftPoints),
                     });
                 }
-                state.selectedTooth = code;
+                state.selectedTooth = state.selectedTooth === code ? null : code;
                 state.selectedPolygon = null;
                 state.selectedVertex = null;
                 state.drawing = false;
@@ -666,7 +692,7 @@
         if (!onlySelectedBtn) return;
         onlySelectedBtn.classList.toggle('active', state.onlySelectedTooth);
         onlySelectedBtn.textContent = state.onlySelectedTooth ? 'Show all' : 'Only selected';
-        onlySelectedBtn.disabled = !state.selectedImage;
+        onlySelectedBtn.disabled = !state.selectedImage || !state.selectedTooth;
         if (resetViewBtn) resetViewBtn.disabled = !state.selectedImage;
     }
 
@@ -999,6 +1025,14 @@
 
     function finishDrawing() {
         if (!state.drawing || !canEditCurrentImage()) return;
+        if (!state.selectedTooth) {
+            state.drawing = false;
+            state.draftPoints = [];
+            state.currentDraftId = null;
+            setStatus('Select a tooth before drawing.');
+            redrawStage();
+            return;
+        }
         if (state.draftPoints.length < 3) {
             setStatus('Need at least 3 points.');
             return;
@@ -1028,6 +1062,10 @@
 
     function startOrContinueDrawing(point) {
         if (!canEditCurrentImage()) return;
+        if (!state.selectedTooth) {
+            setStatus('Select a tooth before drawing.');
+            return;
+        }
         if (!state.drawing) {
             state.selectedPolygon = null;
             state.selectedVertex = null;
@@ -1156,7 +1194,7 @@
         destroyStage();
         if (state.container) state.container.classList.remove('is-focused');
         renderLabels();
-        setStatus('Select an image to start annotation.');
+        setStatus(imageStatusText(null, state.selectedTooth));
     }
 
     function selectImage(image) {
@@ -1172,6 +1210,8 @@
         state.selectedImage = image;
         state.selectedPolygon = null;
         state.selectedVertex = null;
+        state.selectedTooth = null;
+        state.onlySelectedTooth = false;
         state.drawing = false;
         state.draftPoints = [];
         state.currentDraftId = null;
@@ -1293,7 +1333,7 @@
             });
             state.stage.on('dblclick dbltap', finishDrawing);
             redrawStage();
-            setStatus(state.selectedImage.is_confirmed ? 'Confirmed. Reopen to edit.' : `Image ${image.index}. Tooth ${state.selectedTooth}. Click image to add polygon points.`);
+            setStatus(state.selectedImage.is_confirmed ? 'Confirmed. Reopen to edit.' : imageStatusText(state.selectedImage, state.selectedTooth));
         };
         img.onerror = () => {
             if (token === state.mountToken) setStatus('Image failed to load.');
@@ -1385,6 +1425,7 @@
         const response = await fetch(`/${namespace}/api/patient/${patientId}/intraoral-segmentation/`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to load segmentation.');
+        state.segmentationJobRunning = !!data.segmentation_job_running;
         const byId = new Map((Array.isArray(data.images) ? data.images : []).map(image => [image.id, image]));
         state.images = state.images.map((image) => {
             const loaded = byId.get(image.id) || image;
@@ -1406,12 +1447,15 @@
         state.container.className = 'intraoral-seg-workspace';
         state.images = Array.isArray(images) ? images.slice() : [];
         if (!state.images.length) return;
+        state.segmentationJobRunning = false;
         setStatus('Loading segmentation...');
         try {
             await loadSegmentation();
             renderGrid();
+            setStatus(imageStatusText(null, state.selectedTooth));
         } catch (error) {
             state.teethByFileId = {};
+            state.segmentationJobRunning = false;
             state.images = state.images.map(image => ({ ...image, is_confirmed: false, confirmed_at: null, confirmed_by: null }));
             state.images.forEach(image => { state.teethByFileId[image.id] = {}; });
             renderGrid();
@@ -1454,13 +1498,27 @@
                 }
                 state.drawing = false;
                 state.draftPoints = [];
+                state.selectedTooth = null;
+                state.selectedPolygon = null;
+                state.selectedVertex = null;
                 redrawStage();
-                setStatus('Drawing canceled.');
+                renderLabels();
+                setStatus('Drawing canceled. Tooth selection cleared.');
             } else if (state.selectedPolygon || state.selectedVertex) {
                 state.selectedPolygon = null;
                 state.selectedVertex = null;
                 redrawStage();
-                setStatus(`Image ${state.selectedImage.index}. Tooth ${state.selectedTooth}. Click image to add polygon points.`);
+                setStatus(imageStatusText(state.selectedImage, state.selectedTooth));
+            } else if (state.selectedTooth) {
+                state.selectedTooth = null;
+                state.selectedPolygon = null;
+                state.selectedVertex = null;
+                state.drawing = false;
+                state.draftPoints = [];
+                state.currentDraftId = null;
+                renderLabels();
+                redrawStage();
+                setStatus(imageStatusText(state.selectedImage, state.selectedTooth));
             }
         }
         if (evt.key === 'Enter' && state.drawing) {
