@@ -295,12 +295,25 @@ def patient_detail(request, patient_id):
                 bundle_files = []
                 files_meta = file_obj.metadata.get('files', {})
                 if isinstance(files_meta, dict):
-                    for bundle_key, bundle_meta in files_meta.items():
+                    primary_bundle = files_meta.get('segmentation_nifti')
+                    if isinstance(primary_bundle, dict) and primary_bundle.get('path'):
+                        file_data['filename'] = os.path.basename(primary_bundle.get('path', ''))
+
+                    bundle_labels = {
+                        'segmentation_nifti': 'Segmentation NIfTI',
+                    }
+                    bundle_order = ['segmentation_nifti']
+                    bundle_keys = [k for k in bundle_order if k in files_meta]
+                    bundle_keys.extend(k for k in files_meta.keys() if k not in bundle_keys)
+                    for bundle_key in bundle_keys:
+                        bundle_meta = files_meta[bundle_key]
+                        if bundle_key != 'segmentation_nifti':
+                            continue
                         if not isinstance(bundle_meta, dict) or not bundle_meta.get('path'):
                             continue
                         bundle_files.append({
                             'key': bundle_key,
-                            'label': bundle_key.replace('_', ' ').title(),
+                            'label': bundle_labels.get(bundle_key, bundle_key.replace('_', ' ').title()),
                             'filename': os.path.basename(bundle_meta.get('path', '')),
                         })
                 file_data['bundle_files'] = bundle_files
@@ -342,15 +355,15 @@ def patient_detail(request, patient_id):
                     files_qs = patient.files.filter(modality=modality_obj)
 
                     if slug == 'cbct':
-                        # Prefer processed CBCT entries that expose a valid NIfTI volume.
+                        # Prefer processed CBCT entries that expose a valid segmentation.
                         file_obj = None
                         processed_candidates = patient.files.filter(file_type='cbct_processed').order_by('-created_at')
                         for processed_entry in processed_candidates:
                             if processed_entry.file_hash == 'multi-file' and processed_entry.metadata:
                                 files_data = processed_entry.metadata.get('files', {})
-                                volume_data = files_data.get('volume_nifti', {}) if isinstance(files_data, dict) else {}
-                                volume_path = volume_data.get('path') if isinstance(volume_data, dict) else None
-                                if volume_path and artifact_exists(volume_path):
+                                segmentation_data = files_data.get('segmentation_nifti', {}) if isinstance(files_data, dict) else {}
+                                segmentation_path = segmentation_data.get('path') if isinstance(segmentation_data, dict) else None
+                                if segmentation_path and artifact_exists(segmentation_path):
                                     file_obj = processed_entry
                                     break
                             elif processed_entry.file_path and (

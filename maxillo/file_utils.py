@@ -936,6 +936,7 @@ def mark_job_completed(job_id, output_files, logs=None):
     logger.info(
         f"mark_job_completed called with job_id={job_id}, output_files={output_files}, logs present={logs is not None}"
     )
+    output_files = dict(output_files or {})
 
     try:
         job = Job.objects.select_related(
@@ -946,6 +947,16 @@ def mark_job_completed(job_id, output_files, logs=None):
         )
         job_patient = _job_patient(job)
         job_voice_caption = _job_voice_caption(job)
+
+        if job.modality_slug == "cbct":
+            segmentation_path = _resolve_output_path_or_key(
+                output_files.get("segmentation_nifti")
+            )
+            if not segmentation_path or not artifact_exists(segmentation_path):
+                raise ValueError(
+                    "CBCT completion missing required output_files.segmentation_nifti"
+                )
+            output_files = {"segmentation_nifti": output_files["segmentation_nifti"]}
 
         # For IOS -> bite stage chaining, update dependent job inputs before
         # marking IOS as completed. This avoids enqueueing bite jobs without
@@ -978,8 +989,7 @@ def mark_job_completed(job_id, output_files, logs=None):
         logger.info(f"Registering output files for modality: {job.modality_slug}")
 
         if job.modality_slug == "cbct":
-            # For CBCT, we expect multiple output files
-            # output_files should contain: pano, volume_nifti, structures_mesh_*, etc.
+            # CBCT processing exposes only the segmentation artifact.
             processed_files = {}
             total_size = 0
 
@@ -1023,10 +1033,8 @@ def mark_job_completed(job_id, output_files, logs=None):
 
             # Create single FileRegistry entry for CBCT with all outputs in metadata
             if processed_files:
-                # Use pano path as primary file path (for backward compatibility)
-                primary_path = processed_files.get("panoramic_view", {}).get("path", "")
+                primary_path = processed_files.get("segmentation_nifti", {}).get("path", "")
                 if not primary_path and processed_files:
-                    # Fallback to first available file
                     primary_path = list(processed_files.values())[0]["path"]
 
                 cbct_modality = None
@@ -1039,7 +1047,7 @@ def mark_job_completed(job_id, output_files, logs=None):
 
                 FileRegistry.objects.create(
                     file_type=get_file_type_for_modality("cbct", is_processed=True),
-                    file_path=primary_path,  # Primary file path (e.g., pano)
+                    file_path=primary_path,
                     file_size=total_size,  # Total size of all files
                     file_hash="multi-file",  # Indicator that this contains multiple files
                     processing_job=job,

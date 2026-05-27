@@ -33,7 +33,7 @@ def serve_file(request, file_id):
         bundle_filename = ""
 
         # CBCT processed files may be stored as a multi-file bundle. Allow a
-        # specific metadata.files key, defaulting to the viewer volume.
+        # specific metadata.files key, defaulting to the segmentation.
         if (
             file_obj.file_type == "cbct_processed"
             and file_obj.file_hash == "multi-file"
@@ -44,7 +44,7 @@ def serve_file(request, file_id):
                 bundle_key = (
                     requested_file_key
                     if requested_file_key and requested_file_key != "primary"
-                    else "volume_nifti"
+                    else "segmentation_nifti"
                 )
                 bundle_file = files_data.get(bundle_key, {})
                 bundle_path = (
