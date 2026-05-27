@@ -10,6 +10,7 @@ import logging
 
 from common.file_access import exists as artifact_exists
 from common.permissions import (
+    get_user_folder_role,
     user_can_read_folder,
     user_can_write_annotations,
     user_is_project_admin,
@@ -271,6 +272,24 @@ def patient_detail(request, patient_id):
                 'file_size_mb': f"{file_obj.file_size / (1024 * 1024):.2f}" if file_obj.file_size else '0.00',
                 'modality_name': modality_name,
             }
+
+            if (
+                file_obj.file_type == 'cbct_processed'
+                and file_obj.file_hash == 'multi-file'
+                and isinstance(file_obj.metadata, dict)
+            ):
+                bundle_files = []
+                files_meta = file_obj.metadata.get('files', {})
+                if isinstance(files_meta, dict):
+                    for bundle_key, bundle_meta in files_meta.items():
+                        if not isinstance(bundle_meta, dict) or not bundle_meta.get('path'):
+                            continue
+                        bundle_files.append({
+                            'key': bundle_key,
+                            'label': bundle_key.replace('_', ' ').title(),
+                            'filename': os.path.basename(bundle_meta.get('path', '')),
+                        })
+                file_data['bundle_files'] = bundle_files
             
             # Categorize files dynamically based on file_type
             # Check for raw files (contains _raw or is rgb_image)
@@ -286,12 +305,14 @@ def patient_detail(request, patient_id):
 
 
     # Voice captions
-    # Non-admin users can see caption metadata for all captions, but only access
-    # content (text/audio) for their own captions.
+    # Admins, standard users, and project managers see all captions.
+    # Annotators can only see their own captions (to avoid bias during annotation).
     voice_captions = patient.voice_captions.all()
     is_admin_user = user_is_project_admin(request.user, request)
+    folder_role = get_user_folder_role(request.user, patient.folder) if patient.folder else None
+    can_see_all_captions = is_admin_user or folder_role in ('standard', 'project_manager')
     for caption in voice_captions:
-        caption.can_view_content = bool(is_admin_user or caption.user_id == request.user.id)
+        caption.can_view_content = bool(can_see_all_captions or caption.user_id == request.user.id)
         caption.is_ghost = not caption.can_view_content
 
     # Build modality files lookup for drag-drop grid
@@ -309,7 +330,7 @@ def patient_detail(request, patient_id):
                     if slug == 'cbct':
                         # Prefer processed CBCT entries that expose a valid NIfTI volume.
                         file_obj = None
-                        processed_candidates = files_qs.filter(file_type='cbct_processed').order_by('-created_at')
+                        processed_candidates = patient.files.filter(file_type='cbct_processed').order_by('-created_at')
                         for processed_entry in processed_candidates:
                             if processed_entry.file_hash == 'multi-file' and processed_entry.metadata:
                                 files_data = processed_entry.metadata.get('files', {})
@@ -325,7 +346,7 @@ def patient_detail(request, patient_id):
                                 break
 
                         if not file_obj:
-                            raw_candidates = files_qs.filter(file_type='cbct_raw').order_by('-created_at')
+                            raw_candidates = patient.files.filter(file_type='cbct_raw').order_by('-created_at')
                             for raw_entry in raw_candidates:
                                 if raw_entry.file_path and (
                                     raw_entry.file_path.endswith('.nii') or raw_entry.file_path.endswith('.nii.gz')

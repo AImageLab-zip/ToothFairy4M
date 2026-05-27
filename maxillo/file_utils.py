@@ -1017,6 +1017,14 @@ def mark_job_completed(job_id, output_files, logs=None):
                     # Fallback to first available file
                     primary_path = list(processed_files.values())[0]["path"]
 
+                cbct_modality = None
+                try:
+                    from common.models import Modality as _Modality
+
+                    cbct_modality = _Modality.objects.filter(slug="cbct").first()
+                except Exception:
+                    cbct_modality = None
+
                 FileRegistry.objects.create(
                     file_type=get_file_type_for_modality("cbct", is_processed=True),
                     file_path=primary_path,  # Primary file path (e.g., pano)
@@ -1024,6 +1032,7 @@ def mark_job_completed(job_id, output_files, logs=None):
                     file_hash="multi-file",  # Indicator that this contains multiple files
                     processing_job=job,
                     **_job_entity_fk_kwargs(job),
+                    modality=cbct_modality,
                     metadata={
                         "processed_at": timezone.now().isoformat(),
                         "files": processed_files,  # All output files stored here
