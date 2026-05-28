@@ -212,7 +212,24 @@ class Patient(models.Model):
             return False
 
     def _processing_status(self, modality_slug):
+        from common.job_routing import is_runner_enabled_for_modality
+
         job = self.jobs.filter(modality_slug=modality_slug).order_by('-created_at').first()
+        if not is_runner_enabled_for_modality(modality_slug):
+            if job and job.status == 'completed':
+                return 'processed'
+            base = str(modality_slug or '').replace('-', '_')
+            file_types = [f'{base}_raw', f'{base}_processed']
+            if modality_slug == 'cbct':
+                file_types = ['cbct_raw', 'cbct_processed']
+            elif modality_slug == 'ios':
+                return 'processed' if self.has_ios_scans() else 'not_uploaded'
+            if self.files.filter(file_type__in=file_types).exists():
+                return 'processed'
+            if self.files.filter(modality__slug=modality_slug).exists():
+                return 'processed'
+            return 'not_uploaded'
+
         if not job:
             return 'not_uploaded'
         if job.status in ('pending', 'processing', 'retrying'):
